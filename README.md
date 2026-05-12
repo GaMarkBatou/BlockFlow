@@ -1,4 +1,4 @@
-# BlockFlow Chrome Extension MVP v0.9
+# BlockFlow Chrome Extension MVP v0.11
 
 Lokális Chrome extension weboldali automatizmusokhoz.
 
@@ -38,7 +38,7 @@ A watcher csak nyitott, normál weboldal tabon fut stabilan. Chrome belső oldal
 4. Load unpacked.
 5. Válaszd ki a kicsomagolt mappát.
 
-## v0.10
+## v0.11
 
 - A Watcher panel kompakt lett: rövid lista látszik a jobb oldalon, részletes szerkesztés modal ablakban történik.
 - Az Email sablon panel kompakt lett: rövid lista + külön nagy szerkesztőablak.

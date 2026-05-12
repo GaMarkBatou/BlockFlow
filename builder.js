@@ -608,11 +608,13 @@ async function renderTemplates() {
       <button id="newTemplate" class="small primary">+ Új sablon</button>
     </div>
     <div class="compact-help">A sablonok részletes szerkesztőablakban nyílnak meg. A jobb panelen csak a rövid lista látszik.</div>
-    ${templates.length ? templates.map(t => `<div class="compact-row" data-template="${t.id}">
+    ${templates.length ? templates.map(t => `<div class="compact-row template-compact-row" data-template="${t.id}">
       <div class="compact-main"><b>${escapeHtml(t.name || 'Névtelen sablon')}</b><span>${escapeHtml(t.subject || 'Nincs tárgy')}</span><small>${escapeHtml((t.body || '').slice(0, 80))}${(t.body || '').length > 80 ? '...' : ''}</small></div>
-      <button class="small" data-edit-template="${t.id}">Szerkesztés</button>
-      <button class="small" data-use-template="${t.id}">Beillesztés</button>
-      <button class="small danger" data-del-template="${t.id}">Törlés</button>
+      <div class="compact-actions template-compact-actions">
+        <button class="small" data-edit-template="${t.id}">Szerkesztés</button>
+        <button class="small" data-use-template="${t.id}">Beillesztés</button>
+        <button class="small danger" data-del-template="${t.id}">Törlés</button>
+      </div>
     </div>`).join('') : '<div class="compact-empty">Nincs email sablon.</div>'}
   `;
   $('#newTemplate').onclick = async () => {

@@ -150,3 +150,37 @@
   .compact-row { grid-template-columns: auto minmax(0,1fr); }
   .compact-row button { width: 100%; }
 }
+
+/* v0.11 template list layout fix: actions on a dedicated row */
+.template-compact-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.template-compact-row .compact-main {
+  width: 100%;
+}
+.template-compact-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 7px;
+  border-top: 1px solid #eef2f7;
+}
+.template-compact-actions button.small {
+  white-space: nowrap;
+  min-width: 82px;
+  text-align: center;
+}
+@media (max-width: 380px) {
+  .template-compact-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .template-compact-actions button.small {
+    width: 100%;
+  }
+}
