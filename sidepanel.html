@@ -1,0 +1,30 @@
+<!doctype html><html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BlockFlow Sidebar</title><link rel="stylesheet" href="app.css"></head><body class="side-body">
+  <div class="brand">BlockFlow</div>
+  <div class="side-card">
+    <div class="section-title">Aktuális oldal</div>
+    <div id="target" class="status">Cél tab keresése...</div>
+    <div class="side-actions three" style="margin-top:8px">
+      <button id="scan">Oldal elemzése</button>
+      <button id="pick">Elem kiválasztása</button>
+    </div>
+  </div>
+  <div class="side-card">
+    <div class="section-title">Automatizmusok</div>
+    <select id="workflowSelect" style="width:100%;padding:9px;border-radius:12px;border:1px solid var(--line)"></select>
+    <div class="side-actions three" style="margin-top:8px">
+      <button id="dryRun">Dry-run</button>
+      <button id="run" class="primary">Futtatás</button>
+      <button id="stop" class="danger">Stop</button>
+    </div>
+    <button id="openBuilder" style="width:100%;margin-top:8px">Builder megnyitása</button>
+  </div>
+  <div class="side-card">
+    <div class="section-title">Gyors elem</div>
+    <div id="picked" class="status">Nincs kiválasztott elem.</div>
+  </div>
+  <div class="side-card">
+    <div class="section-title">Napló</div>
+    <div id="log" class="status">Kész.</div>
+  </div>
+<script src="common.js"></script><script src="sidepanel.js"></script>
+</body></html>
