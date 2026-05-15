@@ -11,7 +11,7 @@
     <button id="exportAll">Teljes export</button>
     <button id="importBtn">Import</button>
     <input id="importFile" type="file" accept="application/json,.json,.bfa" class="hidden">
-    <span id="targetInfo" class="status">Cél tab: keresés...</span>
+    <span id="targetInfo" class="status">Cél tab: keresés...</span><span id="saveState" class="status save-state saved">Mentve</span>
   </div>
   <main class="layout">
     <aside class="sidebar">
@@ -40,7 +40,7 @@
       <div class="section-title">Élő változók</div>
       <div id="liveVariables" class="status muted">Még nincs futási eredmény.</div>
       <div class="hr"></div>
-      <div class="section-title">Watcherek</div>
+      <div class="section-title">Figyelő triggerek</div>
       <div id="watcherPanel" class="status muted">Betöltés...</div>
       <div class="hr"></div>
       <div class="section-title">Sablonok</div>

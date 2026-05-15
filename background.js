@@ -115,6 +115,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return;
     }
 
+
+
+    if (msg?.type === 'BF_REFRESH_ALL_WATCHERS') {
+      const tabs = await chrome.tabs.query({});
+      let refreshed = 0;
+      for (const tab of tabs) {
+        if (!tab?.id || !tab.url || tab.url.startsWith(EXT_PREFIX) || !INJECTABLE_URL_RE.test(tab.url)) continue;
+        try {
+          await ensureContentScript(tab.id);
+          await chrome.tabs.sendMessage(tab.id, { type: 'BF_REFRESH_WATCHERS' });
+          refreshed++;
+        } catch (_) {}
+      }
+      sendResponse({ ok: true, refreshed });
+      return;
+    }
+
     if (msg?.type === 'OPEN_MAILTO') {
       await chrome.tabs.create({ url: msg.url });
       sendResponse({ ok: true });

@@ -1,0 +1,66 @@
+/* Popup-only layout override.
+   The builder uses app.css with html/body overflow hidden for the three-panel editor.
+   Chrome extension popups need their own natural size, otherwise the popup can collapse
+   into a thin strip under the toolbar. */
+html,
+body.popup-body {
+  width: 360px !important;
+  min-width: 360px !important;
+  height: auto !important;
+  min-height: 430px !important;
+  max-height: 620px !important;
+  overflow: visible !important;
+}
+
+body.popup-body {
+  display: block !important;
+  margin: 0 !important;
+  padding: 14px !important;
+  background: var(--bg) !important;
+}
+
+.popup-body .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px 0;
+  font-size: 20px;
+}
+
+.popup-body .brand::before {
+  content: "⚙";
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: var(--blue2);
+  color: var(--blue);
+  font-size: 16px;
+}
+
+.popup-body .card {
+  display: block;
+  width: 100%;
+  margin: 10px 0;
+  padding: 13px;
+  border-radius: 18px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, .06);
+}
+
+.popup-body button,
+.popup-body select {
+  min-height: 40px;
+}
+
+.popup-body #openSide,
+.popup-body #openBuilder,
+.popup-body #run {
+  font-weight: 800;
+}
+
+.popup-body #status {
+  margin-top: 10px;
+  max-height: 96px;
+  overflow: auto;
+}

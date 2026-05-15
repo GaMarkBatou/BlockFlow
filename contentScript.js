@@ -337,23 +337,30 @@
 
   function maskValue(block, vars) {
     const raw = interpolate(block.source || '', vars);
-    const maskChar = String(block.maskChar || '*').slice(0, 1) || '*';
+    const invert = Boolean(block.invertMask);
+    const maskChar = block.maskChar == null ? '*' : String(block.maskChar).slice(0, 1);
+    const repeatMask = n => maskChar ? maskChar.repeat(Math.max(0, n)) : '';
     if ((block.maskMode || 'characters') === 'lines') {
       const lines = String(raw).split(/\r?\n/);
       const keepFirst = Math.max(0, Number(block.keepFirstLines || 0));
       const keepLast = Math.max(0, Number(block.keepLastLines || 0));
-      const maskText = String(block.maskLineText || '***');
+      const maskText = block.maskLineText == null ? '***' : String(block.maskLineText);
       return lines.map((line, idx) => {
         const fromEnd = lines.length - idx;
-        if (idx < keepFirst || fromEnd <= keepLast) return line;
-        return maskText;
+        const inEdge = idx < keepFirst || fromEnd <= keepLast;
+        if (!invert) return inEdge ? line : maskText;
+        return inEdge ? maskText : line;
       }).join('\n');
     }
     const text = String(raw);
+    const chars = Array.from(text);
     const keepStart = Math.max(0, Number(block.keepStart || 0));
     const keepEnd = Math.max(0, Number(block.keepEnd || 0));
-    if (text.length <= keepStart + keepEnd) return maskChar.repeat(text.length);
-    return text.slice(0, keepStart) + maskChar.repeat(Math.max(0, text.length - keepStart - keepEnd)) + (keepEnd ? text.slice(-keepEnd) : '');
+    return chars.map((ch, idx) => {
+      const inEdge = idx < keepStart || idx >= chars.length - keepEnd;
+      const shouldMask = invert ? inEdge : !inEdge;
+      return shouldMask ? repeatMask(1) : ch;
+    }).join('');
   }
 
   async function executeBlock(block, vars, options = {}) {
@@ -499,7 +506,7 @@
         const b = list[i];
         log.push(`${label} · ${i + 1}: ${b.type}${options.dryRun ? ' [dry-run]' : ''}`);
 
-        if (b.type === 'trigger') { i++; continue; }
+        if (b.type === 'trigger' || b.type === 'watchText' || b.type === 'watchElement') { i++; continue; }
 
         if (b.type === 'ifBlock') {
           const ok = await conditionPass(b, vars);
@@ -591,6 +598,26 @@
   }
 
 
+  function findWorkflowBlock(blocks, id) {
+    if (!id) return null;
+    for (const b of blocks || []) {
+      if (b.id === id) return b;
+      const child = findWorkflowBlock(b.children || [], id);
+      if (child) return child;
+      const elseChild = findWorkflowBlock(b.elseChildren || [], id);
+      if (elseChild) return elseChild;
+    }
+    return null;
+  }
+
+  function watcherBlockStillActive(w, workflow) {
+    if (!w.sourceBlockId) return true;
+    const block = findWorkflowBlock(workflow?.blocks || [], w.sourceBlockId);
+    if (!block) return false;
+    if (block.type !== 'watchText' && block.type !== 'watchElement') return false;
+    return block.triggerEnabled !== false;
+  }
+
   function watcherScopeMatches(w) {
     const scope = w.scope || 'domain';
     if (scope === 'any') return true;
@@ -619,9 +646,12 @@
         firedWatchers.set(w.id, Date.now());
         const workflow = workflows.find(x => x.id === w.workflowId);
         if (workflow) {
-          showBadge(`BlockFlow watcher indítja: ${workflow.name || 'workflow'}`);
+          // Stale watcher védelem: a mentett watcher rekord csak akkor indíthat,
+          // ha a hozzá tartozó figyelő blokk még létezik és aktív a workflow-ban.
+          if (!watcherBlockStillActive(w, workflow)) { firedWatchers.delete(w.id); continue; }
+          showBadge(`BlockFlow figyelő indítja: ${workflow.name || 'workflow'}`);
           setTimeout(removeBadge, 2000);
-          runWorkflow(workflow, { dryRun: false }).catch(err => console.warn('BlockFlow watcher hiba', err));
+          runWorkflow(workflow, { dryRun: false }).catch(err => console.warn('BlockFlow figyelő hiba', err));
           if (w.runOnce) {
             const data = await chrome.storage.local.get('watchers');
             const all = Array.isArray(data.watchers) ? data.watchers : [];
@@ -629,7 +659,7 @@
             if (ww) { ww.enabled = false; await chrome.storage.local.set({ watchers: all }); }
           }
         }
-      } catch (err) { console.warn('BlockFlow watcher check hiba', err); }
+      } catch (err) { console.warn('BlockFlow figyelő ellenőrzési hiba', err); }
     }
   }
 
