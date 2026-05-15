@@ -36,13 +36,13 @@
     if (!el) return '';
     if (el.id) {
       const label = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-      if (label) return label.innerText.trim();
+      if (label) return (label.innerText || label.textContent || '').trim();
     }
     const wrapping = el.closest('label');
-    if (wrapping) return wrapping.innerText.trim();
+    if (wrapping) return (wrapping.innerText || wrapping.textContent || '').trim();
     const aria = el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('placeholder') || '';
     if (aria) return aria.trim();
-    const nearby = el.parentElement?.innerText?.trim();
+    const nearby = (el.parentElement?.innerText || el.parentElement?.textContent || '').trim();
     return nearby ? nearby.slice(0, 120) : '';
   }
 
@@ -63,9 +63,11 @@
 
   function descriptor(el) {
     const rect = el.getBoundingClientRect();
-    const text = (el.innerText || el.value || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim();
+    const container = el.closest('[arid],[ardbn],[artype],.df,.Panel') || el.parentElement;
+    const label = labelFor(el);
+    const text = (el.innerText || el.value || el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('title') || '').trim();
     return {
-      label: labelFor(el) || text.slice(0, 80) || el.name || el.id || el.tagName.toLowerCase(),
+      label: label || text.slice(0, 80) || el.name || el.id || el.tagName.toLowerCase(),
       tag: el.tagName.toLowerCase(),
       type: el.getAttribute('type') || '',
       id: el.id || '',
@@ -77,6 +79,13 @@
       text: text.slice(0, 220),
       href: el.getAttribute('href') || '',
       css: cssPath(el),
+      arid: el.getAttribute('arid') || container?.getAttribute('arid') || '',
+      ardbn: el.getAttribute('ardbn') || container?.getAttribute('ardbn') || '',
+      artype: el.getAttribute('artype') || container?.getAttribute('artype') || '',
+      containerId: container?.id || '',
+      containerArid: container?.getAttribute('arid') || '',
+      containerArdbn: container?.getAttribute('ardbn') || '',
+      labelFor: el.id && document.querySelector(`label[for="${CSS.escape(el.id)}"]`) ? el.id : '',
       rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) }
     };
   }
@@ -88,7 +97,12 @@
   function candidateSelectors(d) {
     const out = [];
     if (!d) return out;
-    if (d.id) out.push({ selector: `#${CSS.escape(d.id)}`, weight: 60 });
+    if (d.id) out.push({ selector: `#${CSS.escape(d.id)}`, weight: 80 });
+    if (d.containerId) out.push({ selector: `#${CSS.escape(d.containerId)} input, #${CSS.escape(d.containerId)} textarea, #${CSS.escape(d.containerId)} select, #${CSS.escape(d.containerId)} [contenteditable="true"]`, weight: 76 });
+    if (d.ardbn) out.push({ selector: `${attrEq('ardbn', d.ardbn)} input, ${attrEq('ardbn', d.ardbn)} textarea, ${attrEq('ardbn', d.ardbn)} select, ${attrEq('ardbn', d.ardbn)}`, weight: 72 });
+    if (d.arid) out.push({ selector: `${attrEq('arid', d.arid)} input, ${attrEq('arid', d.arid)} textarea, ${attrEq('arid', d.arid)} select, ${attrEq('arid', d.arid)}`, weight: 70 });
+    if (d.containerArdbn) out.push({ selector: `${attrEq('ardbn', d.containerArdbn)} input, ${attrEq('ardbn', d.containerArdbn)} textarea, ${attrEq('ardbn', d.containerArdbn)} select`, weight: 68 });
+    if (d.containerArid) out.push({ selector: `${attrEq('arid', d.containerArid)} input, ${attrEq('arid', d.containerArid)} textarea, ${attrEq('arid', d.containerArid)} select`, weight: 66 });
     if (d.name) out.push({ selector: `${d.tag || ''}${attrEq('name', d.name)}`, weight: 45 });
     if (d.ariaLabel) out.push({ selector: `${d.tag || ''}${attrEq('aria-label', d.ariaLabel)}`, weight: 40 });
     if (d.placeholder) out.push({ selector: `${d.tag || ''}${attrEq('placeholder', d.placeholder)}`, weight: 35 });
@@ -97,57 +111,116 @@
     return out.filter(x => x.selector);
   }
 
-  function scoreElement(el, d, base = 0) {
-    if (!el || !d || !isVisible(el)) return -999;
+  function normalizeText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  function fieldControlIn(el) {
+    if (!el || el.nodeType !== 1) return null;
+    if (el.matches('input,textarea,select,[contenteditable="true"]')) return el;
+    return el.querySelector('input,textarea,select,[contenteditable="true"]') || el;
+  }
+
+  function scoreElement(el, d, base = 0, options = {}) {
+    if (!el || !d) return -999;
+    const requireVisible = options.requireVisible !== false;
+    if (requireVisible && !isVisible(el)) return -999;
     let score = base;
-    if (d.tag && el.tagName.toLowerCase() === d.tag) score += 10;
-    if (d.type && el.getAttribute('type') === d.type) score += 8;
-    if (d.name && el.getAttribute('name') === d.name) score += 25;
-    if (d.id && el.id === d.id) score += 35;
-    if (d.ariaLabel && el.getAttribute('aria-label') === d.ariaLabel) score += 20;
-    if (d.placeholder && el.getAttribute('placeholder') === d.placeholder) score += 20;
-    const t = (el.innerText || el.value || '').trim().toLowerCase();
-    const dt = String(d.text || '').trim().toLowerCase();
+    const control = fieldControlIn(el) || el;
+    const container = control.closest('[arid],[ardbn],[artype],.df,.Panel') || el.closest('[arid],[ardbn],[artype],.df,.Panel') || el;
+    if (d.tag && control.tagName?.toLowerCase() === d.tag) score += 10;
+    if (d.type && control.getAttribute('type') === d.type) score += 8;
+    if (d.name && control.getAttribute('name') === d.name) score += 25;
+    if (d.id && control.id === d.id) score += 45;
+    if (d.containerId && container.id === d.containerId) score += 38;
+    if (d.arid && (control.getAttribute('arid') === d.arid || container.getAttribute('arid') === d.arid)) score += 34;
+    if (d.ardbn && (control.getAttribute('ardbn') === d.ardbn || container.getAttribute('ardbn') === d.ardbn)) score += 34;
+    if (d.containerArid && container.getAttribute('arid') === d.containerArid) score += 28;
+    if (d.containerArdbn && container.getAttribute('ardbn') === d.containerArdbn) score += 28;
+    if (d.ariaLabel && control.getAttribute('aria-label') === d.ariaLabel) score += 20;
+    if (d.placeholder && control.getAttribute('placeholder') === d.placeholder) score += 20;
+    if (d.title && control.getAttribute('title') === d.title) score += 14;
+    const t = normalizeText(control.innerText || control.value || control.textContent || control.getAttribute('title') || '');
+    const dt = normalizeText(d.text || '');
     if (dt && t) {
       if (t === dt) score += 24;
       else if (t.includes(dt.slice(0, 80)) || dt.includes(t.slice(0, 80))) score += 12;
     }
-    const lab = labelFor(el).toLowerCase();
-    const dl = String(d.label || '').toLowerCase();
-    if (lab && dl && (lab.includes(dl) || dl.includes(lab))) score += 14;
-    if (d.rect) {
-      const r = el.getBoundingClientRect();
+    const lab = normalizeText(labelFor(control) || labelFor(container));
+    const dl = normalizeText(d.label || '');
+    if (lab && dl) {
+      if (lab === dl) score += 30;
+      else if (lab.includes(dl) || dl.includes(lab)) score += 18;
+    }
+    if (d.rect && isVisible(control)) {
+      const r = control.getBoundingClientRect();
       const dist = Math.abs(r.x - d.rect.x) + Math.abs(r.y - d.rect.y);
       if (dist < 50) score += 8;
       else if (dist < 160) score += 3;
     }
+    if (!isVisible(control)) score -= 3;
     return score;
   }
 
-  function findElement(target) {
+  function controlsNearLabel(labelEl) {
+    const out = [];
+    const forId = labelEl.getAttribute('for');
+    if (forId) {
+      const byFor = document.getElementById(forId);
+      if (byFor) out.push(byFor);
+    }
+    const container = labelEl.closest('[arid],[ardbn],[artype],.df,.Panel,div,td,li,section') || labelEl.parentElement;
+    if (container) out.push(...container.querySelectorAll('input,textarea,select,[contenteditable="true"]'));
+    let sib = labelEl.nextElementSibling;
+    for (let i = 0; sib && i < 4; i++, sib = sib.nextElementSibling) {
+      if (sib.matches?.('input,textarea,select,[contenteditable="true"]')) out.push(sib);
+      out.push(...(sib.querySelectorAll?.('input,textarea,select,[contenteditable="true"]') || []));
+    }
+    return [...new Set(out)];
+  }
+
+  function findElement(target, options = {}) {
+    const requireVisible = options.requireVisible !== false;
     let best = null;
     let bestScore = -999;
     for (const c of candidateSelectors(target)) {
       try {
-        const els = [...document.querySelectorAll(c.selector)].slice(0, 20);
-        for (const el of els) {
-          const score = scoreElement(el, target, c.weight);
+        const els = [...document.querySelectorAll(c.selector)].slice(0, 60);
+        for (const raw of els) {
+          const el = fieldControlIn(raw);
+          const score = scoreElement(el, target, c.weight, { requireVisible });
           if (score > bestScore) { best = el; bestScore = score; }
         }
       } catch (_) {}
     }
+    if (target?.label) {
+      const needle = normalizeText(target.label).slice(0, 120);
+      const labels = [...document.querySelectorAll('label,[aria-label],[title]')].slice(0, 3000);
+      for (const lab of labels) {
+        const txt = normalizeText(lab.innerText || lab.textContent || lab.getAttribute('aria-label') || lab.getAttribute('title') || '');
+        if (needle && (txt === needle || txt.includes(needle) || needle.includes(txt))) {
+          for (const el of controlsNearLabel(lab)) {
+            const score = scoreElement(el, target, 26, { requireVisible });
+            if (score > bestScore) { best = el; bestScore = score; }
+          }
+        }
+      }
+    }
     if (target?.text || target?.label) {
-      const needle = String(target.text || target.label || '').trim().toLowerCase().slice(0, 100);
-      const all = [...document.querySelectorAll('button,a,input,textarea,select,[role="button"],label,div,span')].filter(isVisible).slice(0, 1500);
-      for (const el of all) {
-        const hay = ((el.innerText || el.value || labelFor(el) || '').trim().toLowerCase());
+      const needle = normalizeText(target.text || target.label || '').slice(0, 100);
+      const poolSelector = 'button,a,input,textarea,select,[role="button"],label,div,span,[contenteditable="true"]';
+      let all = [...document.querySelectorAll(poolSelector)].slice(0, 5000);
+      if (requireVisible) all = all.filter(isVisible);
+      for (const raw of all) {
+        const el = fieldControlIn(raw);
+        const hay = normalizeText(el.innerText || el.value || el.textContent || labelFor(el) || el.getAttribute('title') || '');
         if (needle && hay.includes(needle)) {
-          const score = scoreElement(el, target, 18);
+          const score = scoreElement(el, target, 18, { requireVisible });
           if (score > bestScore) { best = el; bestScore = score; }
         }
       }
     }
-    return bestScore >= 20 ? best : null;
+    return bestScore >= (requireVisible ? 20 : 15) ? best : null;
   }
 
   function showBadge(text) {
@@ -233,15 +306,36 @@
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  async function waitForElement(target, timeoutMs = 5000) {
+  async function waitForElement(target, timeoutMs = 5000, options = {}) {
     const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
+    const minWait = Math.max(150, Number(timeoutMs || 0));
+    while (Date.now() - start < minWait) {
       if (stopRequested) throw new Error('Futtatás megszakítva.');
-      const el = findElement(target);
+      const el = findElement(target, options);
       if (el) return el;
       await sleep(150);
     }
-    return null;
+    return findElement(target, options);
+  }
+
+  function getElementValue(el, mode = 'auto', attributeName = 'title') {
+    if (!el) return '';
+    const tag = el.tagName?.toLowerCase();
+    if (mode === 'html') return el.innerHTML || '';
+    if (mode === 'attribute') return el.getAttribute(attributeName || 'title') || '';
+    if (mode === 'text') return (el.innerText || el.textContent || el.value || el.getAttribute('title') || '').trim();
+    if (tag === 'select') {
+      const opt = el.selectedOptions?.[0];
+      return (opt?.textContent || opt?.value || el.value || '').trim();
+    }
+    if (tag === 'input') {
+      const type = String(el.getAttribute('type') || '').toLowerCase();
+      if (['checkbox','radio'].includes(type)) return el.checked ? (el.value || 'true') : 'false';
+      return el.value || el.getAttribute('value') || el.getAttribute('title') || el.getAttribute('aria-label') || '';
+    }
+    if (tag === 'textarea') return el.value || el.textContent || el.getAttribute('title') || el.getAttribute('aria-label') || '';
+    if (el.isContentEditable) return (el.innerText || el.textContent || '').trim();
+    return (el.value || el.innerText || el.textContent || el.getAttribute('title') || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim();
   }
 
   async function waitForText(text, timeoutMs = 5000, caseSensitive = false) {
@@ -363,20 +457,37 @@
     }).join('');
   }
 
+  async function showUserPrompt(block, vars, dryRun) {
+    const title = interpolate(block.title || 'BlockFlow', vars);
+    const message = interpolate(block.message || '', vars);
+    const mode = block.mode || 'wait';
+    if (dryRun) return { action: 'dry-run' };
+
+    // Use an extension-owned window instead of injecting a modal into the page.
+    // This avoids CSS/z-index conflicts and makes the wait-for-user workflow stable.
+    const response = await safeRuntimeSend({
+      type: 'BF_USER_PROMPT',
+      title,
+      message,
+      mode,
+      buttonText: block.buttonText || 'Folytatás',
+      cancelText: block.cancelText || 'Megszakítás'
+    });
+
+    if (!response || response.ok === false) {
+      const errText = String(response?.error || 'Nem sikerült megnyitni a felhasználói üzenet ablakot.');
+      throw new Error(errText);
+    }
+    if (response.action === 'cancel' || response.action === 'closed') {
+      throw Object.assign(new Error('Felhasználó megszakította a futást.'), { userCancelled: true });
+    }
+    return { action: response.action || 'continue' };
+  }
+
   async function executeBlock(block, vars, options = {}) {
     const dryRun = Boolean(options.dryRun);
-    if (block.type === 'trigger') return { skipped: true };
+    if (block.type === 'trigger' || block.type === 'triggerGroup' || String(block.type || '').startsWith('condition')) return { skipped: true };
 
-    if (block.type === 'watchText') {
-      const ok = await waitForText(interpolate(block.text || '', vars), Number(block.timeoutMs || 30000), Boolean(block.caseSensitive));
-      if (!ok) throw new Error(`Nem jelent meg a figyelt szöveg: ${block.text || ''}`);
-      return { ok: true };
-    }
-    if (block.type === 'watchElement') {
-      const el = await waitForElement(block.target, Number(block.timeoutMs || 30000));
-      if (!el) throw new Error(`Nem jelent meg a figyelt elem: ${block.target?.label || ''}`);
-      return { ok: true };
-    }
     if (block.type === 'wait') {
       if (block.waitMode === 'element' && block.target) {
         const el = await waitForElement(block.target, Number(block.timeoutMs || 5000));
@@ -419,9 +530,10 @@
       return { ok: true, value, dryRun };
     }
     if (block.type === 'extract') {
-      const el = await waitForElement(block.target, Number(block.timeoutMs || 5000));
+      const requireVisible = (block.searchScope || 'dom') === 'visible' || block.allowHidden === false;
+      const el = await waitForElement(block.target, Number(block.timeoutMs || 5000), { requireVisible });
       if (!el) throw new Error(`Nem található kinyerendő elem: ${block.target?.label || 'nincs megadva'}`);
-      const val = block.extractMode === 'value' ? (el.value || '') : ((el.innerText || el.textContent || el.value || '').trim());
+      const val = getElementValue(el, block.extractMode || 'auto', block.attributeName || 'title');
       vars[block.varName || 'adat'] = val;
       return { ok: true, value: val };
     }
@@ -445,6 +557,17 @@
       if (!dryRun) btn.click();
       setTimeout(() => btn.classList.remove('bf-run-outline'), 700);
       return { ok: true, dryRun };
+    }
+    if (block.type === 'userPrompt') {
+      const result = await showUserPrompt(block, vars, dryRun);
+      if (block.resultName) vars[block.resultName] = result.action || 'continue';
+      return { ok: true, action: result.action, dryRun };
+    }
+    if (block.type === 'systemNotify') {
+      const title = interpolate(block.title || 'BlockFlow', vars);
+      const message = interpolate(block.message || '', vars);
+      if (!dryRun) await safeRuntimeSend({ type: 'BF_SYSTEM_NOTIFICATION', title, message });
+      return { ok: true, title, message, dryRun };
     }
     if (block.type === 'copy') {
       const value = interpolate(block.value || '', vars);
@@ -472,10 +595,10 @@
         if (full.length > Number(block.maxUrlLength || 1800)) {
           await copyText(draft.body);
           const shortUrl = `mailto:${encodeURIComponent(draft.to)}?subject=${encodeURIComponent(draft.subject)}`;
-          chrome.runtime.sendMessage({ type: 'OPEN_MAILTO', url: shortUrl });
+          await safeRuntimeSend({ type: 'OPEN_MAILTO', url: shortUrl });
           alert('Az email törzse túl hosszú volt a mailto linkhez, ezért vágólapra került. Illeszd be a megnyíló emailbe.');
         } else {
-          chrome.runtime.sendMessage({ type: 'OPEN_MAILTO', url: full });
+          await safeRuntimeSend({ type: 'OPEN_MAILTO', url: full });
         }
       }
       return { ok: true, dryRun };
@@ -486,8 +609,8 @@
   async function conditionPass(block, vars) {
     if (block.conditionMode === 'elementExists') return Boolean(await waitForElement(block.target, Number(block.timeoutMs || 1000)));
     if (block.conditionMode === 'valueContains') {
-      const el = await waitForElement(block.target, Number(block.timeoutMs || 1000));
-      const hay = (el?.value || el?.innerText || el?.textContent || '').toLowerCase();
+      const el = await waitForElement(block.target, Number(block.timeoutMs || 1000), { requireVisible: false });
+      const hay = getElementValue(el, 'auto').toLowerCase();
       return hay.includes(interpolate(block.value || '', vars).toLowerCase());
     }
     return document.body.innerText.toLowerCase().includes(interpolate(block.text || '', vars).toLowerCase());
@@ -506,7 +629,7 @@
         const b = list[i];
         log.push(`${label} · ${i + 1}: ${b.type}${options.dryRun ? ' [dry-run]' : ''}`);
 
-        if (b.type === 'trigger' || b.type === 'watchText' || b.type === 'watchElement') { i++; continue; }
+        if (b.type === 'trigger' || b.type === 'triggerGroup' || String(b.type || '').startsWith('condition')) { i++; continue; }
 
         if (b.type === 'ifBlock') {
           const ok = await conditionPass(b, vars);
@@ -590,10 +713,75 @@
 
   let watcherObserver = null;
   let watcherTimer = null;
+  let watcherInterval = null;
   const firedWatchers = new Map();
+  let extensionContextDead = false;
+
+  function isExtensionContextAlive() {
+    try {
+      return !extensionContextDead && Boolean(chrome?.runtime?.id);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function isContextInvalidatedError(err) {
+    return String(err?.message || err || '').toLowerCase().includes('extension context invalidated');
+  }
+
+  function stopWatchers(reason = '') {
+    extensionContextDead = true;
+    if (watcherObserver) { try { watcherObserver.disconnect(); } catch (_) {} watcherObserver = null; }
+    if (watcherInterval) { clearInterval(watcherInterval); watcherInterval = null; }
+    if (watcherTimer) { clearTimeout(watcherTimer); watcherTimer = null; }
+    if (reason) console.info('BlockFlow figyelők leállítva:', reason);
+  }
+
+  async function safeStorageGet(keys) {
+    if (!isExtensionContextAlive()) {
+      stopWatchers('extension context invalidated');
+      return null;
+    }
+    try {
+      return await chrome.storage.local.get(keys);
+    } catch (err) {
+      if (isContextInvalidatedError(err)) {
+        stopWatchers('extension context invalidated');
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  async function safeStorageSet(value) {
+    if (!isExtensionContextAlive()) {
+      stopWatchers('extension context invalidated');
+      return null;
+    }
+    try {
+      return await chrome.storage.local.set(value);
+    } catch (err) {
+      if (isContextInvalidatedError(err)) {
+        stopWatchers('extension context invalidated');
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  async function safeRuntimeSend(message) {
+    if (!isExtensionContextAlive()) return { ok: false, error: 'Extension context invalidated' };
+    try {
+      return await chrome.runtime.sendMessage(message);
+    } catch (err) {
+      if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated');
+      return { ok: false, error: String(err?.message || err) };
+    }
+  }
 
   async function loadWatchersAndWorkflows() {
-    const data = await chrome.storage.local.get(['watchers','workflows']);
+    const data = await safeStorageGet(['watchers','workflows']);
+    if (!data) return { watchers: [], workflows: [] };
     return { watchers: Array.isArray(data.watchers) ? data.watchers : [], workflows: Array.isArray(data.workflows) ? data.workflows : [] };
   }
 
@@ -614,8 +802,8 @@
     if (!w.sourceBlockId) return true;
     const block = findWorkflowBlock(workflow?.blocks || [], w.sourceBlockId);
     if (!block) return false;
-    if (block.type !== 'watchText' && block.type !== 'watchElement') return false;
-    return block.triggerEnabled !== false;
+    if (block.type !== 'triggerGroup') return false;
+    return block.triggerEnabled !== false && Array.isArray(block.children) && block.children.length > 0;
   }
 
   function watcherScopeMatches(w) {
@@ -628,13 +816,70 @@
     return true;
   }
 
+  function compareTextValue(haystack, operator, needle, caseSensitive = false) {
+    let h = String(haystack || '');
+    let n = String(needle || '');
+    if (!caseSensitive) { h = h.toLowerCase(); n = n.toLowerCase(); }
+    if (operator === 'empty') return !String(haystack || '').trim();
+    if (operator === 'notEmpty') return Boolean(String(haystack || '').trim());
+    if (operator === 'notContains') return !h.includes(n);
+    if (operator === 'equals') return h === n;
+    if (operator === 'notEquals') return h !== n;
+    if (operator === 'startsWith') return h.startsWith(n);
+    if (operator === 'endsWith') return h.endsWith(n);
+    return Boolean(n && h.includes(n));
+  }
+
+  function evalWatcherCondition(c) {
+    if (!c) return false;
+    if (c.type === 'conditionText') {
+      const bodyText = document.body.innerText || '';
+      const needle = String(c.text || '');
+      if (!needle) return false;
+      return c.caseSensitive ? bodyText.includes(needle) : bodyText.toLowerCase().includes(needle.toLowerCase());
+    }
+    if (c.type === 'conditionElement') {
+      const el = findElement(c.target, { requireVisible: c.requireVisible !== false });
+      if (!el) return false;
+      return c.requireVisible === false ? true : isVisible(el);
+    }
+    if (c.type === 'conditionField') {
+      const el = findElement(c.target, { requireVisible: false });
+      if (!el) return false;
+      const val = getElementValue(el, 'auto');
+      return compareTextValue(val, c.operator || 'contains', c.value || '', Boolean(c.caseSensitive));
+    }
+    if (c.type === 'conditionUrl') {
+      return compareTextValue(location.href, c.operator || 'contains', c.value || '', true);
+    }
+    return false;
+  }
+
+  function evalWatcherGroup(w) {
+    const conditions = Array.isArray(w.conditions) ? w.conditions : [];
+    if (!conditions.length) return false;
+    const results = conditions.map(evalWatcherCondition);
+    if ((w.logic || 'all') === 'any') return results.some(Boolean);
+    if ((w.logic || 'all') === 'none') return !results.some(Boolean);
+    return results.every(Boolean);
+  }
+
   async function checkWatchers() {
-    const { watchers, workflows } = await loadWatchersAndWorkflows();
+    if (!isExtensionContextAlive()) { stopWatchers('context not alive'); return; }
+    let watchers, workflows;
+    try {
+      ({ watchers, workflows } = await loadWatchersAndWorkflows());
+    } catch (err) {
+      if (isContextInvalidatedError(err)) return;
+      console.warn('BlockFlow figyelők betöltési hiba', err);
+      return;
+    }
     const active = watchers.filter(w => w.enabled !== false && watcherScopeMatches(w));
     for (const w of active) {
       try {
         let hit = false;
-        if (w.mode === 'element') hit = Boolean(findElement(w.target));
+        if (w.mode === 'group') hit = evalWatcherGroup(w);
+        else if (w.mode === 'element') hit = Boolean(findElement(w.target));
         else {
           const bodyText = document.body.innerText || '';
           const needle = String(w.text || '');
@@ -653,24 +898,39 @@
           setTimeout(removeBadge, 2000);
           runWorkflow(workflow, { dryRun: false }).catch(err => console.warn('BlockFlow figyelő hiba', err));
           if (w.runOnce) {
-            const data = await chrome.storage.local.get('watchers');
+            const data = await safeStorageGet('watchers');
+            if (!data) continue;
             const all = Array.isArray(data.watchers) ? data.watchers : [];
             const ww = all.find(x => x.id === w.id);
-            if (ww) { ww.enabled = false; await chrome.storage.local.set({ watchers: all }); }
+            if (ww) { ww.enabled = false; await safeStorageSet({ watchers: all }); }
           }
         }
       } catch (err) { console.warn('BlockFlow figyelő ellenőrzési hiba', err); }
     }
   }
 
-  function startWatchers() {
+  async function startWatchers() {
+    extensionContextDead = false;
+    if (!isExtensionContextAlive()) { stopWatchers('context not alive'); return; }
     if (watcherObserver) watcherObserver.disconnect();
+    if (watcherInterval) clearInterval(watcherInterval);
     watcherObserver = new MutationObserver(() => {
       clearTimeout(watcherTimer);
-      watcherTimer = setTimeout(checkWatchers, 250);
+      watcherTimer = setTimeout(() => { checkWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }); }, 250);
     });
-    watcherObserver.observe(document.documentElement || document.body, { childList: true, subtree: true, characterData: true, attributes: true });
-    setTimeout(checkWatchers, 800);
+    try {
+      watcherObserver.observe(document.documentElement || document.body, { childList: true, subtree: true, characterData: true, attributes: true });
+    } catch (err) {
+      console.warn('BlockFlow figyelő observer hiba', err);
+    }
+    let minInterval = 2;
+    try {
+      const { watchers } = await loadWatchersAndWorkflows();
+      const scoped = watchers.filter(w => w.enabled !== false && watcherScopeMatches(w));
+      minInterval = Math.max(1, Math.min(30, ...scoped.map(w => Number(w.intervalSec || 2)).filter(Boolean), 2));
+    } catch {}
+    watcherInterval = setInterval(() => { checkWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }); }, minInterval * 1000);
+    setTimeout(() => { checkWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }); }, 800);
   }
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -683,9 +943,12 @@
       if (msg?.type === 'BF_RUN_WORKFLOW') { try { const result = await runWorkflow(msg.workflow, msg.options || {}); sendResponse({ ok: true, result }); } catch (err) { sendResponse({ ok: false, error: String(err.message || err), blockId: err.blockId || null, vars: err.partialVars || null, log: err.partialLog || [] }); } return; }
       if (msg?.type === 'BF_STOP_RUN') { stopRequested = true; sendResponse({ ok: true }); return; }
       if (msg?.type === 'BF_TEST_POPUP') { const p = findPopup(); sendResponse({ ok: Boolean(p), text: p ? (p.innerText || '').slice(0, 500) : '' }); return; }
-      if (msg?.type === 'BF_REFRESH_WATCHERS') { startWatchers(); sendResponse({ ok: true }); return; }
-    })().catch(err => sendResponse({ ok: false, error: String(err.message || err) }));
+      if (msg?.type === 'BF_REFRESH_WATCHERS') { startWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }); sendResponse({ ok: true }); return; }
+    })().catch(err => {
+      if (isContextInvalidatedError(err)) { stopWatchers('extension context invalidated'); return; }
+      sendResponse({ ok: false, error: String(err.message || err) });
+    });
     return true;
   });
-  startWatchers();
+  startWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); });
 })();

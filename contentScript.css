@@ -31,3 +31,13 @@
   background: rgba(44, 86, 246, 0.08) !important;
   box-shadow: 0 0 0 9999px rgba(44, 86, 246, 0.045), 0 0 0 6px rgba(44, 86, 246, 0.18) !important;
 }
+
+
+#bf-user-prompt { position: fixed; inset: 0; z-index: 2147483647; font-family: Arial, sans-serif; }
+.bf-user-prompt-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.38); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.bf-user-prompt-card { width: min(520px, calc(100vw - 40px)); background: #fff; border-radius: 18px; box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28); border: 1px solid rgba(148, 163, 184, 0.35); padding: 22px; color: #0f172a; }
+.bf-user-prompt-title { font-size: 20px; font-weight: 800; margin-bottom: 10px; }
+.bf-user-prompt-message { white-space: pre-wrap; font-size: 14px; line-height: 1.5; color: #334155; max-height: 40vh; overflow: auto; }
+.bf-user-prompt-actions { margin-top: 18px; display: flex; gap: 10px; justify-content: flex-end; }
+.bf-user-prompt-actions button { border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; border-radius: 12px; padding: 10px 14px; font-weight: 700; cursor: pointer; }
+.bf-user-prompt-actions button.bf-user-prompt-primary { background: #2563eb; border-color: #2563eb; color: white; }

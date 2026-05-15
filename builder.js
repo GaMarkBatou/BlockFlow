@@ -9,7 +9,7 @@ let currentTargetPath = '/';
 let isDirty = false;
 
 const $ = sel => document.querySelector(sel);
-const CONTAINERS = new Set(['ifBlock', 'repeatBlock', 'rowLoop']);
+const CONTAINERS = new Set(['ifBlock', 'repeatBlock', 'rowLoop', 'triggerGroup']);
 
 async function init() {
   const store = await BF.getStore();
@@ -27,6 +27,23 @@ function normalizeWorkflow(workflow) {
       const b = blocks[i];
       if (CONTAINERS.has(b.type) && !Array.isArray(b.children)) b.children = [];
       if (b.type === 'ifBlock' && !Array.isArray(b.elseChildren)) b.elseChildren = [];
+      if (b.type === 'triggerGroup' && !Array.isArray(b.children)) b.children = [];
+
+      // Régi Figyelő: szöveg / Figyelő: elem blokkok migrálása új Figyelő trigger + feltétel modellre.
+      if (b.type === 'watchText') {
+        b.type = 'triggerGroup';
+        b.logic = b.logic || 'all';
+        b.triggerEnabled = b.triggerEnabled !== false;
+        b.children = [{ id: crypto.randomUUID(), type: 'conditionText', text: b.text || '', caseSensitive: Boolean(b.caseSensitive) }];
+        delete b.text; delete b.caseSensitive; delete b.timeoutMs;
+      }
+      if (b.type === 'watchElement') {
+        b.type = 'triggerGroup';
+        b.logic = b.logic || 'all';
+        b.triggerEnabled = b.triggerEnabled !== false;
+        b.children = [{ id: crypto.randomUUID(), type: 'conditionElement', target: b.target || null, requireVisible: true }];
+        delete b.target; delete b.timeoutMs;
+      }
 
       // Automatikus migráció a régi v0.2-v0.5 lineáris modellből:
       // az if/repeat után következő N blokk bekerül vizuális gyermekblokknak.
@@ -162,23 +179,36 @@ function renderPalette() {
   BF.PALETTE.forEach(p => (grouped[p.cat] ||= []).push(p));
   const needsStarter = !hasAnyStarter();
   const hint = needsStarter
-    ? `<div class="status warning-soft"><b>Válassz indítást.</b><br>Új automatizmusnál először kötelező egy indító blokk: Indítás, Figyelő: szöveg vagy Figyelő: elem. Addig más blokk nem adható hozzá.</div>`
+    ? `<div class="status warning-soft"><b>Válassz indítást.</b><br>Új automatizmusnál először kötelező egy indító blokk: Indítás vagy Figyelő trigger. Addig más blokk nem adható hozzá.</div>`
     : (selected && CONTAINERS.has(selected.type)
       ? `<div class="status">Kiválasztott konténer: <b>${escapeHtml(BF.BLOCKS[selected.type].name)}</b>. Az új blokkok ide, behúzva kerülnek.</div>`
       : `<div class="status muted">Konténer kijelölésekor az új blokkok automatikusan alá kerülnek behúzva.</div>`);
   $('#palette').innerHTML = hint + Object.entries(grouped).map(([cat, items]) => `<div class="section-title">${cat}</div>` + items.map(item => {
-    const disabled = needsStarter && !['trigger','watchText','watchElement'].includes(item.type);
-    return `<button class="palette-btn ${disabled?'disabled':''}" data-add="${item.type}" ${disabled?'disabled title="Először válassz indító blokkot."':''}><span>${BF.BLOCKS[item.type].name}</span><span>+</span></button>`;
+    const disabled = (needsStarter && !['trigger','triggerGroup'].includes(item.type)) || (item.type.startsWith('condition') && selected?.type !== 'triggerGroup');
+    return `<button class="palette-btn ${disabled?'disabled':''}" data-add="${item.type}" draggable="${disabled ? 'false' : 'true'}" ${disabled?'disabled title="Először válassz indító blokkot, figyelő feltételnél pedig jelölj ki egy Figyelő triggert."':'title="Kattints a hozzáadáshoz, vagy húzd be a megfelelő helyre."'}><span>${BF.BLOCKS[item.type].name}</span><span>+</span></button>`;
   }).join('')).join('');
-  document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => addBlock(b.dataset.add));
+  document.querySelectorAll('[data-add]').forEach(b => {
+    b.onclick = () => addBlock(b.dataset.add);
+    b.ondragstart = e => {
+      if (b.disabled || b.classList.contains('disabled')) { e.preventDefault(); return; }
+      e.dataTransfer.setData('text/plain', `new:${b.dataset.add}`);
+      e.dataTransfer.effectAllowed = 'copy';
+    };
+  });
 }
 function addBlock(type) {
-  const isStarter = ['trigger','watchText','watchElement'].includes(type);
-  if (!hasAnyStarter() && !isStarter) return alert('Először válassz indító blokkot: Indítás, Figyelő: szöveg vagy Figyelő: elem.');
+  const isStarter = ['trigger','triggerGroup'].includes(type);
+  if (!hasAnyStarter() && !isStarter) return alert('Először válassz indító blokkot: Indítás vagy Figyelő trigger.');
   if (type === 'trigger' && containsType(activeWorkflow.blocks, 'trigger')) return alert('Egy manuális indító blokk már van a workflow-ban.');
-  const block = BF.newBlock(type);
   const selected = findBlock(selectedBlockId)?.block;
-  if (!isStarter && selected && CONTAINERS.has(selected.type)) {
+  const block = BF.newBlock(type);
+
+  if (type.startsWith('condition')) {
+    const targetTrigger = selected?.type === 'triggerGroup' ? selected : findSingleTriggerGroup();
+    if (!targetTrigger) return alert('Figyelő feltételt csak Figyelő trigger alá lehet tenni. Jelöld ki a Figyelő triggert, vagy húzd a feltételt a trigger behúzott területére.');
+    targetTrigger.children ||= [];
+    targetTrigger.children.push(block);
+  } else if (!isStarter && selected && CONTAINERS.has(selected.type) && selected.type !== 'triggerGroup') {
     selected.children ||= [];
     selected.children.push(block);
   } else {
@@ -188,6 +218,48 @@ function addBlock(type) {
   markDirty();
   renderAll();
 }
+
+function findSingleTriggerGroup() {
+  const groups = [];
+  walk(activeWorkflow.blocks || [], b => { if (b.type === 'triggerGroup') groups.push(b); });
+  return groups.length === 1 ? groups[0] : null;
+}
+
+function canPlaceBlockInContainer(block, containerId, silent = false) {
+  if (!block) return false;
+  if (!containerId || containerId === 'root') {
+    if (String(block.type || '').startsWith('condition')) {
+      if (!silent) alert('Figyelő feltétel csak Figyelő trigger alá kerülhet.');
+      return false;
+    }
+    return true;
+  }
+  const realContainerId = String(containerId).startsWith('else:') ? String(containerId).slice(5) : containerId;
+  const target = findBlock(realContainerId)?.block;
+  if (!target || !CONTAINERS.has(target.type)) return false;
+  const isCondition = String(block.type || '').startsWith('condition');
+  if (target.type === 'triggerGroup' && !isCondition) {
+    if (!silent) alert('A Figyelő trigger alá csak figyelő feltétel blokkok húzhatók.');
+    return false;
+  }
+  if (target.type !== 'triggerGroup' && isCondition) {
+    if (!silent) alert('Figyelő feltétel csak Figyelő trigger alá kerülhet.');
+    return false;
+  }
+  return true;
+}
+
+function createBlockInContainer(type, containerId) {
+  const block = BF.newBlock(type);
+  if (!canPlaceBlockInContainer(block, containerId)) return;
+  const list = listForContainer(containerId);
+  if (!list) return;
+  list.push(block);
+  selectedBlockId = block.id;
+  markDirty();
+  renderAll();
+}
+
 function containsType(blocks, type) {
   let found = false;
   walk(blocks, b => { if (b.type === type) found = true; });
@@ -195,7 +267,7 @@ function containsType(blocks, type) {
 }
 
 function isStarterBlock(b) {
-  return b && ['trigger','watchText','watchElement'].includes(b.type);
+  return b && (b.type === 'trigger' || (b.type === 'triggerGroup' && b.triggerEnabled !== false));
 }
 
 function starterCount(blocks = activeWorkflow.blocks) {
@@ -227,12 +299,12 @@ function renderBlocks() {
 }
 
 function renderBlockList(blocks, level, parentId) {
-  if (!blocks || !blocks.length) return level ? '<div class="empty nested-empty">Húzz ide blokkokat, vagy jelöld ki a konténert és adj hozzá blokkot a bal oldalon.</div>' : '<div class="empty starter-empty"><b>Válassz indítást a bal oldalon.</b><br>Indítás, Figyelő: szöveg vagy Figyelő: elem szükséges az automatizmushoz.</div>';
+  if (!blocks || !blocks.length) return level ? '<div class="empty nested-empty">Húzz ide blokkokat, vagy jelöld ki a konténert és adj hozzá blokkot a bal oldalon.</div>' : '<div class="empty starter-empty"><b>Válassz indítást a bal oldalon.</b><br>Indítás vagy Figyelő trigger szükséges az automatizmushoz.</div>';
   return blocks.map((b, idx) => {
     let childHtml = '';
     if (CONTAINERS.has(b.type)) {
       childHtml = `<div class="container-body" data-drop-container="${b.id}">
-        <div class="container-label">${b.type === 'ifBlock' ? 'HA IGAZ - behúzott blokkok' : 'A blokk hatása alá tartozó behúzott blokkok'}</div>
+        <div class="container-label">${b.type === 'triggerGroup' ? 'FIGYELŐ FELTÉTELEK - ezek döntik el, indul-e az automatizmus' : (b.type === 'ifBlock' ? 'HA IGAZ - behúzott blokkok' : 'A blokk hatása alá tartozó behúzott blokkok')}</div>
         ${renderBlockList(b.children || [], level + 1, b.id)}
       </div>`;
       if (b.type === 'ifBlock') {
@@ -260,7 +332,7 @@ function renderBlockList(blocks, level, parentId) {
 }
 
 function blockIcon(b) {
-  const map = { trigger:'▶', watchText:'◎', watchElement:'◎', click:'⌁', fill:'✎', extract:'⇣', wait:'⏱', ifBlock:'?', repeatBlock:'↻', popupWait:'▣', popupExtract:'▣', popupClick:'▣', copy:'⧉', email:'✉', openEmail:'↗', rowLoop:'≡', mask:'◩' };
+  const map = { trigger:'▶', triggerGroup:'◎', conditionText:'T', conditionElement:'◇', conditionField:'▣', conditionUrl:'URL', click:'⌁', fill:'✎', extract:'⇣', wait:'⏱', ifBlock:'?', repeatBlock:'↻', popupWait:'▣', popupExtract:'▣', popupClick:'▣', copy:'⧉', email:'✉', openEmail:'↗', rowLoop:'≡', mask:'◩', userPrompt:'💬', systemNotify:'🔔' };
   return map[b.type] || '•';
 }
 function inlineChip(label, value) { return `<span class="inline-chip"><span>${escapeHtml(label)}</span><b>${escapeHtml(value || '—')}</b></span>`; }
@@ -292,15 +364,20 @@ function watchScopeInline(b) {
   return scopeSelect;
 }
 function blockInline(b) {
-  if (b.type === 'watchText') return `${inlineCheck('triggerEnabled', b.triggerEnabled !== false, 'aktív')} ${inlineInput('text', b.text || '', 'figyelt szöveg/karakter', 'wide')} ${watchScopeInline(b)} ${inlineNumber('throttleSec', b.throttleSec || 15, 'mp')}`;
-  if (b.type === 'watchElement') return `${inlineCheck('triggerEnabled', b.triggerEnabled !== false, 'aktív')} ${inlinePick(b)} ${watchScopeInline(b)} ${inlineNumber('throttleSec', b.throttleSec || 15, 'mp')}`;
+  if (b.type === 'triggerGroup') return `${inlineCheck('triggerEnabled', b.triggerEnabled !== false, 'aktív')} ${inlineSelect('logic', b.logic || 'all', [['all','minden feltétel'],['any','bármelyik feltétel'],['none','egyik sem']])} ${watchScopeInline(b)} ${inlineNumber('intervalSec', b.intervalSec || 2, 'ellenőrzés mp')} ${inlineNumber('throttleSec', b.throttleSec || 15, 'szünet mp')}`;
+  if (b.type === 'conditionText') return `${inlineInput('text', b.text || '', 'figyelt szöveg/karakter', 'wide')} ${inlineCheck('caseSensitive', Boolean(b.caseSensitive), 'kis/nagybetű')}`;
+  if (b.type === 'conditionElement') return `${inlinePick(b)} ${inlineCheck('requireVisible', b.requireVisible !== false, 'látható')}`;
+  if (b.type === 'conditionField') return `${inlinePick(b, 'Mező')} ${inlineSelect('operator', b.operator || 'contains', [['contains','tartalmazza'],['notContains','nem tartalmazza'],['equals','pontosan'],['notEquals','nem pontosan'],['empty','üres'],['notEmpty','nem üres'],['startsWith','ezzel kezdődik'],['endsWith','ezzel végződik']])} ${['empty','notEmpty'].includes(b.operator || 'contains') ? '' : inlineInput('value', b.value || '', 'érték')}`;
+  if (b.type === 'conditionUrl') return `${inlineSelect('operator', b.operator || 'contains', [['contains','tartalmazza'],['notContains','nem tartalmazza'],['equals','pontosan'],['notEquals','nem pontosan'],['startsWith','ezzel kezdődik'],['endsWith','ezzel végződik']])} ${inlineInput('value', b.value || '', 'URL érték', 'wide')}`;
   if (b.type === 'click') return `${inlinePick(b)} ${inlineCheck('confirmRisky', b.confirmRisky !== false, 'megerősítés')}`;
   if (b.type === 'fill') return `${inlinePick(b, 'Hova')} ${inlineInput('value', b.value || '', 'mit illesszen be', 'wide')}`;
-  if (b.type === 'extract') return `${inlinePick(b, 'Honnan')} ${inlineSelect('extractMode', b.extractMode || 'text', [['text','látható szöveg'],['value','mezőérték']])} ${inlineInput('varName', b.varName || 'adat', 'változó neve')}`;
+  if (b.type === 'extract') return `${inlinePick(b, 'Honnan')} ${inlineSelect('extractMode', b.extractMode || 'auto', [['auto','automatikus'],['value','mezőérték'],['text','szöveg'],['html','HTML'],['attribute','attribútum']])} ${inlineSelect('searchScope', b.searchScope || 'dom', [['dom','teljes DOM'],['visible','látható']])} ${inlineInput('varName', b.varName || 'adat', 'változó neve')}`;
   if (b.type === 'wait') return `${inlineSelect('waitMode', b.waitMode || 'time', [['time','idő'],['text','szöveg'],['element','elem']])} ${b.waitMode === 'time' ? inlineNumber('ms', b.ms || 1000, 'ms') : b.waitMode === 'text' ? inlineInput('text', b.text || '', 'várt szöveg', 'wide') : inlinePick(b)} ${inlineNumber('timeoutMs', b.timeoutMs || 5000, 'timeout')}`;
   if (b.type === 'ifBlock') return `${inlineSelect('conditionMode', b.conditionMode || 'textExists', [['textExists','szöveg létezik'],['elementExists','elem létezik'],['valueContains','érték tartalmazza']])} ${b.conditionMode === 'textExists' ? inlineInput('text', b.text || '', 'keresett szöveg', 'wide') : inlinePick(b)} ${b.conditionMode === 'valueContains' ? inlineInput('value', b.value || '', 'keresett érték') : ''}`;
   if (b.type === 'repeatBlock') return `${inlineNumber('repeatCount', b.repeatCount || 2, 'alkalom')} ${inlineChip('ismétli', `${(b.children || []).length} blokk`)}`;
   if (b.type === 'copy') return inlineInput('value', b.value || '', 'másolandó szöveg/változó', 'wide');
+  if (b.type === 'userPrompt') return `${inlineSelect('mode', b.mode || 'wait', [['wait','vár visszajelzésre'],['notify','csak felugró üzenet']])} ${inlineInput('title', b.title || 'BlockFlow', 'cím')} ${inlineInput('message', b.message || '', 'üzenet', 'wide')}`;
+  if (b.type === 'systemNotify') return `${inlineInput('title', b.title || 'BlockFlow', 'cím')} ${inlineInput('message', b.message || '', 'értesítés szövege', 'wide')}`;
   if (b.type === 'email') return `${inlineInput('to', b.to || '', 'címzett')} ${inlineInput('subject', b.subject || '', 'tárgy')} ${inlineInput('resultName', b.resultName || 'email_draft', 'draft változó')}`;
   if (b.type === 'openEmail') return `${inlineInput('draftName', b.draftName || 'email_draft', 'draft változó')} ${inlineNumber('maxUrlLength', b.maxUrlLength || 1800, 'mailto max')}`;
   if (b.type === 'mask') return `${inlineInput('source', b.source || '{{adat}}', 'forrás', 'wide')} ${inlineSelect('maskMode', b.maskMode || 'characters', [['characters','karakter'],['lines','sor']])} ${inlineCheck('invertMask', Boolean(b.invertMask), 'invert')} ${inlineInput('resultName', b.resultName || 'maszkolt_adat', 'eredmény')}`;
@@ -343,7 +420,7 @@ function bindBlockEvents() {
       const block = findBlock(blockEl?.dataset.block)?.block;
       if (!block) return;
       const field = input.dataset.inlineField;
-      block[field] = ['timeoutMs','ms','maxUrlLength','repeatCount','maxRows','keepStart','keepEnd','keepFirstLines','keepLastLines','throttleSec'].includes(field) ? Number(input.value) : input.value;
+      block[field] = ['timeoutMs','ms','maxUrlLength','repeatCount','maxRows','keepStart','keepEnd','keepFirstLines','keepLastLines','throttleSec','intervalSec'].includes(field) ? Number(input.value) : input.value;
       markDirty();
       renderVariables();
     };
@@ -418,7 +495,7 @@ function removeBlock(id) {
   const found = findBlock(id);
   if (!found) return null;
   if (isStarterBlock(found.block) && starterCount() <= 1) {
-    alert('Legalább egy indító blokk szükséges: Indítás, Figyelő: szöveg vagy Figyelő: elem.');
+    alert('Legalább egy indító blokk szükséges: Indítás vagy Figyelő trigger.');
     return null;
   }
   return found.list.splice(found.index, 1)[0];
@@ -434,15 +511,20 @@ function isDescendant(containerId, possibleChildId) {
 
 function moveInto(id, containerId) {
   if (!id) return;
+  if (String(id).startsWith('new:')) return createBlockInContainer(String(id).slice(4), containerId);
   if (containerId !== 'root') {
     const realContainerId = String(containerId).startsWith('else:') ? String(containerId).slice(5) : containerId;
     const target = findBlock(realContainerId)?.block;
     if (!target || !CONTAINERS.has(target.type)) return;
     if (id === realContainerId || isDescendant(id, realContainerId)) return alert('Egy blokk nem húzható saját maga alá.');
   }
+  const found = findBlock(id);
+  if (!found) return;
+  if (!canPlaceBlockInContainer(found.block, containerId)) return;
   const item = removeBlock(id);
   if (!item) return;
   const list = listForContainer(containerId);
+  if (!list) return;
   list.push(item);
   selectedBlockId = item.id;
   markDirty();
@@ -451,10 +533,25 @@ function moveInto(id, containerId) {
 
 function moveBefore(id, beforeId) {
   if (!id || id === beforeId) return;
-  if (isDescendant(id, beforeId)) return alert('Egy konténer nem húzható saját gyermekblokkja elé.');
   const before = findBlock(beforeId);
+  if (!before) return;
+  if (String(id).startsWith('new:')) {
+    const block = BF.newBlock(String(id).slice(4));
+    const containerId = before.parent?.id || (before.list === activeWorkflow.blocks ? 'root' : null);
+    if (!canPlaceBlockInContainer(block, containerId || 'root')) return;
+    before.list.splice(before.index, 0, block);
+    selectedBlockId = block.id;
+    markDirty();
+    renderAll();
+    return;
+  }
+  if (isDescendant(id, beforeId)) return alert('Egy konténer nem húzható saját gyermekblokkja elé.');
+  const found = findBlock(id);
+  if (!found) return;
+  const containerId = before.parent?.id || (before.list === activeWorkflow.blocks ? 'root' : null);
+  if (!canPlaceBlockInContainer(found.block, containerId || 'root')) return;
   const item = removeBlock(id);
-  if (!before || !item) return;
+  if (!item) return;
   const updatedBefore = findBlock(beforeId);
   const insertAt = updatedBefore ? updatedBefore.index : before.index;
   const list = updatedBefore ? updatedBefore.list : before.list;
@@ -501,12 +598,15 @@ function renderInspector() {
   const changedBlock = b && b.id !== lastInspectorBlockId;
   if (!b) { $('#inspector').innerHTML = '<div class="empty">Válassz blokkot.</div>'; return; }
   let html = `<div class="inspector-current"><div class="list-title">${escapeHtml(BF.BLOCKS[b.type]?.name || b.type)}</div><div class="muted">A fő beállítások a középső blokkon is szerkeszthetők, itt a részletes opciók vannak.</div></div>`;
-  if (['click','fill','extract','watchElement'].includes(b.type)) html += targetEditor(b);
+  if (['click','fill','extract','conditionElement','conditionField'].includes(b.type)) html += targetEditor(b);
   if (b.type === 'click') html += checkboxField('confirmRisky','Kockázatos kattintásnál kérjen megerősítést', b.confirmRisky !== false) + numberField('timeoutMs','Max várakozás ms', b.timeoutMs || 5000);
   if (b.type === 'fill') html += valueSourceHelp() + textArea('value','Mit illesszen be?', b.value || '') + numberField('timeoutMs','Max várakozás ms', b.timeoutMs || 5000);
-  if (b.type === 'extract') html += selectField('extractMode','Mit nyerjen ki?', b.extractMode || 'text', [['text','Látható szöveg'],['value','Mezőérték']]) + textField('varName','Változó neve', b.varName || 'adat') + numberField('timeoutMs','Max várakozás ms', b.timeoutMs || 5000);
-  if (b.type === 'watchText') html += watcherAdvanced(b) + textField('text','Figyelt szöveg vagy karakter', b.text || '') + numberField('timeoutMs','Timeout ms', b.timeoutMs || 30000) + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive));
-  if (b.type === 'watchElement') html += watcherAdvanced(b) + numberField('timeoutMs','Timeout ms', b.timeoutMs || 30000);
+  if (b.type === 'extract') html += selectField('extractMode','Mit nyerjen ki?', b.extractMode || 'auto', [['auto','Automatikus - legjobb érték'],['value','Mezőérték'],['text','Szöveg'],['html','HTML tartalom'],['attribute','Attribútum']]) + selectField('searchScope','Hol keressen?', b.searchScope || 'dom', [['dom','Teljes DOM-ban, rejtett mezőkben is'],['visible','Csak látható elemek között']]) + checkboxField('allowHidden','Rejtett / inaktív fülön lévő mezőt is elfogad', b.allowHidden !== false) + textField('attributeName','Attribútum neve attribute módnál', b.attributeName || 'title') + textField('varName','Változó neve', b.varName || 'adat') + numberField('timeoutMs','Max várakozás ms', b.timeoutMs || 5000);
+  if (b.type === 'triggerGroup') html += watcherAdvanced(b) + selectField('logic','Indítás, ha', b.logic || 'all', [['all','Minden feltétel igaz'],['any','Bármelyik feltétel igaz'],['none','Egyik feltétel sem igaz']]) + numberField('intervalSec','Ellenőrzés gyakorisága mp-ben', b.intervalSec || 2) + `<div class="status">Feltételek száma: ${(b.children || []).length}. Húzz alá feltételblokkokat a Figyelő feltételek kategóriából.</div>`;
+  if (b.type === 'conditionText') html += textField('text','Figyelt szöveg vagy karakter', b.text || '') + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive));
+  if (b.type === 'conditionElement') html += checkboxField('requireVisible','Csak látható elem számítson', b.requireVisible !== false);
+  if (b.type === 'conditionField') html += selectField('operator','Feltétel', b.operator || 'contains', [['contains','Tartalmazza'],['notContains','Nem tartalmazza'],['equals','Pontosan ez'],['notEquals','Nem pontosan ez'],['empty','Üres'],['notEmpty','Nem üres'],['startsWith','Ezzel kezdődik'],['endsWith','Ezzel végződik']]) + textField('value','Érték', b.value || '') + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive));
+  if (b.type === 'conditionUrl') html += selectField('operator','URL feltétel', b.operator || 'contains', [['contains','Tartalmazza'],['notContains','Nem tartalmazza'],['equals','Pontosan ez'],['notEquals','Nem pontosan ez'],['startsWith','Ezzel kezdődik'],['endsWith','Ezzel végződik']]) + textField('value','URL érték', b.value || '');
   if (b.type === 'wait') html += selectField('waitMode','Várakozás típusa', b.waitMode || 'time', [['time','Idő'],['text','Szöveg megjelenése'],['element','Elem megjelenése']]) + (b.waitMode === 'time' ? numberField('ms','Idő ms', b.ms || 1000) : b.waitMode === 'text' ? textField('text','Szöveg', b.text || '') + numberField('timeoutMs','Timeout ms', b.timeoutMs || 5000) : targetEditor(b) + numberField('timeoutMs','Timeout ms', b.timeoutMs || 5000));
   if (b.type === 'ifBlock') html += selectField('conditionMode','Feltétel', b.conditionMode || 'textExists', [['textExists','Szöveg létezik'],['elementExists','Elem létezik'],['valueContains','Elem értéke tartalmazza']]) + (b.conditionMode === 'elementExists' || b.conditionMode === 'valueContains' ? targetEditor(b) : '') + (b.conditionMode === 'valueContains' ? textField('value','Keresett érték', b.value || '') : b.conditionMode === 'textExists' ? textField('text','Keresett szöveg', b.text || '') : '') + numberField('timeoutMs','Elemkeresési timeout ms', b.timeoutMs || 1000) + `<div class="status">Igaz ág: ${(b.children||[]).length} blokk · Különben ág: ${(b.elseChildren||[]).length} blokk</div>`;
   if (b.type === 'repeatBlock') html += numberField('repeatCount','Ismétlések száma', b.repeatCount || 2) + `<div class="status">Az alá behúzott blokkok ismétlődnek. Gyermek blokkok: ${(b.children||[]).length}</div>`;
@@ -515,10 +615,12 @@ function renderInspector() {
   if (b.type === 'popupExtract') html += selectField('extractMode','Mit nyerjen ki?', b.extractMode || 'text', [['text','Teljes popup szöveg'],['title','Popup cím']]) + textField('varName','Változó neve', b.varName || 'popup_szoveg');
   if (b.type === 'popupClick') html += textField('buttonText','Popup gomb szövege', b.buttonText || 'OK') + numberField('timeoutMs','Timeout ms', b.timeoutMs || 5000);
   if (b.type === 'copy') html += valueSourceHelp() + textArea('value','Mit másoljon?', b.value || '');
+  if (b.type === 'userPrompt') html += selectField('mode','Működés', b.mode || 'wait', [['wait','Felugró ablak és várjon felhasználói visszajelzésre'],['notify','Csak felugró üzenet, automatikusan továbbmegy']]) + textField('title','Ablak címe', b.title || 'BlockFlow') + textArea('message','Üzenet szövege', b.message || '') + textField('buttonText','Folytatás gomb szövege', b.buttonText || 'Folytatás') + textField('cancelText','Megszakítás gomb szövege', b.cancelText || 'Megszakítás') + textField('resultName','Eredmény változó neve opcionális', b.resultName || '') + `<div class="status">Várakozó módban a futás megáll, amíg a felhasználó folytatja vagy megszakítja. Értesítő módban csak megjelenik egy rövid felugró üzenet.</div>`;
+  if (b.type === 'systemNotify') html += textField('title','Értesítés címe', b.title || 'BlockFlow') + textArea('message','Értesítés szövege', b.message || '') + `<div class="status">Chrome rendszerértesítést küld. Ehhez az extension értesítési jogosultságot használ.</div>`;
   if (b.type === 'mask') html += valueSourceHelp() + textArea('source','Forrás szöveg vagy változó', b.source || '{{adat}}') + selectField('maskMode','Maszkolás módja', b.maskMode || 'characters', [['characters','Karakterek alapján'],['lines','Sorok alapján']]) + checkboxField('invertMask','Invert maszkolás: a megadott részeket maszkolja, a többit hagyja meg', Boolean(b.invertMask)) + textField('resultName','Eredmény változó neve', b.resultName || 'maszkolt_adat') + textField('maskChar','Maszk karakter üresen hagyható', b.maskChar ?? '*') + (b.maskMode === 'lines' ? numberField('keepFirstLines','Érintett/meghagyott első sorok', b.keepFirstLines ?? 1) + numberField('keepLastLines','Érintett/meghagyott utolsó sorok', b.keepLastLines ?? 1) + textField('maskLineText','Maszkolt sor szövege üresen hagyható', b.maskLineText ?? '***') : numberField('keepStart','Érintett/meghagyott első karakterek', b.keepStart ?? 2) + numberField('keepEnd','Érintett/meghagyott utolsó karakterek', b.keepEnd ?? 2)) + `<div class="status">Normál mód: a megadott első/utolsó rész látható marad. Invert módban pont ezek lesznek maszkolva. Üres maszk esetén a maszkolt rész nem kap helyettesítő karaktert.</div>`;
   if (b.type === 'email') html += textField('to','Címzett', b.to || '') + textField('subject','Tárgy', b.subject || '') + textArea('body','Törzs', b.body || '') + textField('resultName','Draft változó neve', b.resultName || 'email_draft');
   if (b.type === 'openEmail') html += textField('draftName','Email draft változó', b.draftName || 'email_draft') + numberField('maxUrlLength','Mailto max hossz', b.maxUrlLength || 1800) + `<div class="status">Az extension nem küld emailt. Csak mailto ablakot nyit; hosszú törzs esetén vágólapra másol.</div>`;
-  if (CONTAINERS.has(b.type)) html += `<div class="hr"></div><div class="status">Tipp: húzz blokkokat a blokk alatti behúzott területre, vagy hagyd kijelölve ezt a blokkot és adj hozzá új blokkot a bal oldali palettából.</div>`;
+  if (CONTAINERS.has(b.type)) html += `<div class="hr"></div><div class="status">Tipp: ${b.type === 'triggerGroup' ? 'húzz ide Figyelő feltétel blokkokat. Ezek nem futási lépések, csak eldöntik, induljon-e az automatizmus.' : 'húzz blokkokat a blokk alatti behúzott területre, vagy hagyd kijelölve ezt a blokkot és adj hozzá új blokkot a bal oldali palettából.'}</div>`;
   html += `<div class="hr"></div><button id="testBlock" class="ghost">Blokk tesztelése</button>`;
   $('#inspector').innerHTML = html;
   $('#inspector').querySelectorAll('[data-field]').forEach(input => {
@@ -575,12 +677,12 @@ function selectField(field,label,value,options){ return `<div class="field"><lab
 function updateField(field, value) {
   const b = findBlock(selectedBlockId)?.block;
   if (!b) return;
-  b[field] = ['timeoutMs','ms','maxUrlLength','repeatCount','maxRows','keepStart','keepEnd','keepFirstLines','keepLastLines','throttleSec'].includes(field) ? Number(value) : value;
+  b[field] = ['timeoutMs','ms','maxUrlLength','repeatCount','maxRows','keepStart','keepEnd','keepFirstLines','keepLastLines','throttleSec','intervalSec'].includes(field) ? Number(value) : value;
   markDirty();
   renderBlocks();
   renderVariables();
   renderImportWarning();
-  if (['waitMode','conditionMode','maskMode','scope','domain','path','url','urlContains'].includes(field)) renderInspector();
+  if (['waitMode','conditionMode','maskMode','scope','domain','path','url','urlContains','logic','operator'].includes(field)) renderInspector();
 }
 
 function renderVariables() {
@@ -673,30 +775,38 @@ async function syncTriggerWatchersFromBlocks(workflow) {
   const path = u?.pathname || '/';
   const blockWatchers = [];
   BF.walkBlocks(workflow.blocks || [], b => {
-    if (b.type !== 'watchText' && b.type !== 'watchElement') return;
-    if (b.triggerEnabled === false) return; // inaktív blokk nem kerül külön watcher storage-ba
+    if (b.type !== 'triggerGroup') return;
+    if (b.triggerEnabled === false) return;
+    const conditions = (b.children || []).filter(c => String(c.type || '').startsWith('condition')).map(c => ({
+      type: c.type,
+      text: c.text || '',
+      caseSensitive: Boolean(c.caseSensitive),
+      target: c.target || null,
+      requireVisible: c.requireVisible !== false,
+      operator: c.operator || 'contains',
+      value: c.value || ''
+    }));
+    if (!conditions.length) return;
     blockWatchers.push({
       id: `block:${workflow.id}:${b.id}`,
       source: 'block',
       sourceBlockId: b.id,
       workflowId: workflow.id,
       enabled: true,
-      mode: b.type === 'watchElement' ? 'element' : 'text',
-      text: b.text || '',
-      caseSensitive: Boolean(b.caseSensitive),
-      target: b.target || null,
+      mode: 'group',
+      logic: b.logic || 'all',
+      conditions,
       scope: b.scope || 'domain',
       domain: b.domain || domain,
       path: b.path || path,
       url: b.url || currentUrl,
       urlContains: b.urlContains || '',
+      intervalSec: Math.max(1, Number(b.intervalSec || 2)),
       throttleSec: Math.max(1, Number(b.throttleSec || 15)),
       runOnce: Boolean(b.runOnce),
       createdAt: b.createdAt || new Date().toISOString()
     });
   });
-  // A blokk az egyetlen igazságforrás: töröljük az adott workflow összes régi/stale watcher rekordját,
-  // nem csak a korábban source:block jelöléssel mentetteket.
   const kept = all.filter(w => w.workflowId !== workflow.id);
   await chrome.storage.local.set({ watchers: [...kept, ...blockWatchers] });
   await chrome.runtime.sendMessage({ type:'BF_REFRESH_ALL_WATCHERS' }).catch(async () => {
@@ -730,7 +840,7 @@ async function renderWatcherPanel() {
   const watchers = Array.isArray(data.watchers) ? data.watchers : [];
   const mine = watchers.filter(w => w.workflowId === activeWorkflow.id);
   let triggerBlocks = [];
-  BF.walkBlocks(activeWorkflow.blocks || [], b => { if (b.type === 'watchText' || b.type === 'watchElement') triggerBlocks.push(b); });
+  BF.walkBlocks(activeWorkflow.blocks || [], b => { if (b.type === 'triggerGroup') triggerBlocks.push(b); });
   const activeCount = triggerBlocks.filter(b => b.triggerEnabled !== false).length;
   panel.innerHTML = `
     <div class="compact-head">
@@ -739,9 +849,9 @@ async function renderWatcherPanel() {
     <div class="compact-help">A figyelők most már blokkok. Add hozzá őket bal oldalt az <b>Indítás</b> kategóriából. A fő beállítások a blokkon látszanak, a részletesek a jobb oldali panelen.</div>
     ${triggerBlocks.length ? triggerBlocks.map(b => `<div class="compact-row trigger-row" data-trigger-block="${b.id}">
       <label class="toggle-mini"><input type="checkbox" data-trigger-enable="${b.id}" ${b.triggerEnabled!==false?'checked':''}></label>
-      <div class="compact-main"><b>${escapeHtml(BF.blockTitle(b))}</b><span>${escapeHtml(b.type === 'watchElement' ? (b.target?.label || 'nincs cél elem') : (b.text || 'nincs szöveg'))}</span><small>${escapeHtml(scopeLabel(b.scope || 'domain'))}: ${escapeHtml(scopeDetailValue(b))} · ${Number(b.throttleSec || 15)} mp szünet${b.runOnce ? ' · egyszer fut' : ''}</small></div>
+      <div class="compact-main"><b>${escapeHtml(BF.blockTitle(b))}</b><span>${escapeHtml(`${(b.children||[]).length} feltétel · ${BF.triggerLogicLabel ? BF.triggerLogicLabel(b.logic || 'all') : (b.logic || 'all')}`)}</span><small>${escapeHtml(scopeLabel(b.scope || 'domain'))}: ${escapeHtml(scopeDetailValue(b))} · ${Number(b.throttleSec || 15)} mp szünet${b.runOnce ? ' · egyszer fut' : ''}</small></div>
       <button class="small" data-select-trigger="${b.id}">Beállítás</button>
-    </div>`).join('') : '<div class="compact-empty">Nincs figyelő trigger. Adj hozzá egy „Figyelő: szöveg” vagy „Figyelő: elem” blokkot az Indítás kategóriából.</div>'}
+    </div>`).join('') : '<div class="compact-empty">Nincs figyelő trigger. Adj hozzá egy „Figyelő trigger” blokkot az Indítás kategóriából, majd húzz alá feltételeket.</div>'}
   `;
   panel.querySelectorAll('[data-select-trigger]').forEach(btn => btn.onclick = () => { selectedBlockId = btn.dataset.selectTrigger; renderAll(); });
   panel.querySelectorAll('[data-trigger-enable]').forEach(input => input.onchange = async () => {

@@ -1,5 +1,5 @@
 const BF = (() => {
-  const SCHEMA_VERSION = 8;
+  const SCHEMA_VERSION = 9;
 
   const DEFAULT_WORKFLOW = () => ({
     id: crypto.randomUUID(),
@@ -12,8 +12,11 @@ const BF = (() => {
 
   const BLOCKS = {
     trigger: { name: 'Indítás', desc: 'A workflow manuálisan indul.' },
-    watchText: { name: 'Figyelő: szöveg', desc: 'Indítóblokk: automatikusan elindítja a workflow-t, ha a szöveg vagy karakter megjelenik.' },
-    watchElement: { name: 'Figyelő: elem', desc: 'Indítóblokk: automatikusan elindítja a workflow-t, ha a kiválasztott elem megjelenik.' },
+    triggerGroup: { name: 'Figyelő trigger', desc: 'Indító-konténer: feltételek alapján automatikusan indítja a workflow-t.' },
+    conditionText: { name: 'Feltétel: szöveg', desc: 'Igaz, ha a megadott szöveg vagy karakter megjelenik az oldalon.' },
+    conditionElement: { name: 'Feltétel: elem', desc: 'Igaz, ha a kiválasztott elem megtalálható az oldalon.' },
+    conditionField: { name: 'Feltétel: mezőérték', desc: 'Igaz, ha egy mező értéke megfelel a megadott feltételnek.' },
+    conditionUrl: { name: 'Feltétel: URL', desc: 'Igaz, ha az aktuális URL megfelel a megadott feltételnek.' },
     click: { name: 'Kattintás', desc: 'Kattint egy kiválasztott oldalelemre.' },
     fill: { name: 'Beillesztés / kitöltés', desc: 'Szöveget ír egy mezőbe.' },
     extract: { name: 'Adat kinyerése', desc: 'Szöveget vagy mezőértéket változóba ment.' },
@@ -27,17 +30,24 @@ const BF = (() => {
     email: { name: 'Email összeállítása', desc: 'Email draftot készít változókból.' },
     openEmail: { name: 'Email megnyitása', desc: 'Mailto linket nyit; hosszú törzsnél vágólapra másol.' },
     rowLoop: { name: 'Minden sorra...', desc: 'Egyszerű táblázat/lista sorfeldolgozó konténer.' },
-    mask: { name: 'Maszkolás', desc: 'Kinyert adat maszkolása karakterek vagy sorok alapján.' }
+    mask: { name: 'Maszkolás', desc: 'Kinyert adat maszkolása karakterek vagy sorok alapján.' },
+    userPrompt: { name: 'Felhasználói üzenet', desc: 'Futás közben felugró ablakot mutat, opcionálisan visszajelzésre vár.' },
+    systemNotify: { name: 'Rendszerértesítés', desc: 'Chrome rendszerértesítést küld szerkeszthető szöveggel.' }
   };
 
   const PALETTE = [
     { cat: 'Indítás', type: 'trigger' },
-    { cat: 'Indítás', type: 'watchText' },
-    { cat: 'Indítás', type: 'watchElement' },
+    { cat: 'Indítás', type: 'triggerGroup' },
+    { cat: 'Figyelő feltételek', type: 'conditionText' },
+    { cat: 'Figyelő feltételek', type: 'conditionElement' },
+    { cat: 'Figyelő feltételek', type: 'conditionField' },
+    { cat: 'Figyelő feltételek', type: 'conditionUrl' },
     { cat: 'Műveletek', type: 'click' },
     { cat: 'Műveletek', type: 'fill' },
     { cat: 'Műveletek', type: 'wait' },
     { cat: 'Műveletek', type: 'copy' },
+    { cat: 'Műveletek', type: 'userPrompt' },
+    { cat: 'Műveletek', type: 'systemNotify' },
     { cat: 'Adatkinyerés', type: 'extract' },
     { cat: 'Logika', type: 'ifBlock' },
     { cat: 'Logika', type: 'repeatBlock' },
@@ -54,10 +64,13 @@ const BF = (() => {
     const id = crypto.randomUUID();
     if (type === 'click') return { id, type, target: null, timeoutMs: 5000, confirmRisky: true };
     if (type === 'fill') return { id, type, target: null, value: '', timeoutMs: 5000 };
-    if (type === 'extract') return { id, type, target: null, extractMode: 'text', varName: 'adat', timeoutMs: 5000 };
+    if (type === 'extract') return { id, type, target: null, extractMode: 'auto', searchScope: 'dom', allowHidden: true, varName: 'adat', timeoutMs: 5000 };
     if (type === 'wait') return { id, type, waitMode: 'time', ms: 1000, text: '', target: null, timeoutMs: 5000 };
-    if (type === 'watchText') return { id, type, text: '', timeoutMs: 30000, caseSensitive: false, triggerEnabled: true, scope: 'domain', domain: '', path: '/', url: '', urlContains: '', throttleSec: 15, runOnce: false };
-    if (type === 'watchElement') return { id, type, target: null, timeoutMs: 30000, triggerEnabled: true, scope: 'domain', domain: '', path: '/', url: '', urlContains: '', throttleSec: 15, runOnce: false };
+    if (type === 'triggerGroup') return { id, type, triggerEnabled: true, logic: 'all', scope: 'domain', domain: '', path: '/', url: '', urlContains: '', intervalSec: 2, throttleSec: 15, runOnce: false, children: [] };
+    if (type === 'conditionText') return { id, type, text: '', caseSensitive: false };
+    if (type === 'conditionElement') return { id, type, target: null, requireVisible: true };
+    if (type === 'conditionField') return { id, type, target: null, operator: 'contains', value: '', caseSensitive: false };
+    if (type === 'conditionUrl') return { id, type, operator: 'contains', value: '' };
     if (type === 'ifBlock') return { id, type, conditionMode: 'textExists', text: '', target: null, timeoutMs: 1000, value: '', children: [], elseChildren: [] };
     if (type === 'repeatBlock') return { id, type, repeatCount: 2, children: [] };
     if (type === 'popupWait') return { id, type, timeoutMs: 10000 };
@@ -68,6 +81,8 @@ const BF = (() => {
     if (type === 'openEmail') return { id, type, draftName: 'email_draft', maxUrlLength: 1800 };
     if (type === 'rowLoop') return { id, type, target: null, rowVar: 'sor_szoveg', maxRows: 20, children: [] };
     if (type === 'mask') return { id, type, source: '{{adat}}', resultName: 'maszkolt_adat', maskMode: 'characters', invertMask: false, maskChar: '*', keepStart: 2, keepEnd: 2, keepFirstLines: 1, keepLastLines: 1, maskLineText: '***' };
+    if (type === 'userPrompt') return { id, type, title: 'BlockFlow', message: 'Ellenőrizd az eredményt, majd folytasd.', mode: 'wait', buttonText: 'Folytatás', cancelText: 'Megszakítás', resultName: '' };
+    if (type === 'systemNotify') return { id, type, title: 'BlockFlow', message: 'Az automatizmus elért egy értesítési ponthoz.' };
     return { id, type };
   }
 
@@ -77,8 +92,11 @@ const BF = (() => {
     if (block.type === 'fill') return `Illeszd be ide: ${block.target?.label || 'nincs kiválasztva'}`;
     if (block.type === 'extract') return `Nyerd ki: ${block.target?.label || 'nincs kiválasztva'} → {{${block.varName || 'adat'}}}`;
     if (block.type === 'wait') return block.waitMode === 'time' ? `Várj ${block.ms || 1000} ms` : `Várakozás: ${block.waitMode}`;
-    if (block.type === 'watchText') return `Amikor megjelenik: ${short(block.text || 'szöveg/karakter')}`;
-    if (block.type === 'watchElement') return `Amikor megjelenik az elem: ${block.target?.label || 'nincs kiválasztva'}`;
+    if (block.type === 'triggerGroup') return `Figyelő trigger: ${triggerLogicLabel(block.logic || 'all')}`;
+    if (block.type === 'conditionText') return `Feltétel: szöveg megjelenik: ${short(block.text || 'szöveg/karakter')}`;
+    if (block.type === 'conditionElement') return `Feltétel: elem megjelenik: ${block.target?.label || 'nincs kiválasztva'}`;
+    if (block.type === 'conditionField') return `Feltétel: mezőérték ${operatorLabel(block.operator || 'contains')} ${short(block.value || '')}`;
+    if (block.type === 'conditionUrl') return `Feltétel: URL ${operatorLabel(block.operator || 'contains')} ${short(block.value || '')}`;
     if (block.type === 'ifBlock') return `Ha: ${conditionLabel(block)}`;
     if (block.type === 'repeatBlock') return `Ismételd ${block.repeatCount || 2} alkalommal`;
     if (block.type === 'popupWait') return 'Várj weboldali popupra';
@@ -89,6 +107,8 @@ const BF = (() => {
     if (block.type === 'openEmail') return `Email megnyitása: {{${block.draftName || 'email_draft'}}}`;
     if (block.type === 'rowLoop') return `Minden sorra: ${block.target?.label || 'nincs lista/táblázat'}`;
     if (block.type === 'mask') return `Maszkolás → {{${block.resultName || 'maszkolt_adat'}}}`;
+    if (block.type === 'userPrompt') return `${block.mode === 'wait' ? 'Várj visszajelzésre' : 'Felugró üzenet'}: ${short(block.title || 'BlockFlow')}`;
+    if (block.type === 'systemNotify') return `Rendszerértesítés: ${short(block.title || 'BlockFlow')}`;
     return meta.name;
   }
 
@@ -99,11 +119,21 @@ const BF = (() => {
     return block.conditionMode || 'feltétel';
   }
 
+  function triggerLogicLabel(logic) {
+    return ({ all:'minden feltétel igaz', any:'bármelyik feltétel igaz', none:'egyik feltétel sem igaz' })[logic || 'all'] || logic;
+  }
+
+  function operatorLabel(op) {
+    return ({ contains:'tartalmazza', notContains:'nem tartalmazza', equals:'pontosan ez', notEquals:'nem pontosan ez', empty:'üres', notEmpty:'nem üres', startsWith:'ezzel kezdődik', endsWith:'ezzel végződik' })[op || 'contains'] || op;
+  }
+
   function blockDesc(block) {
     if (block.type === 'fill') return `Mit: ${short(block.value || '')}`;
-    if (block.type === 'extract') return `Mód: ${block.extractMode || 'text'}`;
+    if (block.type === 'extract') return `Mód: ${block.extractMode || 'auto'} · ${block.searchScope === 'visible' ? 'látható' : 'teljes DOM'}`;
     if (block.type === 'wait') return block.waitMode === 'text' ? `Szöveg: ${block.text || ''}` : (block.target?.label || '');
-    if (block.type === 'watchText' || block.type === 'watchElement') {
+    if (block.type === 'userPrompt') return `${block.mode === 'wait' ? 'megáll és visszajelzésre vár' : 'csak értesít'} · ${short(block.message || '')}`;
+    if (block.type === 'systemNotify') return short(block.message || '');
+    if (block.type === 'triggerGroup') {
       const scope = block.scope || 'domain';
       const labels = { domain:'domain', path:'domain + path', exact:'pontos URL', contains:'URL tartalmazza', any:'bármely oldal' };
       let detail = '';
@@ -112,8 +142,12 @@ const BF = (() => {
       else if (scope === 'exact') detail = block.url || 'aktuális URL';
       else if (scope === 'contains') detail = block.urlContains || 'nincs részlet megadva';
       else detail = 'minden oldal';
-      return `${block.triggerEnabled === false ? 'inaktív' : 'aktív'} · ${labels[scope] || scope}: ${detail} · ${block.throttleSec || 15} mp szünet`;
+      return `${block.triggerEnabled === false ? 'inaktív' : 'aktív'} · ${triggerLogicLabel(block.logic || 'all')} · ${labels[scope] || scope}: ${detail} · ${block.throttleSec || 15} mp szünet`;
     }
+    if (block.type === 'conditionText') return `${block.caseSensitive ? 'kis/nagybetű számít' : 'kis/nagybetű nem számít'} · ${short(block.text || '')}`;
+    if (block.type === 'conditionElement') return block.target?.label || 'Nincs cél elem';
+    if (block.type === 'conditionField') return `${block.target?.label || 'nincs mező'} · ${operatorLabel(block.operator || 'contains')} · ${short(block.value || '')}`;
+    if (block.type === 'conditionUrl') return `${operatorLabel(block.operator || 'contains')} · ${short(block.value || '')}`;
     if (block.type === 'ifBlock') return `Az alá behúzott ${Array.isArray(block.children)?block.children.length:0} blokk csak igaz feltételnél fut.`;
     if (block.type === 'repeatBlock') return `Az alá behúzott ${Array.isArray(block.children)?block.children.length:0} blokk ismétlődik.`;
     if (block.type === 'rowLoop') return `Max sor: ${block.maxRows || 20} · gyermek blokkok: ${(block.children||[]).length}`;
@@ -278,18 +312,20 @@ const BF = (() => {
     let starterCount = 0;
     walkBlocks(workflow.blocks || [], b => {
       if (b.type === 'trigger') starterCount++;
-      if ((b.type === 'watchText' || b.type === 'watchElement') && b.triggerEnabled !== false) starterCount++;
+      if (b.type === 'triggerGroup' && b.triggerEnabled !== false) starterCount++;
     });
-    if (!starterCount) issues.push({ level:'error', blockId:null, text:'Hiányzik az aktív indító blokk. Legalább egy szükséges: Indítás, aktív Figyelő: szöveg vagy aktív Figyelő: elem.' });
+    if (!starterCount) issues.push({ level:'error', blockId:null, text:'Hiányzik az aktív indító blokk. Legalább egy szükséges: Indítás vagy aktív Figyelő trigger.' });
 
     const needsTarget = ['click','fill','extract','rowLoop'];
     walkBlocks(workflow.blocks || [], b => {
       if (needsTarget.includes(b.type) && !b.target) issues.push({ level:'error', blockId:b.id, text:`${BLOCKS[b.type]?.name || b.type}: hiányzik a cél elem.` });
-      if (b.type === 'watchElement' && b.triggerEnabled !== false && !b.target) issues.push({ level:'error', blockId:b.id, text:'Figyelő: elem blokk: hiányzik a cél elem.' });
+      if (b.type === 'triggerGroup' && b.triggerEnabled !== false && !(b.children || []).length) issues.push({ level:'error', blockId:b.id, text:'Figyelő trigger: legalább egy feltétel szükséges.' });
+      if ((b.type === 'conditionElement' || b.type === 'conditionField') && !b.target) issues.push({ level:'error', blockId:b.id, text:`${BLOCKS[b.type]?.name || b.type}: hiányzik a cél elem.` });
       if (b.type === 'wait' && b.waitMode === 'element' && !b.target) issues.push({ level:'error', blockId:b.id, text:'Várakozás elemre: hiányzik a cél elem.' });
       if (b.type === 'ifBlock' && ['elementExists','valueContains'].includes(b.conditionMode) && !b.target) issues.push({ level:'error', blockId:b.id, text:'Ha blokk: hiányzik a cél elem.' });
       if (b.type === 'ifBlock' && b.conditionMode === 'textExists' && !String(b.text||'').trim()) issues.push({ level:'warning', blockId:b.id, text:'Ha blokk: üres keresett szöveg.' });
-      if (b.type === 'watchText' && !String(b.text||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Figyelő: üres figyelt szöveg.' });
+      if (b.type === 'conditionText' && !String(b.text||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Szöveg feltétel: üres figyelt szöveg.' });
+      if (b.type === 'conditionUrl' && !['empty','notEmpty'].includes(b.operator || 'contains') && !String(b.value||'').trim()) issues.push({ level:'error', blockId:b.id, text:'URL feltétel: hiányzik az ellenőrzött érték.' });
       if (b.type === 'email' && !String(b.to||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Email blokk: hiányzik a címzett.' });
       if (b.type === 'mask' && !String(b.source||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Maszkolás blokk: hiányzik a forrás szöveg vagy változó.' });
       if (b.type === 'mask' && !String(b.resultName||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Maszkolás blokk: hiányzik az eredmény változó neve.' });
@@ -308,5 +344,5 @@ const BF = (() => {
     return n;
   }
 
-  return { SCHEMA_VERSION, DEFAULT_WORKFLOW, BLOCKS, PALETTE, newBlock, blockTitle, blockDesc, getStore, saveWorkflow, setActiveWorkflow, downloadJson, exportPayload, analyzeImport, importPayload, sendToTarget, getTargetTab, collectVariables, collectVariableRefs, validateWorkflow, getTemplates, saveTemplates, getVersions, pushVersion, countBlocks, walkBlocks, short };
+  return { SCHEMA_VERSION, DEFAULT_WORKFLOW, BLOCKS, PALETTE, newBlock, blockTitle, blockDesc, triggerLogicLabel, operatorLabel, getStore, saveWorkflow, setActiveWorkflow, downloadJson, exportPayload, analyzeImport, importPayload, sendToTarget, getTargetTab, collectVariables, collectVariableRefs, validateWorkflow, getTemplates, saveTemplates, getVersions, pushVersion, countBlocks, walkBlocks, short };
 })();

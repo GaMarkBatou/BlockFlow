@@ -1,5 +1,6 @@
 const EXT_PREFIX = chrome.runtime.getURL('');
 const INJECTABLE_URL_RE = /^(https?:|file:)/;
+const pendingFeedback = new Map();
 
 async function setLastActiveTab(tabId) {
   try {
@@ -60,6 +61,17 @@ chrome.runtime.onInstalled.addListener(async () => {
 chrome.tabs.onActivated.addListener(info => setLastActiveTab(info.tabId));
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.active) setLastActiveTab(tabId);
+});
+
+
+chrome.windows.onRemoved.addListener(windowId => {
+  for (const [id, item] of [...pendingFeedback.entries()]) {
+    if (item.windowId === windowId) {
+      pendingFeedback.delete(id);
+      try { item.sendResponse({ ok: true, action: 'closed' }); } catch (_) {}
+      chrome.storage.local.remove(`feedback_${id}`).catch(() => {});
+    }
+  }
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -135,6 +147,68 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg?.type === 'OPEN_MAILTO') {
       await chrome.tabs.create({ url: msg.url });
       sendResponse({ ok: true });
+      return;
+    }
+
+    if (msg?.type === 'BF_USER_PROMPT') {
+      const id = `fb-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const mode = msg.mode || 'wait';
+      await chrome.storage.local.set({
+        [`feedback_${id}`]: {
+          id,
+          title: String(msg.title || 'BlockFlow').slice(0, 160),
+          message: String(msg.message || '').slice(0, 8000),
+          mode,
+          buttonText: String(msg.buttonText || 'Folytatás').slice(0, 80),
+          cancelText: String(msg.cancelText || 'Megszakítás').slice(0, 80)
+        }
+      });
+      const win = await chrome.windows.create({
+        url: chrome.runtime.getURL('feedback.html') + `?id=${encodeURIComponent(id)}`,
+        type: 'popup',
+        width: 520,
+        height: mode === 'notify' ? 320 : 390,
+        focused: true
+      });
+      pendingFeedback.set(id, { sendResponse, windowId: win.id });
+
+      // Notify-only messages should not block the workflow indefinitely.
+      if (mode === 'notify') {
+        setTimeout(() => {
+          const item = pendingFeedback.get(id);
+          if (!item) return;
+          pendingFeedback.delete(id);
+          try { item.sendResponse({ ok: true, action: 'shown' }); } catch (_) {}
+        }, 300);
+      }
+      return;
+    }
+
+    if (msg?.type === 'BF_FEEDBACK_RESPONSE') {
+      const id = String(msg.id || '');
+      const item = pendingFeedback.get(id);
+      if (item) {
+        pendingFeedback.delete(id);
+        try { item.sendResponse({ ok: true, action: msg.action || 'continue' }); } catch (_) {}
+        try { await chrome.storage.local.remove(`feedback_${id}`); } catch (_) {}
+        if (item.windowId) { try { await chrome.windows.remove(item.windowId); } catch (_) {} }
+      }
+      sendResponse({ ok: true });
+      return;
+    }
+
+    if (msg?.type === 'BF_SYSTEM_NOTIFICATION') {
+      const title = String(msg.title || 'BlockFlow').slice(0, 120);
+      const message = String(msg.message || '').slice(0, 2000) || 'Értesítés';
+      const notificationId = `blockflow-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      await chrome.notifications.create(notificationId, {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+        title,
+        message,
+        priority: 1
+      });
+      sendResponse({ ok: true, notificationId });
       return;
     }
   })().catch(err => sendResponse({ ok: false, error: String(err.message || err) }));

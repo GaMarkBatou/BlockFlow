@@ -419,3 +419,8 @@ html, body {
 .save-state.dirty{background:#fff7ed;border-color:#fed7aa;color:#9a3412;font-weight:700}
 .warning-soft{background:#fffbeb;border-color:#fde68a;color:#92400e}
 .starter-empty{background:#fffbeb;border-color:#fde68a;color:#78350f}
+/* v0.18 trigger group and condition styling */
+.block-triggerGroup{border-left:6px solid #7c3aed;background:linear-gradient(90deg,#faf5ff 0,#fff 38%)}
+.block-conditionText,.block-conditionElement,.block-conditionField,.block-conditionUrl{border-left:6px solid #a78bfa;background:#fff}
+.block-icon{min-width:22px;display:inline-flex;align-items:center;justify-content:center}
+.topbar button{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
