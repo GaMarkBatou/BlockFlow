@@ -74,6 +74,48 @@ chrome.windows.onRemoved.addListener(windowId => {
   }
 });
 
+
+async function refreshSchedules() {
+  if (!chrome.alarms) return;
+  const data = await chrome.storage.local.get('schedules');
+  const schedules = Array.isArray(data.schedules) ? data.schedules : [];
+  const alarms = await chrome.alarms.getAll();
+  await Promise.all(alarms.filter(a => a.name.startsWith('blockflow-schedule:')).map(a => chrome.alarms.clear(a.name)));
+  for (const s of schedules) {
+    if (s.enabled === false) continue;
+    const name = `blockflow-schedule:${s.id}`;
+    if ((s.scheduleMode || 'interval') === 'daily') {
+      const [hh, mm] = String(s.timeOfDay || '08:00').split(':').map(Number);
+      const d = new Date(); d.setHours(hh || 8, mm || 0, 0, 0);
+      if (d.getTime() < Date.now()) d.setDate(d.getDate() + 1);
+      await chrome.alarms.create(name, { when: d.getTime(), periodInMinutes: 24 * 60 });
+    } else {
+      await chrome.alarms.create(name, { delayInMinutes: Math.max(1, Number(s.intervalMinutes || 15)), periodInMinutes: Math.max(1, Number(s.intervalMinutes || 15)) });
+    }
+  }
+}
+
+async function runScheduledWorkflow(scheduleId) {
+  const data = await chrome.storage.local.get(['schedules','workflows']);
+  const schedules = Array.isArray(data.schedules) ? data.schedules : [];
+  const workflows = Array.isArray(data.workflows) ? data.workflows : [];
+  const sched = schedules.find(s => `blockflow-schedule:${s.id}` === scheduleId || s.id === scheduleId);
+  if (!sched || sched.enabled === false) return;
+  const wf = workflows.find(w => w.id === sched.workflowId);
+  if (!wf) return;
+  const target = await getUsableTargetTab();
+  if (!target?.id) return;
+  await ensureContentScript(target.id);
+  await chrome.tabs.sendMessage(target.id, { type:'BF_RUN_WORKFLOW', workflow: wf, options:{ scheduled: true } }).catch(() => {});
+}
+
+if (chrome.alarms) {
+  chrome.alarms.onAlarm.addListener(alarm => {
+    if (alarm.name.startsWith('blockflow-schedule:')) runScheduledWorkflow(alarm.name).catch(() => {});
+  });
+  refreshSchedules().catch(() => {});
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     if (msg?.type === 'OPEN_BUILDER') {
@@ -145,8 +187,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     if (msg?.type === 'OPEN_MAILTO') {
-      await chrome.tabs.create({ url: msg.url });
-      sendResponse({ ok: true });
+      const preferredWindowId = sender?.tab?.windowId;
+      const preferredTabId = sender?.tab?.id;
+      let previousActiveId = null;
+      let created = null;
+      try {
+        const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        previousActiveId = activeTabs?.[0]?.id || preferredTabId || null;
+      } catch (_) {}
+      // Mailto links should not steal the user's working tab. Opening inactive is
+      // enough for most mail handlers; if Chrome still activates it, refocus the
+      // originating tab immediately afterwards.
+      const createProps = { url: msg.url, active: false };
+      if (preferredWindowId) createProps.windowId = preferredWindowId;
+      created = await chrome.tabs.create(createProps);
+      const refocusId = msg.returnToTabId || preferredTabId || previousActiveId;
+      if (refocusId && msg.preserveFocus !== false) {
+        setTimeout(() => { chrome.tabs.update(refocusId, { active: true }).catch(() => {}); }, 150);
+      }
+      sendResponse({ ok: true, tabId: created?.id || null });
       return;
     }
 
@@ -159,6 +218,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           title: String(msg.title || 'BlockFlow').slice(0, 160),
           message: String(msg.message || '').slice(0, 8000),
           mode,
+          promptType: String(msg.promptType || 'message'),
+          inputType: String(msg.inputType || 'text'),
+          placeholder: String(msg.placeholder || '').slice(0, 500),
+          defaultValue: String(msg.defaultValue || '').slice(0, 8000),
+          options: Array.isArray(msg.options) ? msg.options.slice(0, 20).map(x => String(x).slice(0, 500)) : [],
           buttonText: String(msg.buttonText || 'Folytatás').slice(0, 80),
           cancelText: String(msg.cancelText || 'Megszakítás').slice(0, 80)
         }
@@ -189,10 +253,103 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const item = pendingFeedback.get(id);
       if (item) {
         pendingFeedback.delete(id);
-        try { item.sendResponse({ ok: true, action: msg.action || 'continue' }); } catch (_) {}
+        try { item.sendResponse({ ok: true, action: msg.action || 'continue', value: msg.value || '' }); } catch (_) {}
         try { await chrome.storage.local.remove(`feedback_${id}`); } catch (_) {}
         if (item.windowId) { try { await chrome.windows.remove(item.windowId); } catch (_) {} }
       }
+      sendResponse({ ok: true });
+      return;
+    }
+
+
+    if (msg?.type === 'BF_OPEN_URL') {
+      const url = String(msg.url || '');
+      if (!url) throw new Error('Nincs megadva URL.');
+      if (msg.mode === 'sameTab') {
+        const target = await getUsableTargetTab(sender?.tab?.id);
+        if (!target?.id) throw new Error('Nincs cél tab.');
+        await chrome.tabs.update(target.id, { url });
+      } else if (msg.mode === 'newWindow') {
+        await chrome.windows.create({ url, type: 'popup', width: 1100, height: 800, focused: true });
+      } else {
+        await chrome.tabs.create({ url, active: true });
+      }
+      sendResponse({ ok: true });
+      return;
+    }
+
+    if (msg?.type === 'BF_CAPTURE_VISIBLE_TAB') {
+      const sourceTabId = msg.tabId || sender?.tab?.id;
+      const sourceWindowId = msg.windowId || sender?.tab?.windowId;
+      let previousActiveId = null;
+      try {
+        const q = sourceWindowId ? { active: true, windowId: sourceWindowId } : { active: true, currentWindow: true };
+        const activeTabs = await chrome.tabs.query(q);
+        previousActiveId = activeTabs?.[0]?.id || null;
+      } catch (_) {}
+      // chrome.tabs.captureVisibleTab can only capture the visible active tab in a
+      // window. For watcher-triggered runs the source tab may not be active, so we
+      // briefly activate it, capture it, then restore the previous tab.
+      if (sourceTabId) {
+        try { await chrome.tabs.update(sourceTabId, { active: true }); } catch (_) {}
+        try { if (sourceWindowId) await chrome.windows.update(sourceWindowId, { focused: true }); } catch (_) {}
+        await new Promise(resolve => setTimeout(resolve, 180));
+      }
+      const dataUrl = await chrome.tabs.captureVisibleTab(sourceWindowId, { format: 'png' });
+      if (msg.openPreview) {
+        const previewProps = { url: dataUrl, active: true };
+        if (sourceWindowId) previewProps.windowId = sourceWindowId;
+        await chrome.tabs.create(previewProps);
+      }
+      else if (previousActiveId && previousActiveId !== sourceTabId && msg.restoreFocus !== false) {
+        setTimeout(() => { chrome.tabs.update(previousActiveId, { active: true }).catch(() => {}); }, 100);
+      }
+      sendResponse({ ok: true, dataUrl });
+      return;
+    }
+
+    if (msg?.type === 'BF_GET_TEMPLATES') {
+      const data = await chrome.storage.local.get('templates');
+      sendResponse({ ok: true, templates: Array.isArray(data.templates) ? data.templates : [] });
+      return;
+    }
+
+    if (msg?.type === 'BF_WAIT_FOR_TAB') {
+      const started = Date.now();
+      const timeout = Math.max(1000, Number(msg.timeoutMs || 15000));
+      const match = tab => {
+        const v = String(msg.value || '').toLowerCase();
+        if (!v) return tab?.id;
+        if (msg.matchMode === 'titleContains') return String(tab.title || '').toLowerCase().includes(v);
+        return String(tab.url || '').toLowerCase().includes(v);
+      };
+      while (Date.now() - started < timeout) {
+        const tabs = await chrome.tabs.query({});
+        const found = tabs.find(match);
+        if (found?.id) { sendResponse({ ok: true, tabId: found.id, url: found.url, title: found.title }); return; }
+        await new Promise(r => setTimeout(r, 500));
+      }
+      sendResponse({ ok: false, error: 'Timeout: nem jelent meg megfelelő tab/ablak.' });
+      return;
+    }
+
+    if (msg?.type === 'BF_CLOSE_TAB') {
+      if (msg.tabId) await chrome.tabs.remove(Number(msg.tabId)).catch(()=>{});
+      sendResponse({ ok: true });
+      return;
+    }
+
+    if (msg?.type === 'BF_EXTRACT_FROM_TAB') {
+      const tabId = Number(msg.tabId || 0);
+      if (!tabId) throw new Error('Nincs popup/tab azonosító.');
+      await ensureContentScript(tabId);
+      const response = await chrome.tabs.sendMessage(tabId, { type:'BF_EXTRACT_ONCE', target: msg.target, extractMode: msg.extractMode, attributeName: msg.attributeName, timeoutMs: msg.timeoutMs });
+      sendResponse(response || { ok:false, error:'Nincs válasz a tabtól.' });
+      return;
+    }
+
+    if (msg?.type === 'BF_REFRESH_SCHEDULES') {
+      await refreshSchedules();
       sendResponse({ ok: true });
       return;
     }

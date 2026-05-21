@@ -62,3 +62,7 @@ button.secondary { background: #eef2ff; color: #24407a; }
 button:hover { filter: brightness(.98); }
 body.notify .secondary { display: none; }
 body.notify .actions { justify-content: flex-end; }
+.input-area { margin-top: 14px; }
+.input-area input, .input-area select, .input-area textarea { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 12px; padding: 10px 12px; font: inherit; }
+.input-area textarea { min-height: 140px; resize: vertical; }
+.hidden { display: none; }

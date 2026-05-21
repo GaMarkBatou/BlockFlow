@@ -1,37 +1,24 @@
-# BlockFlow v0.19
+# BlockFlow Automation MVP v0.23
 
-Lokális Chrome extension weboldal-automatizáláshoz.
+Lokális Chrome extension blokkos weboldal-automatizáláshoz.
 
-## v0.19 javítás
+## v0.23 fő újdonságok
 
-- A Figyelő trigger blokkoknál a scope részletei is látszanak és szerkeszthetők.
-- Domain/path/pontos URL/URL tartalmazza mezők közvetlenül a blokkban és a jobb oldali beállításokban is elérhetők.
-- A jobb oldali panelen megjelenik az aktuális scope összefoglalója.
-- Gyors gomb: jelenlegi oldal domain/path/URL adatainak kitöltése.
+- új adatkezelő blokkok: változó beállítása, adat átalakítása, szövegrész kinyerése, regex keresés, összehasonlítás, számítás, lokális mentés/beolvasás
+- új weboldal blokkok: várj amíg, görgetés, billentyű lenyomása, URL megnyitása, oldal adatai, képernyőkép
+- új felhasználói blokkok: adatbekérés, választás, email előnézet
+- új táblázat/lista blokkok: táblázatból kinyerés, minden találatra, elemek keresése
+- új logikai/hibakezelő blokkok: próbáld újra, próbáld meg/hiba esetén, elem ellenőrzése, leállítás, csoport, megjegyzés
+- popup/új ablak kezelő blokkok: várj új ablakra, új ablakból kinyerés, új ablak bezárása
+- időzített indítás blokk Chrome alarms alapon
+- kitöltés/kattintás továbbra is automatikusan fókuszba/görgetésbe hozza a cél elemet
 
 ## Telepítés
 
-1. Chrome: chrome://extensions
-2. Developer mode bekapcsolása
-3. Load unpacked
-4. A kicsomagolt mappa kiválasztása
+1. Csomagold ki a ZIP-et.
+2. Chrome: `chrome://extensions`
+3. Developer mode bekapcsolása.
+4. `Load unpacked`.
+5. Válaszd ki a kicsomagolt `blockflow-extension-v0.23` mappát.
 
-
-## v0.19
-- Régi Figyelő: szöveg / Figyelő: elem blokkok automatikus migrációja új Figyelő trigger + feltétel modellre.
-- Új figyelő feltételblokkok: szöveg, elem, mezőérték, URL.
-- Figyelő trigger logika: minden / bármelyik / egyik sem.
-- Builder felső gombsora ikonokat kapott.
-
-
-## v0.20
-- Extension context invalidated hiba elleni védelem a content script watcher loopban.
-- Új blokk: Felhasználói üzenet, amely felugró ablakot mutat és opcionálisan visszajelzésre vár.
-- Új blokk: Rendszerértesítés, amely Chrome rendszerértesítést küld.
-
-## v0.22
-- Az Adat kinyerése blokk alapértelmezetten a teljes DOM-ban keres, rejtett / inaktív fülön lévő mezőkben is.
-- Stabilabb mezőfelismerés BMC/Remedy/WTTS jellegű oldalakon: id, konténer id, arid, ardbn, label-for, label közeli mező és CSS fallback.
-- Új kinyerési módok: automatikus, mezőérték, szöveg, HTML, attribútum.
-- Robusztusabb értékkiolvasás: input, textarea, select, checkbox/radio, contenteditable, title, aria-label és placeholder fallback.
-- A Figyelő mezőérték feltételei is tudnak rejtett DOM mezőkből olvasni.
+Frissítés után a már nyitva lévő céloldalakat érdemes egyszer újratölteni.
