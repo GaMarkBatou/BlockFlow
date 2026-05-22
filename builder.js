@@ -335,7 +335,7 @@ function renderBlockList(blocks, level, parentId) {
 }
 
 function blockIcon(b) {
-  const map = { trigger:'▶', triggerGroup:'◎', scheduledTrigger:'⏲', conditionText:'T', conditionElement:'◇', conditionField:'▣', conditionUrl:'URL', click:'⌁', fill:'✎', extract:'⇣', wait:'⏱', waitUntil:'⏳', ifBlock:'?', repeatBlock:'↻', retryBlock:'⟳', tryBlock:'⚑', popupWait:'▣', popupExtract:'▣', popupClick:'▣', popupWindowWait:'◱', popupWindowExtract:'⇣', popupWindowClose:'×', copy:'⧉', clipboardRead:'⧉', email:'✉', emailTemplate:'✉', emailPreview:'✉', openEmail:'↗', rowLoop:'≡', elementLoop:'⋮', tableExtract:'▦', mask:'◩', transform:'A', textSlice:'✂', regex:'.*', setVar:'=', userPrompt:'💬', userInput:'⌨', userChoice:'☑', systemNotify:'🔔', scroll:'↕', keyPress:'⌨', openUrl:'↗', pageInfo:'ⓘ', screenshot:'▣', preflight:'✓', localSet:'⬇', localGet:'⬆', compare:'=', math:'#', iframeBlock:'▤', findElements:'◇', validateData:'✓', comment:'//', groupBlock:'▣', callWorkflow:'↪', returnResult:'↩', stopRun:'■', sound:'♪' };
+  const map = { trigger:'▶', triggerGroup:'◎', scheduledTrigger:'⏲', conditionText:'T', conditionElement:'◇', conditionField:'▣', conditionUrl:'URL', conditionChange:'Δ', click:'⌁', fill:'✎', extract:'⇣', wait:'⏱', waitUntil:'⏳', ifBlock:'?', repeatBlock:'↻', retryBlock:'⟳', tryBlock:'⚑', popupWait:'▣', popupExtract:'▣', popupClick:'▣', popupWindowWait:'◱', popupWindowExtract:'⇣', popupWindowClose:'×', copy:'⧉', clipboardRead:'⧉', email:'✉', emailTemplate:'✉', emailPreview:'✉', openEmail:'↗', rowLoop:'≡', elementLoop:'⋮', tableExtract:'▦', mask:'◩', transform:'A', textSlice:'✂', regex:'.*', setVar:'=', userPrompt:'💬', userInput:'⌨', userChoice:'☑', systemNotify:'🔔', scroll:'↕', keyPress:'⌨', openUrl:'↗', pageInfo:'ⓘ', screenshot:'▣', preflight:'✓', localSet:'⬇', localGet:'⬆', compare:'=', math:'#', iframeBlock:'▤', findElements:'◇', validateData:'✓', comment:'//', groupBlock:'▣', callWorkflow:'↪', returnResult:'↩', stopRun:'■', sound:'♪' };
   return map[b.type] || '•';
 }
 function inlineChip(label, value) { return `<span class="inline-chip"><span>${escapeHtml(label)}</span><b>${escapeHtml(value || '—')}</b></span>`; }
@@ -372,6 +372,7 @@ function blockInline(b) {
   if (b.type === 'conditionElement') return `${inlinePick(b)} ${inlineCheck('requireVisible', b.requireVisible !== false, 'látható')}`;
   if (b.type === 'conditionField') return `${inlinePick(b, 'Mező')} ${inlineSelect('operator', b.operator || 'contains', [['contains','tartalmazza'],['notContains','nem tartalmazza'],['equals','pontosan'],['notEquals','nem pontosan'],['empty','üres'],['notEmpty','nem üres'],['startsWith','ezzel kezdődik'],['endsWith','ezzel végződik']])} ${['empty','notEmpty'].includes(b.operator || 'contains') ? '' : inlineInput('value', b.value || '', 'érték')}`;
   if (b.type === 'conditionUrl') return `${inlineSelect('operator', b.operator || 'contains', [['contains','tartalmazza'],['notContains','nem tartalmazza'],['equals','pontosan'],['notEquals','nem pontosan'],['startsWith','ezzel kezdődik'],['endsWith','ezzel végződik']])} ${inlineInput('value', b.value || '', 'URL érték', 'wide')}`;
+  if (b.type === 'conditionChange') return `${inlinePick(b, 'Forrás')} ${inlineSelect('changeMode', b.changeMode || 'fromTo', [['fromTo','miről → mire'],['anyTo','bármiről → mire'],['fromAny','miről → bármire'],['anyChange','bármilyen változás']])} ${['fromTo','fromAny'].includes(b.changeMode || 'fromTo') ? inlineInput('fromValue', b.fromValue || '', 'miről') : ''} ${['fromTo','anyTo'].includes(b.changeMode || 'fromTo') ? inlineInput('toValue', b.toValue || '', 'mire') : ''} ${inlineSelect('operator', b.operator || 'equals', [['equals','pontosan'],['contains','tartalmazza'],['regex','regex']])} ${inlineCheck('caseSensitive', Boolean(b.caseSensitive), 'kis/nagybetű')}`;
   if (b.type === 'click') return `${inlinePick(b)} ${inlineCheck('confirmRisky', b.confirmRisky !== false, 'megerősítés')}`;
   if (b.type === 'fill') return `${inlinePick(b, 'Hova')} ${inlineInput('value', b.value || '', 'mit illesszen be', 'wide')}`;
   if (b.type === 'extract') return `${inlinePick(b, 'Honnan')} ${inlineSelect('extractMode', b.extractMode || 'auto', [['auto','automatikus'],['value','mezőérték'],['text','szöveg'],['html','HTML'],['attribute','attribútum']])} ${inlineSelect('searchScope', b.searchScope || 'dom', [['dom','teljes DOM'],['visible','látható']])} ${inlineInput('varName', b.varName || 'adat', 'változó neve')}`;
@@ -652,7 +653,7 @@ function renderInspector() {
   const changedBlock = b && b.id !== lastInspectorBlockId;
   if (!b) { $('#inspector').innerHTML = '<div class="empty">Válassz blokkot.</div>'; return; }
   let html = `<div class="inspector-current"><div class="list-title">${escapeHtml(BF.BLOCKS[b.type]?.name || b.type)}</div><div class="muted">A fő beállítások a középső blokkon is szerkeszthetők, itt a részletes opciók vannak.</div></div>`;
-  if (['click','fill','extract','conditionElement','conditionField','tableExtract','scroll','keyPress','preflight','popupWindowExtract','iframeBlock','findElements','waitUntil'].includes(b.type)) html += targetEditor(b);
+  if (['click','fill','extract','conditionElement','conditionField','conditionChange','tableExtract','scroll','keyPress','preflight','popupWindowExtract','iframeBlock','findElements','waitUntil'].includes(b.type)) html += targetEditor(b);
   if (b.type === 'click') html += checkboxField('confirmRisky','Kockázatos kattintásnál kérjen megerősítést', b.confirmRisky !== false) + numberField('timeoutMs','Max várakozás ms', b.timeoutMs || 5000);
   if (b.type === 'fill') html += valueSourceHelp() + textArea('value','Mit illesszen be?', b.value || '') + numberField('timeoutMs','Max várakozás ms', b.timeoutMs || 5000);
   if (b.type === 'extract') html += selectField('extractMode','Mit nyerjen ki?', b.extractMode || 'auto', [['auto','Automatikus - legjobb érték'],['value','Mezőérték'],['text','Szöveg'],['html','HTML tartalom'],['attribute','Attribútum']]) + selectField('searchScope','Hol keressen?', b.searchScope || 'dom', [['dom','Teljes DOM-ban, rejtett mezőkben is'],['visible','Csak látható elemek között']]) + checkboxField('allowHidden','Rejtett / inaktív fülön lévő mezőt is elfogad', b.allowHidden !== false) + textField('attributeName','Attribútum neve attribute módnál', b.attributeName || 'title') + textField('varName','Változó neve', b.varName || 'adat') + numberField('timeoutMs','Max várakozás ms', b.timeoutMs || 5000);
@@ -661,6 +662,7 @@ function renderInspector() {
   if (b.type === 'conditionElement') html += checkboxField('requireVisible','Csak látható elem számítson', b.requireVisible !== false);
   if (b.type === 'conditionField') html += selectField('operator','Feltétel', b.operator || 'contains', [['contains','Tartalmazza'],['notContains','Nem tartalmazza'],['equals','Pontosan ez'],['notEquals','Nem pontosan ez'],['empty','Üres'],['notEmpty','Nem üres'],['startsWith','Ezzel kezdődik'],['endsWith','Ezzel végződik']]) + textField('value','Érték', b.value || '') + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive));
   if (b.type === 'conditionUrl') html += selectField('operator','URL feltétel', b.operator || 'contains', [['contains','Tartalmazza'],['notContains','Nem tartalmazza'],['equals','Pontosan ez'],['notEquals','Nem pontosan ez'],['startsWith','Ezzel kezdődik'],['endsWith','Ezzel végződik']]) + textField('value','URL érték', b.value || '');
+  if (b.type === 'conditionChange') html += selectField('readMode','Mit olvasson?', b.readMode || 'auto', [['auto','Automatikus érték'],['value','Mezőérték'],['text','Szöveg'],['attribute','Attribútum']]) + (b.readMode === 'attribute' ? textField('attributeName','Attribútum neve', b.attributeName || 'title') : '') + selectField('searchScope','Keresés módja', b.searchScope || 'dom', [['dom','Teljes DOM-ban, rejtett mezőkben is'],['visible','Csak látható elemek között']]) + selectField('changeMode','Változás típusa', b.changeMode || 'fromTo', [['fromTo','Miről → mire'],['anyTo','Bármiről → mire'],['fromAny','Miről → bármire'],['anyChange','Bármilyen változás']]) + textField('fromValue','Miről', b.fromValue || '') + textField('toValue','Mire', b.toValue || '') + selectField('operator','Összehasonlítás', b.operator || 'equals', [['equals','Pontos egyezés'],['contains','Tartalmazza'],['regex','Regex']]) + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive)) + selectField('firstRun','Első ellenőrzéskor', b.firstRun || 'learn', [['learn','Csak jegyezze meg, ne indítson'],['allowTo','Indítson, ha már a célértéken van']]) + `<div class="status">Az előző érték a tabon belül, workflow + trigger + feltétel szerint tárolódik. Oldalfrissítés után újratanul.</div>`;
   if (b.type === 'wait') html += selectField('waitMode','Várakozás típusa', b.waitMode || 'time', [['time','Idő'],['text','Szöveg megjelenése'],['element','Elem megjelenése']]) + (b.waitMode === 'time' ? numberField('ms','Idő ms', b.ms || 1000) : b.waitMode === 'text' ? textField('text','Szöveg', b.text || '') + numberField('timeoutMs','Timeout ms', b.timeoutMs || 5000) : targetEditor(b) + numberField('timeoutMs','Timeout ms', b.timeoutMs || 5000));
   if (b.type === 'ifBlock') html += selectField('conditionMode','Feltétel', b.conditionMode || 'textExists', [['textExists','Szöveg létezik'],['elementExists','Elem létezik'],['valueContains','Elem értéke tartalmazza']]) + (b.conditionMode === 'elementExists' || b.conditionMode === 'valueContains' ? targetEditor(b) : '') + (b.conditionMode === 'valueContains' ? textField('value','Keresett érték', b.value || '') : b.conditionMode === 'textExists' ? textField('text','Keresett szöveg', b.text || '') : '') + numberField('timeoutMs','Elemkeresési timeout ms', b.timeoutMs || 1000) + `<div class="status">Igaz ág: ${(b.children||[]).length} blokk · Különben ág: ${(b.elseChildren||[]).length} blokk</div>`;
   if (b.type === 'repeatBlock') html += numberField('repeatCount','Ismétlések száma', b.repeatCount || 2) + `<div class="status">Az alá behúzott blokkok ismétlődnek. Gyermek blokkok: ${(b.children||[]).length}</div>`;
@@ -754,7 +756,7 @@ function updateField(field, value) {
   renderBlocks();
   renderVariables();
   renderImportWarning();
-  if (['waitMode','conditionMode','maskMode','scope','domain','path','url','urlContains','logic','operator'].includes(field)) renderInspector();
+  if (['waitMode','conditionMode','maskMode','scope','domain','path','url','urlContains','logic','operator','changeMode','readMode','searchScope','firstRun'].includes(field)) renderInspector();
 }
 
 function renderVariables() {
@@ -857,7 +859,15 @@ async function syncTriggerWatchersFromBlocks(workflow) {
       target: c.target || null,
       requireVisible: c.requireVisible !== false,
       operator: c.operator || 'contains',
-      value: c.value || ''
+      value: c.value || '',
+      readMode: c.readMode || 'auto',
+      attributeName: c.attributeName || 'title',
+      searchScope: c.searchScope || 'dom',
+      changeMode: c.changeMode || 'fromTo',
+      fromValue: c.fromValue || '',
+      toValue: c.toValue || '',
+      firstRun: c.firstRun || 'learn',
+      id: c.id
     }));
     if (!conditions.length) return;
     blockWatchers.push({

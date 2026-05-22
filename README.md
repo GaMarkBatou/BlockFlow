@@ -22,3 +22,10 @@ Lokális Chrome extension blokkos weboldal-automatizáláshoz.
 5. Válaszd ki a kicsomagolt `blockflow-extension-v0.23` mappát.
 
 Frissítés után a már nyitva lévő céloldalakat érdemes egyszer újratölteni.
+
+
+## v0.25
+
+- Új figyelő feltétel: **Érték változik**.
+- Támogatott módok: miről → mire, bármiről → mire, miről → bármire, bármilyen változás.
+- A feltétel session-alapúan tárolja az előző értéket workflow + trigger + feltétel + URL szerint, és oldalfrissítés után újratanul.

@@ -1,5 +1,5 @@
 const BF = (() => {
-  const SCHEMA_VERSION = 10;
+  const SCHEMA_VERSION = 11;
 
   const DEFAULT_WORKFLOW = () => ({
     id: crypto.randomUUID(),
@@ -17,6 +17,7 @@ const BF = (() => {
     conditionElement: { name: 'Feltétel: elem', desc: 'Igaz, ha a kiválasztott elem megtalálható az oldalon.' },
     conditionField: { name: 'Feltétel: mezőérték', desc: 'Igaz, ha egy mező értéke megfelel a megadott feltételnek.' },
     conditionUrl: { name: 'Feltétel: URL', desc: 'Igaz, ha az aktuális URL megfelel a megadott feltételnek.' },
+    conditionChange: { name: 'Feltétel: érték változik', desc: 'Igaz, ha egy mező/szöveg az előző figyelési körhöz képest a megadott irányba változik.' },
     click: { name: 'Kattintás', desc: 'Kattint egy kiválasztott oldalelemre.' },
     fill: { name: 'Beillesztés / kitöltés', desc: 'Szöveget ír egy mezőbe.' },
     extract: { name: 'Adat kinyerése', desc: 'Szöveget vagy mezőértéket változóba ment.' },
@@ -81,6 +82,7 @@ const BF = (() => {
     { cat: 'Figyelő feltételek', type: 'conditionElement' },
     { cat: 'Figyelő feltételek', type: 'conditionField' },
     { cat: 'Figyelő feltételek', type: 'conditionUrl' },
+    { cat: 'Figyelő feltételek', type: 'conditionChange' },
     { cat: 'Műveletek', type: 'click' },
     { cat: 'Műveletek', type: 'fill' },
     { cat: 'Műveletek', type: 'wait' },
@@ -146,6 +148,7 @@ const BF = (() => {
     if (type === 'conditionElement') return { id, type, target: null, requireVisible: true };
     if (type === 'conditionField') return { id, type, target: null, operator: 'contains', value: '', caseSensitive: false };
     if (type === 'conditionUrl') return { id, type, operator: 'contains', value: '' };
+    if (type === 'conditionChange') return { id, type, target: null, readMode: 'auto', attributeName: 'title', searchScope: 'dom', changeMode: 'fromTo', fromValue: '', toValue: '', operator: 'equals', caseSensitive: false, firstRun: 'learn' };
     if (type === 'ifBlock') return { id, type, conditionMode: 'textExists', text: '', target: null, timeoutMs: 1000, value: '', children: [], elseChildren: [] };
     if (type === 'repeatBlock') return { id, type, repeatCount: 2, children: [] };
     if (type === 'popupWait') return { id, type, timeoutMs: 10000 };
@@ -209,6 +212,7 @@ const BF = (() => {
     if (block.type === 'conditionElement') return `Feltétel: elem megjelenik: ${block.target?.label || 'nincs kiválasztva'}`;
     if (block.type === 'conditionField') return `Feltétel: mezőérték ${operatorLabel(block.operator || 'contains')} ${short(block.value || '')}`;
     if (block.type === 'conditionUrl') return `Feltétel: URL ${operatorLabel(block.operator || 'contains')} ${short(block.value || '')}`;
+    if (block.type === 'conditionChange') return `Feltétel: érték változik ${changeModeLabel(block.changeMode || 'fromTo', block.fromValue || '', block.toValue || '')}`;
     if (block.type === 'ifBlock') return `Ha: ${conditionLabel(block)}`;
     if (block.type === 'repeatBlock') return `Ismételd ${block.repeatCount || 2} alkalommal`;
     if (block.type === 'popupWait') return 'Várj weboldali popupra';
@@ -273,6 +277,15 @@ const BF = (() => {
     return ({ all:'minden feltétel igaz', any:'bármelyik feltétel igaz', none:'egyik feltétel sem igaz' })[logic || 'all'] || logic;
   }
 
+  function changeModeLabel(mode, fromValue = '', toValue = '') {
+    const from = short(fromValue || 'bármi', 28);
+    const to = short(toValue || 'bármi', 28);
+    if (mode === 'anyTo') return `bármi → ${to}`;
+    if (mode === 'fromAny') return `${from} → bármi`;
+    if (mode === 'anyChange') return 'bármilyen változás';
+    return `${from} → ${to}`;
+  }
+
   function operatorLabel(op) {
     return ({ contains:'tartalmazza', notContains:'nem tartalmazza', equals:'pontosan ez', notEquals:'nem pontosan ez', empty:'üres', notEmpty:'nem üres', startsWith:'ezzel kezdődik', endsWith:'ezzel végződik' })[op || 'contains'] || op;
   }
@@ -298,6 +311,7 @@ const BF = (() => {
     if (block.type === 'conditionElement') return block.target?.label || 'Nincs cél elem';
     if (block.type === 'conditionField') return `${block.target?.label || 'nincs mező'} · ${operatorLabel(block.operator || 'contains')} · ${short(block.value || '')}`;
     if (block.type === 'conditionUrl') return `${operatorLabel(block.operator || 'contains')} · ${short(block.value || '')}`;
+    if (block.type === 'conditionChange') return `${block.target?.label || 'nincs mező'} · ${changeModeLabel(block.changeMode || 'fromTo', block.fromValue || '', block.toValue || '')} · ${operatorLabel(block.operator || 'equals')}`;
     if (block.type === 'ifBlock') return `Az alá behúzott ${Array.isArray(block.children)?block.children.length:0} blokk csak igaz feltételnél fut.`;
     if (block.type === 'repeatBlock') return `Az alá behúzott ${Array.isArray(block.children)?block.children.length:0} blokk ismétlődik.`;
     if (block.type === 'rowLoop') return `Max sor: ${block.maxRows || 20} · gyermek blokkok: ${(block.children||[]).length}`;
@@ -481,12 +495,17 @@ const BF = (() => {
     walkBlocks(workflow.blocks || [], b => {
       if (needsTarget.includes(b.type) && !b.target) issues.push({ level:'error', blockId:b.id, text:`${BLOCKS[b.type]?.name || b.type}: hiányzik a cél elem.` });
       if (b.type === 'triggerGroup' && b.triggerEnabled !== false && !(b.children || []).length) issues.push({ level:'error', blockId:b.id, text:'Figyelő trigger: legalább egy feltétel szükséges.' });
-      if ((b.type === 'conditionElement' || b.type === 'conditionField') && !b.target) issues.push({ level:'error', blockId:b.id, text:`${BLOCKS[b.type]?.name || b.type}: hiányzik a cél elem.` });
+      if ((b.type === 'conditionElement' || b.type === 'conditionField' || b.type === 'conditionChange') && !b.target) issues.push({ level:'error', blockId:b.id, text:`${BLOCKS[b.type]?.name || b.type}: hiányzik a cél elem.` });
       if (b.type === 'wait' && b.waitMode === 'element' && !b.target) issues.push({ level:'error', blockId:b.id, text:'Várakozás elemre: hiányzik a cél elem.' });
       if (b.type === 'ifBlock' && ['elementExists','valueContains'].includes(b.conditionMode) && !b.target) issues.push({ level:'error', blockId:b.id, text:'Ha blokk: hiányzik a cél elem.' });
       if (b.type === 'ifBlock' && b.conditionMode === 'textExists' && !String(b.text||'').trim()) issues.push({ level:'warning', blockId:b.id, text:'Ha blokk: üres keresett szöveg.' });
       if (b.type === 'conditionText' && !String(b.text||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Szöveg feltétel: üres figyelt szöveg.' });
       if (b.type === 'conditionUrl' && !['empty','notEmpty'].includes(b.operator || 'contains') && !String(b.value||'').trim()) issues.push({ level:'error', blockId:b.id, text:'URL feltétel: hiányzik az ellenőrzött érték.' });
+      if (b.type === 'conditionChange') {
+        const mode = b.changeMode || 'fromTo';
+        if ((mode === 'fromTo' || mode === 'anyTo') && !String(b.toValue||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Érték változik feltétel: hiányzik a célérték.' });
+        if ((mode === 'fromTo' || mode === 'fromAny') && !String(b.fromValue||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Érték változik feltétel: hiányzik a kiinduló érték.' });
+      }
       if (b.type === 'email' && !String(b.to||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Email blokk: hiányzik a címzett.' });
       if (b.type === 'mask' && !String(b.source||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Maszkolás blokk: hiányzik a forrás szöveg vagy változó.' });
       if (b.type === 'mask' && !String(b.resultName||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Maszkolás blokk: hiányzik az eredmény változó neve.' });
@@ -505,5 +524,5 @@ const BF = (() => {
     return n;
   }
 
-  return { SCHEMA_VERSION, DEFAULT_WORKFLOW, BLOCKS, PALETTE, newBlock, blockTitle, blockDesc, triggerLogicLabel, operatorLabel, getStore, saveWorkflow, setActiveWorkflow, downloadJson, exportPayload, analyzeImport, importPayload, sendToTarget, getTargetTab, collectVariables, collectVariableRefs, validateWorkflow, getTemplates, saveTemplates, getVersions, pushVersion, countBlocks, walkBlocks, short };
+  return { SCHEMA_VERSION, DEFAULT_WORKFLOW, BLOCKS, PALETTE, newBlock, blockTitle, blockDesc, triggerLogicLabel, operatorLabel, changeModeLabel, getStore, saveWorkflow, setActiveWorkflow, downloadJson, exportPayload, analyzeImport, importPayload, sendToTarget, getTargetTab, collectVariables, collectVariableRefs, validateWorkflow, getTemplates, saveTemplates, getVersions, pushVersion, countBlocks, walkBlocks, short };
 })();

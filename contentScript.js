@@ -1097,6 +1097,9 @@
   let watcherTimer = null;
   let watcherInterval = null;
   const firedWatchers = new Map();
+  // Session-alapú értékmemória változásfigyelő feltételekhez.
+  // Kulcs: workflow + trigger + feltétel + oldal URL. Oldalfrissítés után újratanul.
+  const watcherValueState = new Map();
   let extensionContextDead = false;
 
   function isExtensionContextAlive() {
@@ -1201,9 +1204,12 @@
   function compareTextValue(haystack, operator, needle, caseSensitive = false) {
     let h = String(haystack || '');
     let n = String(needle || '');
-    if (!caseSensitive) { h = h.toLowerCase(); n = n.toLowerCase(); }
     if (operator === 'empty') return !String(haystack || '').trim();
     if (operator === 'notEmpty') return Boolean(String(haystack || '').trim());
+    if (operator === 'regex') {
+      try { return new RegExp(n, caseSensitive ? '' : 'i').test(String(haystack || '')); } catch (_) { return false; }
+    }
+    if (!caseSensitive) { h = h.toLowerCase(); n = n.toLowerCase(); }
     if (operator === 'notContains') return !h.includes(n);
     if (operator === 'equals') return h === n;
     if (operator === 'notEquals') return h !== n;
@@ -1212,7 +1218,44 @@
     return Boolean(n && h.includes(n));
   }
 
-  function evalWatcherCondition(c) {
+  function watcherStateKey(w, c) {
+    const urlKey = location.href.split('#')[0];
+    return `${w.workflowId || ''}:${w.sourceBlockId || w.id || ''}:${c.id || c.type || ''}:${urlKey}`;
+  }
+
+  function evalChangeCondition(c, w) {
+    const el = findElement(c.target, { requireVisible: (c.searchScope || 'dom') === 'visible' });
+    if (!el) return false;
+    const currentValue = getElementValue(el, c.readMode || 'auto', c.attributeName || 'title');
+    const key = watcherStateKey(w || {}, c);
+    const prevRecord = watcherValueState.get(key);
+    watcherValueState.set(key, { value: currentValue, at: Date.now() });
+
+    const mode = c.changeMode || 'fromTo';
+    const operator = c.operator || 'equals';
+    const caseSensitive = Boolean(c.caseSensitive);
+
+    // Első ellenőrzéskor alapból csak tanul. Opcionálisan engedhető, hogy
+    // bármiről célértékre állapotként induljon, ha már most a célértéken van.
+    if (!prevRecord) {
+      if (c.firstRun === 'allowTo' && (mode === 'anyTo' || mode === 'fromTo')) {
+        return compareTextValue(currentValue, operator, c.toValue || '', caseSensitive);
+      }
+      return false;
+    }
+
+    const previousValue = prevRecord.value;
+    if (String(previousValue) === String(currentValue)) return false;
+
+    const fromOk = compareTextValue(previousValue, operator, c.fromValue || '', caseSensitive);
+    const toOk = compareTextValue(currentValue, operator, c.toValue || '', caseSensitive);
+    if (mode === 'anyChange') return true;
+    if (mode === 'anyTo') return toOk;
+    if (mode === 'fromAny') return fromOk;
+    return fromOk && toOk;
+  }
+
+  function evalWatcherCondition(c, w) {
     if (!c) return false;
     if (c.type === 'conditionText') {
       const bodyText = document.body.innerText || '';
@@ -1234,13 +1277,16 @@
     if (c.type === 'conditionUrl') {
       return compareTextValue(location.href, c.operator || 'contains', c.value || '', true);
     }
+    if (c.type === 'conditionChange') {
+      return evalChangeCondition(c, w);
+    }
     return false;
   }
 
   function evalWatcherGroup(w) {
     const conditions = Array.isArray(w.conditions) ? w.conditions : [];
     if (!conditions.length) return false;
-    const results = conditions.map(evalWatcherCondition);
+    const results = conditions.map(c => evalWatcherCondition(c, w));
     if ((w.logic || 'all') === 'any') return results.some(Boolean);
     if ((w.logic || 'all') === 'none') return !results.some(Boolean);
     return results.every(Boolean);
