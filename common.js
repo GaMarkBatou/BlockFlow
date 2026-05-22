@@ -1,5 +1,5 @@
 const BF = (() => {
-  const SCHEMA_VERSION = 11;
+  const SCHEMA_VERSION = 12;
 
   const DEFAULT_WORKFLOW = () => ({
     id: crypto.randomUUID(),
@@ -18,6 +18,7 @@ const BF = (() => {
     conditionField: { name: 'Feltétel: mezőérték', desc: 'Igaz, ha egy mező értéke megfelel a megadott feltételnek.' },
     conditionUrl: { name: 'Feltétel: URL', desc: 'Igaz, ha az aktuális URL megfelel a megadott feltételnek.' },
     conditionChange: { name: 'Feltétel: érték változik', desc: 'Igaz, ha egy mező/szöveg az előző figyelési körhöz képest a megadott irányba változik.' },
+    conditionGroup: { name: 'Feltételcsoport', desc: 'Figyelőn belüli logikai csoport: minden/bármelyik/egyik sem feltétel igaz.' },
     click: { name: 'Kattintás', desc: 'Kattint egy kiválasztott oldalelemre.' },
     fill: { name: 'Beillesztés / kitöltés', desc: 'Szöveget ír egy mezőbe.' },
     extract: { name: 'Adat kinyerése', desc: 'Szöveget vagy mezőértéket változóba ment.' },
@@ -70,6 +71,12 @@ const BF = (() => {
     returnResult: { name: 'Eredmény visszaadása', desc: 'Workflow eredményváltozót állít be.' },
     stopRun: { name: 'Leállítás', desc: 'Megállítja a futást megadott üzenettel.' },
     sound: { name: 'Hangjelzés', desc: 'Rövid hangjelzést ad.' },
+    pdfStart: { name: 'PDF indítása', desc: 'Új PDF dokumentum létrehozása futás közben.' },
+    pdfText: { name: 'PDF szöveg hozzáadása', desc: 'Szöveget, címsort vagy megjegyzést ad az aktuális PDF-hez.' },
+    pdfTable: { name: 'PDF táblázat hozzáadása', desc: 'Kulcs-érték vagy oszlopos táblázatot ad az aktuális PDF-hez.' },
+    pdfScreenshot: { name: 'PDF screenshot hozzáadása', desc: 'Képernyőképet ad az aktuális PDF-hez.' },
+    pdfPageBreak: { name: 'PDF új oldal', desc: 'Oldaltörést szúr be az aktuális PDF-be.' },
+    pdfSave: { name: 'PDF mentése / előnézet', desc: 'Az összeállított PDF letöltése vagy előnézete.' },
     scheduledTrigger: { name: 'Időzített indítás', desc: 'Automatikus indítás időközönként vagy megadott időpontban.' },
     systemNotify: { name: 'Rendszerértesítés', desc: 'Chrome rendszerértesítést küld szerkeszthető szöveggel.' }
   };
@@ -83,6 +90,7 @@ const BF = (() => {
     { cat: 'Figyelő feltételek', type: 'conditionField' },
     { cat: 'Figyelő feltételek', type: 'conditionUrl' },
     { cat: 'Figyelő feltételek', type: 'conditionChange' },
+    { cat: 'Figyelő feltételek', type: 'conditionGroup' },
     { cat: 'Műveletek', type: 'click' },
     { cat: 'Műveletek', type: 'fill' },
     { cat: 'Műveletek', type: 'wait' },
@@ -127,6 +135,12 @@ const BF = (() => {
     { cat: 'Popup', type: 'popupWindowWait' },
     { cat: 'Popup', type: 'popupWindowExtract' },
     { cat: 'Popup', type: 'popupWindowClose' },
+    { cat: 'PDF', type: 'pdfStart' },
+    { cat: 'PDF', type: 'pdfText' },
+    { cat: 'PDF', type: 'pdfTable' },
+    { cat: 'PDF', type: 'pdfScreenshot' },
+    { cat: 'PDF', type: 'pdfPageBreak' },
+    { cat: 'PDF', type: 'pdfSave' },
     { cat: 'Haladó', type: 'iframeBlock' },
     { cat: 'Email', type: 'email' },
     { cat: 'Email', type: 'openEmail' },
@@ -149,6 +163,7 @@ const BF = (() => {
     if (type === 'conditionField') return { id, type, target: null, operator: 'contains', value: '', caseSensitive: false };
     if (type === 'conditionUrl') return { id, type, operator: 'contains', value: '' };
     if (type === 'conditionChange') return { id, type, target: null, readMode: 'auto', attributeName: 'title', searchScope: 'dom', changeMode: 'fromTo', fromValue: '', toValue: '', operator: 'equals', caseSensitive: false, firstRun: 'learn' };
+    if (type === 'conditionGroup') return { id, type, logic: 'all', children: [] };
     if (type === 'ifBlock') return { id, type, conditionMode: 'textExists', text: '', target: null, timeoutMs: 1000, value: '', children: [], elseChildren: [] };
     if (type === 'repeatBlock') return { id, type, repeatCount: 2, children: [] };
     if (type === 'popupWait') return { id, type, timeoutMs: 10000 };
@@ -198,6 +213,12 @@ const BF = (() => {
     if (type === 'scheduledTrigger') return { id, type, triggerEnabled: true, scheduleMode: 'interval', intervalMinutes: 15, timeOfDay: '08:00', days: 'mon,tue,wed,thu,fri' };
     if (type === 'userPrompt') return { id, type, title: 'BlockFlow', message: 'Ellenőrizd az eredményt, majd folytasd.', mode: 'wait', buttonText: 'Folytatás', cancelText: 'Megszakítás', resultName: '' };
     if (type === 'systemNotify') return { id, type, title: 'BlockFlow', message: 'Az automatizmus elért egy értesítési ponthoz.' };
+    if (type === 'pdfStart') return { id, type, title: 'BlockFlow riport', fileName: 'blockflow-riport.pdf', pageSize: 'a4', orientation: 'portrait', margin: 40, fontSize: 11, header: '', footer: 'date,page,url' };
+    if (type === 'pdfText') return { id, type, heading: '', text: 'Szöveg: {{adat}}', style: 'normal', align: 'left', fontSize: 11, spaceAfter: 10 };
+    if (type === 'pdfTable') return { id, type, title: 'Adatok', rows: 'Ticket | {{ticket_id}}\nStátusz | {{status}}', border: true, columnMode: '30/70', emptyValue: '-' };
+    if (type === 'pdfScreenshot') return { id, type, source: 'current', dataVar: 'screenshot_data_url', caption: 'Képernyőkép', sizeMode: 'fitWidth', pageBreakBefore: false, border: true };
+    if (type === 'pdfPageBreak') return { id, type, onlyIfLowSpace: false };
+    if (type === 'pdfSave') return { id, type, action: 'downloadPreview', fileName: '{{today}}_blockflow-riport.pdf', previewBeforeSave: false };
     return { id, type };
   }
 
@@ -213,6 +234,7 @@ const BF = (() => {
     if (block.type === 'conditionField') return `Feltétel: mezőérték ${operatorLabel(block.operator || 'contains')} ${short(block.value || '')}`;
     if (block.type === 'conditionUrl') return `Feltétel: URL ${operatorLabel(block.operator || 'contains')} ${short(block.value || '')}`;
     if (block.type === 'conditionChange') return `Feltétel: érték változik ${changeModeLabel(block.changeMode || 'fromTo', block.fromValue || '', block.toValue || '')}`;
+    if (block.type === 'conditionGroup') return `Feltételcsoport: ${triggerLogicLabel(block.logic || 'all')}`;
     if (block.type === 'ifBlock') return `Ha: ${conditionLabel(block)}`;
     if (block.type === 'repeatBlock') return `Ismételd ${block.repeatCount || 2} alkalommal`;
     if (block.type === 'popupWait') return 'Várj weboldali popupra';
@@ -259,6 +281,12 @@ const BF = (() => {
     if (block.type === 'returnResult') return `Eredmény visszaadása → {{${block.resultName || 'result'}}}`;
     if (block.type === 'stopRun') return `Leállítás`;
     if (block.type === 'sound') return `Hangjelzés: ${block.tone || 'success'}`;
+    if (block.type === 'pdfStart') return `PDF indítása: ${short(block.fileName || 'riport.pdf')}`;
+    if (block.type === 'pdfText') return `PDF szöveg: ${short(block.heading || block.text || '')}`;
+    if (block.type === 'pdfTable') return `PDF táblázat: ${short(block.title || 'Adatok')}`;
+    if (block.type === 'pdfScreenshot') return `PDF screenshot: ${short(block.caption || block.source || '')}`;
+    if (block.type === 'pdfPageBreak') return 'PDF új oldal';
+    if (block.type === 'pdfSave') return `PDF mentése: ${short(block.fileName || 'riport.pdf')}`;
     if (block.type === 'scheduledTrigger') return `Időzített indítás: ${block.scheduleMode === 'daily' ? block.timeOfDay : (block.intervalMinutes || 15) + ' percenként'}`;
     if (block.type === 'userPrompt') return `${block.mode === 'wait' ? 'Várj visszajelzésre' : 'Felugró üzenet'}: ${short(block.title || 'BlockFlow')}`;
     if (block.type === 'systemNotify') return `Rendszerértesítés: ${short(block.title || 'BlockFlow')}`;
@@ -296,6 +324,11 @@ const BF = (() => {
     if (block.type === 'wait') return block.waitMode === 'text' ? `Szöveg: ${block.text || ''}` : (block.target?.label || '');
     if (block.type === 'userPrompt') return `${block.mode === 'wait' ? 'megáll és visszajelzésre vár' : 'csak értesít'} · ${short(block.message || '')}`;
     if (block.type === 'systemNotify') return short(block.message || '');
+    if (block.type === 'pdfStart') return `${block.pageSize || 'A4'} · ${block.orientation === 'landscape' ? 'fekvő' : 'álló'} · margó ${block.margin || 40}`;
+    if (block.type === 'pdfText') return short(block.text || '');
+    if (block.type === 'pdfTable') return `${(block.rows || '').split('\n').filter(Boolean).length} sor`;
+    if (block.type === 'pdfScreenshot') return `${block.source || 'current'} · ${block.sizeMode || 'fitWidth'}`;
+    if (block.type === 'pdfSave') return block.action || 'downloadPreview';
     if (block.type === 'triggerGroup') {
       const scope = block.scope || 'domain';
       const labels = { domain:'domain', path:'domain + path', exact:'pontos URL', contains:'URL tartalmazza', any:'bármely oldal' };

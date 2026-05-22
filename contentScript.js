@@ -595,6 +595,223 @@
     return response;
   }
 
+
+  function pdfDefaultOptions(block = {}, vars = {}) {
+    const size = (block.pageSize || 'a4').toLowerCase();
+    const base = size === 'letter' ? [612, 792] : size === 'legal' ? [612, 1008] : [595.28, 841.89];
+    const landscape = (block.orientation || 'portrait') === 'landscape';
+    return {
+      title: interpolate(block.title || 'BlockFlow riport', vars),
+      fileName: interpolate(block.fileName || 'blockflow-riport.pdf', vars),
+      width: landscape ? base[1] : base[0],
+      height: landscape ? base[0] : base[1],
+      margin: Number(block.margin || 40),
+      fontSize: Number(block.fontSize || 11),
+      header: interpolate(block.header || '', vars),
+      footer: interpolate(block.footer || 'date,page,url', vars)
+    };
+  }
+
+  function ensurePdf(vars, block = {}) {
+    if (!vars.__bfPdf) vars.__bfPdf = { options: pdfDefaultOptions(block, vars), items: [] };
+    return vars.__bfPdf;
+  }
+
+  function pdfCleanText(value) {
+    return String(value ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  }
+
+  function pdfEscape(value) {
+    return pdfCleanText(value)
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[őŐűŰ]/g, m => ({'ő':'o','Ő':'O','ű':'u','Ű':'U'}[m] || m))
+      .replace(/[\\()]/g, '\\$&')
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ');
+  }
+
+  function wrapPdfLine(text, maxWidth, fontSize) {
+    const approx = Math.max(10, Math.floor(maxWidth / (fontSize * 0.52)));
+    const words = String(text || '').split(/\s+/);
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const next = line ? line + ' ' + word : word;
+      if (next.length > approx && line) { lines.push(line); line = word; }
+      else line = next;
+    }
+    if (line) lines.push(line);
+    return lines.length ? lines : [''];
+  }
+
+  function dataUrlToBinary(dataUrl) {
+    const m = String(dataUrl || '').match(/^data:[^,]+,(.*)$/);
+    return m ? atob(m[1]) : '';
+  }
+
+  async function imageDataUrlToJpeg(dataUrl, maxWidth = 1200) {
+    return await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, maxWidth / Math.max(1, img.naturalWidth || img.width));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
+          canvas.height = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: canvas.width, height: canvas.height });
+        } catch (err) { reject(err); }
+      };
+      img.onerror = () => reject(new Error('Screenshot kép nem tölthető be PDF-hez.'));
+      img.src = dataUrl;
+    });
+  }
+
+  async function getPdfScreenshotData(block, vars, dryRun) {
+    if (dryRun) return '';
+    if ((block.source || 'current') === 'last') return vars[block.dataVar || 'screenshot_data_url'] || '';
+    if ((block.source || 'current') === 'variable') return vars[block.dataVar || 'screenshot_data_url'] || '';
+    const res = await safeRuntimeSend({ type: 'BF_CAPTURE_VISIBLE_TAB', openPreview: false, restoreFocus: true });
+    if (!res?.ok) throw new Error(res?.error || 'PDF screenshot készítése sikertelen.');
+    vars[block.dataVar || 'screenshot_data_url'] = res.dataUrl || '';
+    return res.dataUrl || '';
+  }
+
+  function makeDownloadName(name) {
+    const n = String(name || 'blockflow-riport.pdf').trim() || 'blockflow-riport.pdf';
+    return n.toLowerCase().endsWith('.pdf') ? n : n + '.pdf';
+  }
+
+  async function buildPdfBlob(pdf, vars) {
+    const opt = pdf.options || pdfDefaultOptions({}, vars);
+    const margin = Number(opt.margin || 40);
+    const pageW = Number(opt.width || 595.28);
+    const pageH = Number(opt.height || 841.89);
+    const contentW = pageW - margin * 2;
+    const objects = [];
+    const addObj = content => { objects.push(content); return objects.length; };
+    const fontId = addObj('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+    const pagesId = addObj('PAGES_PLACEHOLDER');
+    const pages = [];
+    let page = null;
+    function newPage() { page = { ops: [], images: [] }; pages.push(page); addHeaderFooter(); }
+    function addHeaderFooter() {
+      if (opt.header) addText(opt.header, 9, 'left', 6);
+    }
+    function ensureSpace(h) { if (!page) newPage(); if (page.y - h < margin) newPage(); }
+    function addOp(op) { if (!page) newPage(); page.ops.push(op); }
+    function setYInitial() { if (page && page.y == null) page.y = pageH - margin - (opt.header ? 18 : 0); }
+    function addText(text, fontSize, align = 'left', spaceAfter = 8) {
+      if (!page) newPage(); setYInitial();
+      const lines = pdfCleanText(text).split('\n').flatMap(line => wrapPdfLine(line, contentW, fontSize));
+      const lineH = fontSize * 1.35;
+      ensureSpace(lines.length * lineH + spaceAfter);
+      setYInitial();
+      for (const ln of lines) {
+        let x = margin;
+        const approxW = String(ln).length * fontSize * 0.52;
+        if (align === 'center') x = margin + Math.max(0, (contentW - approxW) / 2);
+        if (align === 'right') x = margin + Math.max(0, contentW - approxW);
+        addOp(`BT /F1 ${fontSize} Tf ${x.toFixed(2)} ${page.y.toFixed(2)} Td (${pdfEscape(ln)}) Tj ET`);
+        page.y -= lineH;
+      }
+      page.y -= Number(spaceAfter || 0);
+    }
+    function addTable(title, rows, block) {
+      if (title) addText(title, 13, 'left', 6);
+      const parsed = pdfCleanText(rows).split('\n').filter(Boolean).map(r => {
+        const parts = r.includes('|') ? r.split('|') : r.split(':');
+        return [parts.shift()?.trim() || '', parts.join('|').trim() || ''];
+      });
+      const fontSize = 10;
+      const lineH = 16;
+      const firstW = block.columnMode === '50/50' ? contentW * 0.5 : contentW * 0.32;
+      for (const [a, b] of parsed) {
+        ensureSpace(lineH + 4); setYInitial();
+        const y = page.y;
+        const empty = block.emptyValue ?? '-';
+        addOp(`BT /F1 ${fontSize} Tf ${margin.toFixed(2)} ${y.toFixed(2)} Td (${pdfEscape(a || empty)}) Tj ET`);
+        addOp(`BT /F1 ${fontSize} Tf ${(margin + firstW).toFixed(2)} ${y.toFixed(2)} Td (${pdfEscape(b || empty)}) Tj ET`);
+        if (block.border !== false) addOp(`${margin.toFixed(2)} ${(y - 4).toFixed(2)} ${contentW.toFixed(2)} ${lineH.toFixed(2)} re S`);
+        page.y -= lineH;
+      }
+      page.y -= 8;
+    }
+    async function addImage(item) {
+      if (!item.dataUrl) return;
+      if (item.pageBreakBefore) newPage();
+      const jpg = await imageDataUrlToJpeg(item.dataUrl);
+      const ratio = jpg.height / Math.max(1, jpg.width);
+      let drawW = item.sizeMode === 'original' ? Math.min(contentW, jpg.width * 0.5) : contentW;
+      let drawH = drawW * ratio;
+      if (item.sizeMode === 'fitPage' && drawH > pageH - margin * 2) { drawH = pageH - margin * 2; drawW = drawH / ratio; }
+      ensureSpace(drawH + 40); setYInitial();
+      if (item.caption) addText(item.caption, 10, 'left', 4);
+      ensureSpace(drawH + 10); setYInitial();
+      const name = `Im${page.images.length + 1}`;
+      page.images.push({ name, data: dataUrlToBinary(jpg.dataUrl), width: jpg.width, height: jpg.height });
+      addOp(`q ${drawW.toFixed(2)} 0 0 ${drawH.toFixed(2)} ${margin.toFixed(2)} ${(page.y - drawH).toFixed(2)} cm /${name} Do Q`);
+      if (item.border !== false) addOp(`${margin.toFixed(2)} ${(page.y - drawH).toFixed(2)} ${drawW.toFixed(2)} ${drawH.toFixed(2)} re S`);
+      page.y -= drawH + 12;
+    }
+
+    newPage();
+    if (opt.title) addText(opt.title, 16, 'left', 12);
+    for (const item of pdf.items || []) {
+      if (item.type === 'pageBreak') { if (!item.onlyIfLowSpace || (page.y < pageH * 0.35)) newPage(); continue; }
+      if (item.type === 'text') {
+        const size = Number(item.fontSize || opt.fontSize || 11) + (item.style === 'heading' ? 4 : item.style === 'subtitle' ? 2 : 0);
+        if (item.heading) addText(item.heading, Math.max(size + 2, 13), item.align || 'left', 5);
+        addText(item.text || '', size, item.align || 'left', item.spaceAfter ?? 10);
+      }
+      if (item.type === 'table') addTable(item.title, item.rows, item);
+      if (item.type === 'image') await addImage(item);
+    }
+
+    const pageIds = [];
+    for (let pi = 0; pi < pages.length; pi++) {
+      const pg = pages[pi];
+      const xobj = [];
+      for (const img of pg.images) {
+        const id = addObj(`<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.data.length} >>\nstream\n${img.data}\nendstream`);
+        xobj.push(`/${img.name} ${id} 0 R`);
+      }
+      const footerText = String(opt.footer || '').includes('page') ? `Oldal ${pi + 1}/${pages.length}` : '';
+      if (footerText) pg.ops.push(`BT /F1 8 Tf ${margin.toFixed(2)} 22 Td (${pdfEscape(footerText)}) Tj ET`);
+      const stream = pg.ops.join('\n');
+      const contentId = addObj(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+      const pageId = addObj(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageW.toFixed(2)} ${pageH.toFixed(2)}] /Resources << /Font << /F1 ${fontId} 0 R >> ${xobj.length ? `/XObject << ${xobj.join(' ')} >>` : ''} >> /Contents ${contentId} 0 R >>`);
+      pageIds.push(pageId);
+    }
+    objects[pagesId - 1] = `<< /Type /Pages /Kids [${pageIds.map(id => `${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;
+    const catalogId = addObj(`<< /Type /Catalog /Pages ${pagesId} 0 R >>`);
+    let out = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
+    const offsets = [0];
+    for (let i = 0; i < objects.length; i++) {
+      offsets.push(out.length);
+      out += `${i + 1} 0 obj\n${objects[i]}\nendobj\n`;
+    }
+    const xrefAt = out.length;
+    out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+    for (let i = 1; i < offsets.length; i++) out += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+    out += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefAt}\n%%EOF`;
+    const bytes = new Uint8Array(out.length);
+    for (let i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i) & 255;
+    return new Blob([bytes], { type: 'application/pdf' });
+  }
+
+  function saveOrPreviewPdfBlob(blob, fileName, action) {
+    const url = URL.createObjectURL(blob);
+    if (action === 'preview' || action === 'downloadPreview') window.open(url, '_blank');
+    if (action === 'download' || action === 'downloadPreview') {
+      const a = document.createElement('a');
+      a.href = url; a.download = makeDownloadName(fileName);
+      document.documentElement.appendChild(a); a.click(); a.remove();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }
+
   async function executeBlock(block, vars, options = {}) {
     const dryRun = Boolean(options.dryRun);
     if (block.type === 'trigger' || block.type === 'triggerGroup' || String(block.type || '').startsWith('condition')) return { skipped: true };
@@ -797,6 +1014,43 @@
         await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]).catch(async () => { await copyText(dataUrl); });
       }
       return { ok: true, dryRun, dataUrl: dataUrl ? '[captured]' : '' };
+    }
+
+    if (block.type === 'pdfStart') {
+      vars.__bfPdf = { options: pdfDefaultOptions(block, vars), items: [] };
+      return { ok: true, fileName: vars.__bfPdf.options.fileName };
+    }
+    if (block.type === 'pdfText') {
+      const pdf = ensurePdf(vars, {});
+      pdf.items.push({ type: 'text', heading: interpolate(block.heading || '', vars), text: interpolate(block.text || '', vars), style: block.style || 'normal', align: block.align || 'left', fontSize: Number(block.fontSize || pdf.options.fontSize || 11), spaceAfter: Number(block.spaceAfter || 10) });
+      return { ok: true };
+    }
+    if (block.type === 'pdfTable') {
+      const pdf = ensurePdf(vars, {});
+      pdf.items.push({ type: 'table', title: interpolate(block.title || '', vars), rows: interpolate(block.rows || '', vars), border: block.border !== false, columnMode: block.columnMode || '30/70', emptyValue: interpolate(block.emptyValue || '-', vars) });
+      return { ok: true };
+    }
+    if (block.type === 'pdfScreenshot') {
+      const pdf = ensurePdf(vars, {});
+      const dataUrl = await getPdfScreenshotData(block, vars, dryRun);
+      pdf.items.push({ type: 'image', dataUrl, caption: interpolate(block.caption || '', vars), sizeMode: block.sizeMode || 'fitWidth', pageBreakBefore: Boolean(block.pageBreakBefore), border: block.border !== false });
+      return { ok: true, dryRun, dataUrl: dataUrl ? '[captured]' : '' };
+    }
+    if (block.type === 'pdfPageBreak') {
+      const pdf = ensurePdf(vars, {});
+      pdf.items.push({ type: 'pageBreak', onlyIfLowSpace: Boolean(block.onlyIfLowSpace) });
+      return { ok: true };
+    }
+    if (block.type === 'pdfSave') {
+      const pdf = ensurePdf(vars, {});
+      if (!pdf.items.length) throw new Error('PDF mentés: nincs PDF tartalom.' );
+      const fileName = interpolate(block.fileName || pdf.options.fileName || 'blockflow-riport.pdf', vars);
+      if (!dryRun) {
+        const blob = await buildPdfBlob(pdf, vars);
+        saveOrPreviewPdfBlob(blob, fileName, block.action || 'downloadPreview');
+      }
+      vars.pdf_file_name = makeDownloadName(fileName);
+      return { ok: true, fileName: vars.pdf_file_name, dryRun };
     }
     if (block.type === 'preflight') {
       const ok = Boolean(findElement(block.target, { requireVisible: Boolean(block.requireVisible) }));
@@ -1344,6 +1598,14 @@
     }
     if (c.type === 'conditionChange') {
       return evalChangeCondition(c, w);
+    }
+    if (c.type === 'conditionGroup') {
+      const children = Array.isArray(c.children) ? c.children : [];
+      if (!children.length) return false;
+      const results = children.map(child => evalWatcherCondition(child, w));
+      if ((c.logic || 'all') === 'any') return results.some(Boolean);
+      if ((c.logic || 'all') === 'none') return !results.some(Boolean);
+      return results.every(Boolean);
     }
     return false;
   }

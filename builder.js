@@ -9,7 +9,7 @@ let currentTargetPath = '/';
 let isDirty = false;
 
 const $ = sel => document.querySelector(sel);
-const CONTAINERS = new Set(['ifBlock', 'repeatBlock', 'rowLoop', 'triggerGroup', 'tryBlock', 'retryBlock', 'elementLoop', 'iframeBlock', 'groupBlock']);
+const CONTAINERS = new Set(['ifBlock', 'repeatBlock', 'rowLoop', 'triggerGroup', 'conditionGroup', 'tryBlock', 'retryBlock', 'elementLoop', 'iframeBlock', 'groupBlock']);
 
 async function init() {
   const store = await BF.getStore();
@@ -185,7 +185,7 @@ function renderPalette() {
       ? `<div class="status">Kiválasztott konténer: <b>${escapeHtml(BF.BLOCKS[selected.type].name)}</b>. Az új blokkok ide, behúzva kerülnek.</div>`
       : `<div class="status muted">Konténer kijelölésekor az új blokkok automatikusan alá kerülnek behúzva.</div>`);
   $('#palette').innerHTML = hint + Object.entries(grouped).map(([cat, items]) => `<div class="section-title">${cat}</div>` + items.map(item => {
-    const disabled = (needsStarter && !['trigger','triggerGroup','scheduledTrigger'].includes(item.type)) || (item.type.startsWith('condition') && selected?.type !== 'triggerGroup');
+    const disabled = (needsStarter && !['trigger','triggerGroup','scheduledTrigger'].includes(item.type)) || (item.type.startsWith('condition') && !['triggerGroup','conditionGroup'].includes(selected?.type));
     return `<button class="palette-btn ${disabled?'disabled':''}" data-add="${item.type}" draggable="${disabled ? 'false' : 'true'}" ${disabled?'disabled title="Először válassz indító blokkot, figyelő feltételnél pedig jelölj ki egy Figyelő triggert."':'title="Kattints a hozzáadáshoz, vagy húzd be a megfelelő helyre."'}><span>${BF.BLOCKS[item.type].name}</span><span>+</span></button>`;
   }).join('')).join('');
   document.querySelectorAll('[data-add]').forEach(b => {
@@ -239,12 +239,13 @@ function canPlaceBlockInContainer(block, containerId, silent = false) {
   const target = findBlock(realContainerId)?.block;
   if (!target || !CONTAINERS.has(target.type)) return false;
   const isCondition = String(block.type || '').startsWith('condition');
-  if (target.type === 'triggerGroup' && !isCondition) {
-    if (!silent) alert('A Figyelő trigger alá csak figyelő feltétel blokkok húzhatók.');
+  const isWatcherConditionContainer = target.type === 'triggerGroup' || target.type === 'conditionGroup';
+  if (isWatcherConditionContainer && !isCondition) {
+    if (!silent) alert('A Figyelő trigger/feltételcsoport alá csak figyelő feltétel blokkok húzhatók.');
     return false;
   }
-  if (target.type !== 'triggerGroup' && isCondition) {
-    if (!silent) alert('Figyelő feltétel csak Figyelő trigger alá kerülhet.');
+  if (!isWatcherConditionContainer && isCondition) {
+    if (!silent) alert('Figyelő feltétel csak Figyelő trigger vagy Feltételcsoport alá kerülhet.');
     return false;
   }
   return true;
@@ -305,7 +306,7 @@ function renderBlockList(blocks, level, parentId) {
     let childHtml = '';
     if (CONTAINERS.has(b.type)) {
       childHtml = `<div class="container-body" data-drop-container="${b.id}">
-        <div class="container-label">${b.type === 'triggerGroup' ? 'FIGYELŐ FELTÉTELEK - ezek döntik el, indul-e az automatizmus' : (b.type === 'ifBlock' ? 'HA IGAZ - behúzott blokkok' : (b.type === 'tryBlock' ? 'PRÓBÁLD MEG - behúzott blokkok' : 'A blokk hatása alá tartozó behúzott blokkok'))}</div>
+        <div class="container-label">${b.type === 'triggerGroup' ? 'FIGYELŐ FELTÉTELEK - ezek döntik el, indul-e az automatizmus' : (b.type === 'conditionGroup' ? 'FELTÉTELCSOPORT - ide további figyelő feltételek kerülnek' : (b.type === 'ifBlock' ? 'HA IGAZ - behúzott blokkok' : (b.type === 'tryBlock' ? 'PRÓBÁLD MEG - behúzott blokkok' : 'A blokk hatása alá tartozó behúzott blokkok')))}</div>
         ${renderBlockList(b.children || [], level + 1, b.id)}
       </div>`;
       if (b.type === 'ifBlock' || b.type === 'tryBlock') {
@@ -335,7 +336,7 @@ function renderBlockList(blocks, level, parentId) {
 }
 
 function blockIcon(b) {
-  const map = { trigger:'▶', triggerGroup:'◎', scheduledTrigger:'⏲', conditionText:'T', conditionElement:'◇', conditionField:'▣', conditionUrl:'URL', conditionChange:'Δ', click:'⌁', fill:'✎', extract:'⇣', wait:'⏱', waitUntil:'⏳', ifBlock:'?', repeatBlock:'↻', retryBlock:'⟳', tryBlock:'⚑', popupWait:'▣', popupExtract:'▣', popupClick:'▣', popupWindowWait:'◱', popupWindowExtract:'⇣', popupWindowClose:'×', copy:'⧉', clipboardRead:'⧉', email:'✉', emailTemplate:'✉', emailPreview:'✉', openEmail:'↗', rowLoop:'≡', elementLoop:'⋮', tableExtract:'▦', mask:'◩', transform:'A', textSlice:'✂', regex:'.*', setVar:'=', userPrompt:'💬', userInput:'⌨', userChoice:'☑', systemNotify:'🔔', scroll:'↕', keyPress:'⌨', openUrl:'↗', pageInfo:'ⓘ', screenshot:'▣', preflight:'✓', localSet:'⬇', localGet:'⬆', compare:'=', math:'#', iframeBlock:'▤', findElements:'◇', validateData:'✓', comment:'//', groupBlock:'▣', callWorkflow:'↪', returnResult:'↩', stopRun:'■', sound:'♪' };
+  const map = { trigger:'▶', triggerGroup:'◎', scheduledTrigger:'⏲', conditionText:'T', conditionElement:'◇', conditionField:'▣', conditionUrl:'URL', conditionChange:'Δ', conditionGroup:'∧∨', click:'⌁', fill:'✎', extract:'⇣', wait:'⏱', waitUntil:'⏳', ifBlock:'?', repeatBlock:'↻', retryBlock:'⟳', tryBlock:'⚑', popupWait:'▣', popupExtract:'▣', popupClick:'▣', popupWindowWait:'◱', popupWindowExtract:'⇣', popupWindowClose:'×', copy:'⧉', clipboardRead:'⧉', email:'✉', emailTemplate:'✉', emailPreview:'✉', openEmail:'↗', rowLoop:'≡', elementLoop:'⋮', tableExtract:'▦', mask:'◩', transform:'A', textSlice:'✂', regex:'.*', setVar:'=', userPrompt:'💬', userInput:'⌨', userChoice:'☑', systemNotify:'🔔', scroll:'↕', keyPress:'⌨', openUrl:'↗', pageInfo:'ⓘ', screenshot:'▣', pdfStart:'PDF', pdfText:'¶', pdfTable:'▦', pdfScreenshot:'▣', pdfPageBreak:'↡', pdfSave:'⬇', preflight:'✓', localSet:'⬇', localGet:'⬆', compare:'=', math:'#', iframeBlock:'▤', findElements:'◇', validateData:'✓', comment:'//', groupBlock:'▣', callWorkflow:'↪', returnResult:'↩', stopRun:'■', sound:'♪' };
   return map[b.type] || '•';
 }
 function inlineChip(label, value) { return `<span class="inline-chip"><span>${escapeHtml(label)}</span><b>${escapeHtml(value || '—')}</b></span>`; }
@@ -373,6 +374,14 @@ function blockInline(b) {
   if (b.type === 'conditionField') return `${inlinePick(b, 'Mező')} ${inlineSelect('operator', b.operator || 'contains', [['contains','tartalmazza'],['notContains','nem tartalmazza'],['equals','pontosan'],['notEquals','nem pontosan'],['empty','üres'],['notEmpty','nem üres'],['startsWith','ezzel kezdődik'],['endsWith','ezzel végződik']])} ${['empty','notEmpty'].includes(b.operator || 'contains') ? '' : inlineInput('value', b.value || '', 'érték')}`;
   if (b.type === 'conditionUrl') return `${inlineSelect('operator', b.operator || 'contains', [['contains','tartalmazza'],['notContains','nem tartalmazza'],['equals','pontosan'],['notEquals','nem pontosan'],['startsWith','ezzel kezdődik'],['endsWith','ezzel végződik']])} ${inlineInput('value', b.value || '', 'URL érték', 'wide')}`;
   if (b.type === 'conditionChange') return `${inlinePick(b, 'Forrás')} ${inlineSelect('changeMode', b.changeMode || 'fromTo', [['fromTo','miről → mire'],['anyTo','bármiről → mire'],['fromAny','miről → bármire'],['anyChange','bármilyen változás']])} ${['fromTo','fromAny'].includes(b.changeMode || 'fromTo') ? inlineInput('fromValue', b.fromValue || '', 'miről') : ''} ${['fromTo','anyTo'].includes(b.changeMode || 'fromTo') ? inlineInput('toValue', b.toValue || '', 'mire') : ''} ${inlineSelect('operator', b.operator || 'equals', [['equals','pontosan'],['contains','tartalmazza'],['regex','regex']])} ${inlineCheck('caseSensitive', Boolean(b.caseSensitive), 'kis/nagybetű')}`;
+
+  if (b.type === 'conditionGroup') return `${inlineSelect('logic', b.logic || 'all', [['all','minden feltétel'],['any','bármelyik feltétel'],['none','egyik sem']])} ${(b.children || []).length} feltétel`;
+  if (b.type === 'pdfStart') return `${inlineInput('fileName', b.fileName || 'riport.pdf', 'fájlnév', 'wide')} ${inlineSelect('pageSize', b.pageSize || 'a4', [['a4','A4'],['letter','Letter'],['legal','Legal']])} ${inlineSelect('orientation', b.orientation || 'portrait', [['portrait','álló'],['landscape','fekvő']])}`;
+  if (b.type === 'pdfText') return `${inlineInput('heading', b.heading || '', 'címsor')} ${inlineInput('text', b.text || '', 'szöveg', 'wide')}`;
+  if (b.type === 'pdfTable') return `${inlineInput('title', b.title || 'Adatok', 'táblázat címe')} ${inlineCheck('border', b.border !== false, 'szegély')}`;
+  if (b.type === 'pdfScreenshot') return `${inlineSelect('source', b.source || 'current', [['current','aktuális oldal'],['last','utolsó screenshot'],['variable','változó']])} ${inlineInput('caption', b.caption || '', 'felirat')} ${inlineSelect('sizeMode', b.sizeMode || 'fitWidth', [['fitWidth','teljes szélesség'],['original','eredeti'],['fitPage','oldalhoz igazítva']])}`;
+  if (b.type === 'pdfPageBreak') return `${inlineCheck('onlyIfLowSpace', Boolean(b.onlyIfLowSpace), 'csak ha kevés hely van')}`;
+  if (b.type === 'pdfSave') return `${inlineSelect('action', b.action || 'downloadPreview', [['download','letöltés'],['preview','előnézet'],['downloadPreview','letöltés + előnézet']])} ${inlineInput('fileName', b.fileName || '{{today}}_riport.pdf', 'fájlnév', 'wide')}`;
   if (b.type === 'click') return `${inlinePick(b)} ${inlineCheck('confirmRisky', b.confirmRisky !== false, 'megerősítés')}`;
   if (b.type === 'fill') return `${inlinePick(b, 'Hova')} ${inlineInput('value', b.value || '', 'mit illesszen be', 'wide')}`;
   if (b.type === 'extract') return `${inlinePick(b, 'Honnan')} ${inlineSelect('extractMode', b.extractMode || 'auto', [['auto','automatikus'],['value','mezőérték'],['text','szöveg'],['html','HTML'],['attribute','attribútum']])} ${inlineSelect('searchScope', b.searchScope || 'dom', [['dom','teljes DOM'],['visible','látható']])} ${inlineInput('varName', b.varName || 'adat', 'változó neve')}`;
@@ -663,6 +672,14 @@ function renderInspector() {
   if (b.type === 'conditionField') html += selectField('operator','Feltétel', b.operator || 'contains', [['contains','Tartalmazza'],['notContains','Nem tartalmazza'],['equals','Pontosan ez'],['notEquals','Nem pontosan ez'],['empty','Üres'],['notEmpty','Nem üres'],['startsWith','Ezzel kezdődik'],['endsWith','Ezzel végződik']]) + textField('value','Érték', b.value || '') + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive));
   if (b.type === 'conditionUrl') html += selectField('operator','URL feltétel', b.operator || 'contains', [['contains','Tartalmazza'],['notContains','Nem tartalmazza'],['equals','Pontosan ez'],['notEquals','Nem pontosan ez'],['startsWith','Ezzel kezdődik'],['endsWith','Ezzel végződik']]) + textField('value','URL érték', b.value || '');
   if (b.type === 'conditionChange') html += selectField('readMode','Mit olvasson?', b.readMode || 'auto', [['auto','Automatikus érték'],['value','Mezőérték'],['text','Szöveg'],['attribute','Attribútum']]) + (b.readMode === 'attribute' ? textField('attributeName','Attribútum neve', b.attributeName || 'title') : '') + selectField('searchScope','Keresés módja', b.searchScope || 'dom', [['dom','Teljes DOM-ban, rejtett mezőkben is'],['visible','Csak látható elemek között']]) + selectField('changeMode','Változás típusa', b.changeMode || 'fromTo', [['fromTo','Miről → mire'],['anyTo','Bármiről → mire'],['fromAny','Miről → bármire'],['anyChange','Bármilyen változás']]) + textField('fromValue','Miről', b.fromValue || '') + textField('toValue','Mire', b.toValue || '') + selectField('operator','Összehasonlítás', b.operator || 'equals', [['equals','Pontos egyezés'],['contains','Tartalmazza'],['regex','Regex']]) + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive)) + selectField('firstRun','Első ellenőrzéskor', b.firstRun || 'learn', [['learn','Csak jegyezze meg, ne indítson'],['allowTo','Indítson, ha már a célértéken van']]) + `<div class="status">Az előző érték a tabon belül, workflow + trigger + feltétel szerint tárolódik. Oldalfrissítés után újratanul.</div>`;
+
+  if (b.type === 'conditionGroup') html += selectField('logic','Csoport logikája', b.logic || 'all', [['all','Minden feltétel igaz'],['any','Bármelyik feltétel igaz'],['none','Egyik feltétel sem igaz']]) + `<div class="status">A csoport alá húzott figyelőfeltételek együtt értékelődnek ki. A csoport maga egy feltételként számít a felette lévő triggerben.</div>`;
+  if (b.type === 'pdfStart') html += textField('title','PDF címe', b.title || '') + textField('fileName','Alap fájlnév', b.fileName || 'blockflow-riport.pdf') + selectField('pageSize','Papírméret', b.pageSize || 'a4', [['a4','A4'],['letter','Letter'],['legal','Legal']]) + selectField('orientation','Tájolás', b.orientation || 'portrait', [['portrait','Álló'],['landscape','Fekvő']]) + numberField('margin','Margó pt', b.margin || 40) + numberField('fontSize','Alap betűméret', b.fontSize || 11) + textField('header','Fejléc szövege', b.header || '') + textField('footer','Lábléc opciók/szöveg', b.footer || 'date,page,url');
+  if (b.type === 'pdfText') html += textField('heading','Címsor', b.heading || '') + textArea('text','Szöveg', b.text || '') + selectField('style','Stílus', b.style || 'normal', [['normal','Normál'],['heading','Címsor'],['subtitle','Alcím'],['note','Megjegyzés'],['mono','Monospace']]) + selectField('align','Igazítás', b.align || 'left', [['left','Balra'],['center','Középre'],['right','Jobbra']]) + numberField('fontSize','Betűméret', b.fontSize || 11) + numberField('spaceAfter','Térköz utána', b.spaceAfter || 10);
+  if (b.type === 'pdfTable') html += textField('title','Táblázat címe', b.title || '') + textArea('rows','Sorok: kulcs | érték', b.rows || '') + checkboxField('border','Szegély mutatása', b.border !== false) + selectField('columnMode','Oszlopszélesség', b.columnMode || '30/70', [['auto','Automatikus'],['30/70','30/70'],['50/50','50/50']]) + textField('emptyValue','Üres érték helyett', b.emptyValue || '-');
+  if (b.type === 'pdfScreenshot') html += selectField('source','Forrás', b.source || 'current', [['current','Aktuális oldal screenshot'],['last','Utolsó screenshot változó'],['variable','Megadott változóban tárolt screenshot']]) + textField('dataVar','Screenshot változó neve', b.dataVar || 'screenshot_data_url') + textField('caption','Felirat', b.caption || '') + selectField('sizeMode','Méret', b.sizeMode || 'fitWidth', [['fitWidth','Teljes szélesség'],['original','Eredeti méret'],['fitPage','Oldalhoz igazítva']]) + checkboxField('pageBreakBefore','Oldaltörés előtte', Boolean(b.pageBreakBefore)) + checkboxField('border','Vékony keret', b.border !== false);
+  if (b.type === 'pdfPageBreak') html += checkboxField('onlyIfLowSpace','Csak akkor új oldal, ha kevés hely maradt', Boolean(b.onlyIfLowSpace));
+  if (b.type === 'pdfSave') html += selectField('action','Művelet', b.action || 'downloadPreview', [['download','Letöltés'],['preview','Megnyitás új tabon'],['downloadPreview','Letöltés és megnyitás']]) + textField('fileName','Fájlnév', b.fileName || '{{today}}_blockflow-riport.pdf') + checkboxField('previewBeforeSave','Előnézet mentés előtt', Boolean(b.previewBeforeSave));
   if (b.type === 'wait') html += selectField('waitMode','Várakozás típusa', b.waitMode || 'time', [['time','Idő'],['text','Szöveg megjelenése'],['element','Elem megjelenése']]) + (b.waitMode === 'time' ? numberField('ms','Idő ms', b.ms || 1000) : b.waitMode === 'text' ? textField('text','Szöveg', b.text || '') + numberField('timeoutMs','Timeout ms', b.timeoutMs || 5000) : targetEditor(b) + numberField('timeoutMs','Timeout ms', b.timeoutMs || 5000));
   if (b.type === 'ifBlock') html += selectField('conditionMode','Feltétel', b.conditionMode || 'textExists', [['textExists','Szöveg létezik'],['elementExists','Elem létezik'],['valueContains','Elem értéke tartalmazza']]) + (b.conditionMode === 'elementExists' || b.conditionMode === 'valueContains' ? targetEditor(b) : '') + (b.conditionMode === 'valueContains' ? textField('value','Keresett érték', b.value || '') : b.conditionMode === 'textExists' ? textField('text','Keresett szöveg', b.text || '') : '') + numberField('timeoutMs','Elemkeresési timeout ms', b.timeoutMs || 1000) + `<div class="status">Igaz ág: ${(b.children||[]).length} blokk · Különben ág: ${(b.elseChildren||[]).length} blokk</div>`;
   if (b.type === 'repeatBlock') html += numberField('repeatCount','Ismétlések száma', b.repeatCount || 2) + `<div class="status">Az alá behúzott blokkok ismétlődnek. Gyermek blokkok: ${(b.children||[]).length}</div>`;
@@ -756,7 +773,7 @@ function updateField(field, value) {
   renderBlocks();
   renderVariables();
   renderImportWarning();
-  if (['waitMode','conditionMode','maskMode','scope','domain','path','url','urlContains','logic','operator','changeMode','readMode','searchScope','firstRun'].includes(field)) renderInspector();
+  if (['waitMode','conditionMode','maskMode','scope','domain','path','url','urlContains','logic','operator','changeMode','readMode','searchScope','firstRun','pageSize','orientation','source','action','style','align'].includes(field)) renderInspector();
 }
 
 function renderVariables() {
@@ -852,7 +869,7 @@ async function syncTriggerWatchersFromBlocks(workflow) {
   BF.walkBlocks(workflow.blocks || [], b => {
     if (b.type !== 'triggerGroup') return;
     if (b.triggerEnabled === false) return;
-    const conditions = (b.children || []).filter(c => String(c.type || '').startsWith('condition')).map(c => ({
+    const cloneCondition = c => ({
       type: c.type,
       text: c.text || '',
       caseSensitive: Boolean(c.caseSensitive),
@@ -867,8 +884,11 @@ async function syncTriggerWatchersFromBlocks(workflow) {
       fromValue: c.fromValue || '',
       toValue: c.toValue || '',
       firstRun: c.firstRun || 'learn',
+      logic: c.logic || 'all',
+      children: (c.children || []).filter(x => String(x.type || '').startsWith('condition')).map(cloneCondition),
       id: c.id
-    }));
+    });
+    const conditions = (b.children || []).filter(c => String(c.type || '').startsWith('condition')).map(cloneCondition);
     if (!conditions.length) return;
     blockWatchers.push({
       id: `block:${workflow.id}:${b.id}`,
