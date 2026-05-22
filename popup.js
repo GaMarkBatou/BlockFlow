@@ -46,6 +46,6 @@ $('#run').onclick = async () => {
   if (workflow.verified === false && !confirm('Ez importált vagy nem ellenőrzött automatizmus. Javasolt előbb Dry-run módban tesztelni. Mégis futtatod?')) return;
   $('#status').textContent='Futtatás...';
   const res = await BF.sendToTarget({ type:'BF_RUN_WORKFLOW', workflow, options: { dryRun: false } });
-  $('#status').textContent = res?.response?.ok ? 'Kész.' : `Hiba: ${res?.response?.error || res?.error || 'ismeretlen'}`;
+  $('#status').textContent = res?.response?.ok ? (res.response.result?.skipped ? 'Nem indult el: a figyelőfeltétel nem igaz.' : 'Kész.') : `Hiba: ${res?.response?.error || res?.error || 'ismeretlen'}`;
 };
 init();

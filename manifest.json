@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "BlockFlow Automation MVP 0.25",
+  "name": "BlockFlow Automation MVP 0.26",
   "description": "Local browser automation builder with reliable trigger watcher sync, required starter selection, validation, logs, templates and mailto preparation.",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",

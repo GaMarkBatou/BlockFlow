@@ -1,31 +1,23 @@
-# BlockFlow Automation MVP v0.23
+# BlockFlow Extension v0.26
 
-Lokális Chrome extension blokkos weboldal-automatizáláshoz.
+## Futtatás indítófeltételekkel
 
-## v0.23 fő újdonságok
+A normál **Futtatás** most már tiszteletben tartja a Figyelő trigger feltételeit.
 
-- új adatkezelő blokkok: változó beállítása, adat átalakítása, szövegrész kinyerése, regex keresés, összehasonlítás, számítás, lokális mentés/beolvasás
-- új weboldal blokkok: várj amíg, görgetés, billentyű lenyomása, URL megnyitása, oldal adatai, képernyőkép
-- új felhasználói blokkok: adatbekérés, választás, email előnézet
-- új táblázat/lista blokkok: táblázatból kinyerés, minden találatra, elemek keresése
-- új logikai/hibakezelő blokkok: próbáld újra, próbáld meg/hiba esetén, elem ellenőrzése, leállítás, csoport, megjegyzés
-- popup/új ablak kezelő blokkok: várj új ablakra, új ablakból kinyerés, új ablak bezárása
-- időzített indítás blokk Chrome alarms alapon
-- kitöltés/kattintás továbbra is automatikusan fókuszba/görgetésbe hozza a cél elemet
+Ha egy automatizmusban nincs külön **Indítás** blokk, csak **Figyelő trigger**, akkor kézi Futtatáskor először a figyelőfeltételek kerülnek kiértékelésre. A műveleti blokkok csak akkor futnak, ha legalább egy aktív Figyelő trigger igaz eredményt ad.
 
-## Telepítés
+Ha a figyelőfeltétel hamis, a workflow nem fut le, és a naplóban megjelenik, melyik trigger milyen eredményt adott.
 
-1. Csomagold ki a ZIP-et.
-2. Chrome: `chrome://extensions`
-3. Developer mode bekapcsolása.
-4. `Load unpacked`.
-5. Válaszd ki a kicsomagolt `blockflow-extension-v0.23` mappát.
+## Kényszerített futtatás
 
-Frissítés után a már nyitva lévő céloldalakat érdemes egyszer újratölteni.
+A Builder felső sávjába és a Sidebarba bekerült a **Kényszerített futtatás / Force** opció.
 
+Ez debug/tesztelési célra átugorja az indítófeltételeket, és közvetlenül a műveleti blokkokat futtatja. Így továbbra is tesztelhető például az Email megnyitása vagy Másik automatizmus futtatása blokk anélkül, hogy a figyelőfeltétel igaz lenne.
 
-## v0.25
+## Automatikus figyelők
 
-- Új figyelő feltétel: **Érték változik**.
-- Támogatott módok: miről → mire, bármiről → mire, miről → bármire, bármilyen változás.
-- A feltétel session-alapúan tárolja az előző értéket workflow + trigger + feltétel + URL szerint, és oldalfrissítés után újratanul.
+A háttérben futó figyelők működése változatlan: automatikus indításnál a feltételek már előzetesen igazak voltak, ezért a workflow nem ellenőrzi őket újra futás közben.
+
+## Alworkflow-k
+
+A **Másik automatizmus futtatása** blokk subroutine-ként kezeli a meghívott automatizmust, ezért a meghívott workflow saját triggerfeltételei nem akadályozzák meg a hívást. A triggerfeltételek csak a közvetlen kézi Futtatás gombnál számítanak.

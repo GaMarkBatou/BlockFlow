@@ -953,6 +953,71 @@
     const log = [];
     const rootBlocks = workflow.blocks || [];
 
+    function collectBlocks(list, predicate, out = []) {
+      for (const block of list || []) {
+        if (!block) continue;
+        if (predicate(block)) out.push(block);
+        collectBlocks(block.children || [], predicate, out);
+        collectBlocks(block.elseChildren || [], predicate, out);
+      }
+      return out;
+    }
+
+    function watcherFromTriggerBlock(block) {
+      return {
+        id: `manual-check:${workflow.id || 'workflow'}:${block.id || Math.random()}`,
+        workflowId: workflow.id || '',
+        sourceBlockId: block.id || '',
+        mode: 'group',
+        enabled: block.triggerEnabled !== false,
+        logic: block.logic || 'all',
+        conditions: Array.isArray(block.children) ? block.children : [],
+        scope: block.scope || 'domain',
+        domain: block.domain || location.hostname,
+        path: block.path || location.pathname,
+        url: block.url || location.href,
+        urlContains: block.urlContains || '',
+        throttleSec: block.throttleSec || 15
+      };
+    }
+
+    function checkWorkflowStartGate() {
+      if (options.forceRun || options.skipTriggerGate || options.triggeredByWatcher || options.scheduled) {
+        log.push(options.forceRun ? 'Kényszerített futtatás: az indítófeltételek kihagyva.' : 'Automatikus/alworkflow futás: indítófeltételek nem kerülnek újraellenőrzésre.');
+        return true;
+      }
+      const manualTriggers = collectBlocks(rootBlocks, b => b.type === 'trigger');
+      if (manualTriggers.length) {
+        log.push('Manuális Indítás blokk található: a kézi Futtatás azonnal indít.');
+        return true;
+      }
+      const triggerGroups = collectBlocks(rootBlocks, b => b.type === 'triggerGroup' && b.triggerEnabled !== false);
+      if (!triggerGroups.length) {
+        log.push('Nincs aktív figyelő trigger. A workflow műveleti része elindul.');
+        return true;
+      }
+      log.push(`Figyelő trigger ellenőrzése kézi futtatáshoz: ${triggerGroups.length} aktív trigger.`);
+      let anyPassed = false;
+      for (const tg of triggerGroups) {
+        const watcher = watcherFromTriggerBlock(tg);
+        const scopeOk = watcherScopeMatches(watcher);
+        const conditionCount = Array.isArray(watcher.conditions) ? watcher.conditions.length : 0;
+        let passed = false;
+        if (scopeOk && conditionCount) passed = evalWatcherGroup(watcher);
+        log.push(`Figyelő trigger ${tg.id || ''}: scope=${scopeOk ? 'igaz' : 'hamis'}, feltételek=${conditionCount}, eredmény=${passed ? 'igaz' : 'hamis'}.`);
+        if (passed) anyPassed = true;
+      }
+      if (!anyPassed) {
+        log.push('Automatizmus nem indult el: egyik figyelő trigger feltétele sem igaz. Kényszerített futtatással a műveleti blokkok tesztelhetők.');
+      }
+      return anyPassed;
+    }
+
+    const startAllowed = checkWorkflowStartGate();
+    if (!startAllowed) {
+      return { vars, log, skipped: true, triggerPassed: false };
+    }
+
     async function runList(list, label = 'root') {
       let i = 0;
       while (i < list.length) {
@@ -1047,7 +1112,7 @@
           const workflows = Array.isArray(data?.workflows) ? data.workflows : [];
           const target = workflows.find(w => w.id === b.workflowId || w.name === b.workflowId);
           if (!target) throw new Error('Nem található meghívott automatizmus: ' + (b.workflowId || ''));
-          const sub = await runWorkflow(target, options);
+          const sub = await runWorkflow(target, { ...options, skipTriggerGate: true });
           const prefix = b.resultPrefix || 'called';
           Object.entries(sub.vars || {}).forEach(([k,v]) => { vars[`${prefix}_${k}`] = v; });
           i++;
@@ -1324,7 +1389,7 @@
           if (!watcherBlockStillActive(w, workflow)) { firedWatchers.delete(w.id); continue; }
           showBadge(`BlockFlow figyelő indítja: ${workflow.name || 'workflow'}`);
           setTimeout(removeBadge, 2000);
-          runWorkflow(workflow, { dryRun: false }).catch(err => console.warn('BlockFlow figyelő hiba', err));
+          runWorkflow(workflow, { dryRun: false, triggeredByWatcher: true }).catch(err => console.warn('BlockFlow figyelő hiba', err));
           if (w.runOnce) {
             const data = await safeStorageGet('watchers');
             if (!data) continue;

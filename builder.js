@@ -896,18 +896,18 @@ async function syncTriggerWatchersFromBlocks(workflow) {
     await BF.sendToTarget({ type:'BF_REFRESH_WATCHERS' }, targetTabId).catch(()=>{});
   });
 }
-async function runCurrent(dryRun=false) {
+async function runCurrent(dryRun=false, forceRun=false) {
   await saveCurrent(); await refreshTarget();
   if (!dryRun && (activeWorkflow.verified === false || activeWorkflow.imported)) {
     if (!confirm('Ez importált vagy nem ellenőrzött automatizmus. Javasolt előbb Dry-run módban tesztelni. Mégis futtatod?')) return;
   }
   const canRun = await validateBeforeRun({ allowContinue: dryRun });
   if (!canRun) return;
-  $('#log').textContent = dryRun ? 'Dry-run futtatás...' : 'Futtatás...';
-  const res = await BF.sendToTarget({ type: 'BF_RUN_WORKFLOW', workflow: activeWorkflow, options: { dryRun } }, targetTabId);
+  $('#log').textContent = forceRun ? 'Kényszerített futtatás...' : (dryRun ? 'Dry-run futtatás...' : 'Futtatás...');
+  const res = await BF.sendToTarget({ type: 'BF_RUN_WORKFLOW', workflow: activeWorkflow, options: { dryRun, forceRun } }, targetTabId);
   if (res.response?.ok) {
     renderLiveVariables(res.response.result.vars);
-    $('#log').textContent = `Kész.${dryRun?' [dry-run]':''}\n${JSON.stringify(res.response.result.vars, null, 2)}\n\n${(res.response.result.log || []).join('\n')}`;
+    $('#log').textContent = `${res.response.result.skipped ? 'Nem indult el' : 'Kész'}${dryRun?' [dry-run]':''}${forceRun?' [force]':''}\n${JSON.stringify(res.response.result.vars, null, 2)}\n\n${(res.response.result.log || []).join('\n')}`;
   } else {
     const failing = res.response?.blockId;
     if (failing) selectedBlockId = failing;
@@ -1126,8 +1126,9 @@ $('#newWorkflow').onclick = async () => { await saveCurrent(); const w = BF.DEFA
 $('#duplicateWorkflow').onclick = async () => { const w = JSON.parse(JSON.stringify(activeWorkflow)); w.id = crypto.randomUUID(); w.name += ' másolat'; w.imported = false; w.verified = true; reidBlocks(w.blocks); workflows.push(w); activeWorkflow = w; selectedBlockId = firstBlock(w.blocks)?.id; await BF.saveWorkflow(w); renderAll(); };
 $('#markVerified').onclick = async () => { activeWorkflow.verified = true; activeWorkflow.imported = false; await saveCurrent(); renderAll(); $('#log').textContent = 'Automatizmus ellenőrzöttként jelölve.'; };
 $('#validateWorkflow').onclick = () => { renderValidation(); $('#log').textContent = 'Ellenőrzés lefuttatva.'; };
-$('#runWorkflow').onclick = () => runCurrent(false);
-$('#dryRunWorkflow').onclick = () => runCurrent(true);
+$('#runWorkflow').onclick = () => runCurrent(false, false);
+$('#forceRunWorkflow').onclick = () => runCurrent(false, true);
+$('#dryRunWorkflow').onclick = () => runCurrent(true, false);
 $('#stopRun').onclick = async () => { const res = await BF.sendToTarget({ type: 'BF_STOP_RUN' }, targetTabId); $('#log').textContent = res.ok ? 'Stop kérés elküldve.' : (res.error || 'Stop hiba.'); };
 $('#exportOne').onclick = () => BF.downloadJson(`${safeFile(activeWorkflow.name)}.json`, BF.exportPayload([activeWorkflow]));
 $('#exportAll').onclick = () => BF.downloadJson(`blockflow-backup.json`, BF.exportPayload(workflows));
