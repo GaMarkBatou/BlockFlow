@@ -25,6 +25,14 @@
     return parts.join(' > ');
   }
 
+  function elementByXPath(xpath) {
+    if (!xpath) return null;
+    try {
+      const res = document.evaluate(String(xpath), document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+      return res.singleNodeValue && res.singleNodeValue.nodeType === 1 ? res.singleNodeValue : null;
+    } catch (_) { return null; }
+  }
+
   function isVisible(el) {
     if (!el || el.nodeType !== 1) return false;
     const style = getComputedStyle(el);
@@ -181,6 +189,8 @@
 
   function findElement(target, options = {}) {
     const requireVisible = options.requireVisible !== false;
+    if (target?.xpath) { const xel = elementByXPath(target.xpath); if (xel && (!requireVisible || isVisible(xel))) return fieldControlIn(xel) || xel; }
+    const requireClickable = Boolean(options.requireClickable);
     let best = null;
     let bestScore = -999;
     for (const c of candidateSelectors(target)) {
@@ -352,6 +362,42 @@
 
   function interpolate(input, vars) {
     return String(input || '').replace(/{{\s*([\w.-]+)\s*}}/g, (_, key) => vars[key] ?? '');
+  }
+
+  function descriptorFromVars(value) {
+    if (!value) return null;
+    if (typeof value === 'object') return value;
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    if (raw.startsWith('{')) { try { return JSON.parse(raw); } catch (_) {} }
+    if (raw.startsWith('/') || raw.startsWith('(')) return { xpath: raw, label: 'XPath változó' };
+    return { css: raw, label: 'Selector változó' };
+  }
+
+  function targetForBlock(block, vars = {}) {
+    const mode = block.targetMode || 'manual';
+    if (mode === 'manual') return block.target;
+    if (mode === 'last') return descriptorFromVars(vars.last_element) || descriptorFromVars(vars[block.targetVar || 'szoveg_talalat_elem']) || descriptorFromVars(vars.last_selector) || descriptorFromVars(vars.last_xpath) || block.target;
+    if (mode === 'var') return descriptorFromVars(vars[block.targetVar || 'last_element']) || block.target;
+    if (mode === 'selector') return descriptorFromVars(vars[block.targetVar || 'szoveg_talalat_selector']) || block.target;
+    if (mode === 'xpath') return descriptorFromVars(vars[block.targetVar || 'szoveg_talalat_xpath']) || block.target;
+    return block.target;
+  }
+
+  function updateLastOutput(vars, block, res = {}) {
+    if (!vars || !block) return;
+    if (res.value !== undefined) { vars.last_result = res.value; vars.last_value = res.value; if (typeof res.value === 'string') vars.last_text = res.value; }
+    if (block.type === 'extract') { const name = block.varName || 'adat'; vars.last_result = vars[name] || ''; vars.last_value = vars[name] || ''; vars.last_text = vars[name] || ''; }
+    if (block.type === 'textSearch') {
+      const elementName = block.elementName || 'szoveg_talalat_elem';
+      vars.last_result = vars[block.resultName || 'szoveg_talalat'];
+      vars.last_text = vars[block.contextName || 'szoveg_talalat_szoveg'] || '';
+      vars.last_selector = vars[block.selectorName || 'szoveg_talalat_selector'] || '';
+      vars.last_xpath = vars[block.xpathName || 'szoveg_talalat_xpath'] || '';
+      vars.last_element = vars[elementName] || '';
+    }
+    if (block.type === 'screenshot') { const name = block.resultName || 'screenshot_data_url'; vars.last_screenshot = vars[name] || vars.last_screenshot || ''; vars.last_result = vars.last_screenshot; }
+    if (block.type === 'findElements') { vars.last_result = vars[block.countName || 'talalat_db'] || ''; }
   }
 
   async function copyText(text) {
@@ -924,8 +970,9 @@
       return { ok: true };
     }
     if (block.type === 'click') {
-      const el = await waitForElement(block.target, Number(block.timeoutMs || 5000));
-      if (!el) throw new Error(`Nem található kattintási cél: ${block.target?.label || 'nincs megadva'}`);
+      const target = targetForBlock(block, vars);
+      const el = await waitForElement(target, Number(block.timeoutMs || 5000));
+      if (!el) throw new Error(`Nem található kattintási cél: ${target?.label || block.target?.label || 'nincs megadva'}`);
       el.scrollIntoView({ block: 'center', behavior: 'smooth' });
       el.classList.add('bf-run-outline');
       await sleep(100);
@@ -937,8 +984,9 @@
       return { ok: true, dryRun };
     }
     if (block.type === 'fill') {
-      const el = await waitForElement(block.target, Number(block.timeoutMs || 5000));
-      if (!el) throw new Error(`Nem található mező: ${block.target?.label || 'nincs megadva'}`);
+      const target = targetForBlock(block, vars);
+      const el = await waitForElement(target, Number(block.timeoutMs || 5000));
+      if (!el) throw new Error(`Nem található mező: ${target?.label || block.target?.label || 'nincs megadva'}`);
       const value = interpolate(block.value || '', vars);
       el.scrollIntoView({ block: 'center', behavior: 'smooth' });
       el.classList.add('bf-run-outline');
@@ -954,8 +1002,9 @@
     }
     if (block.type === 'extract') {
       const requireVisible = (block.searchScope || 'dom') === 'visible' || block.allowHidden === false;
-      const el = await waitForElement(block.target, Number(block.timeoutMs || 5000), { requireVisible });
-      if (!el) throw new Error(`Nem található kinyerendő elem: ${block.target?.label || 'nincs megadva'}`);
+      const target = targetForBlock(block, vars);
+      const el = await waitForElement(target, Number(block.timeoutMs || 5000), { requireVisible });
+      if (!el) throw new Error(`Nem található kinyerendő elem: ${target?.label || block.target?.label || 'nincs megadva'}`);
       const val = getElementValue(el, block.extractMode || 'auto', block.attributeName || 'title');
       vars[block.varName || 'adat'] = val;
       return { ok: true, value: val };
@@ -1017,6 +1066,7 @@
       vars[block.placeName || 'szoveg_talalat_hely'] = first?.place || '';
       vars[block.selectorName || 'szoveg_talalat_selector'] = first?.selector || '';
       vars[block.xpathName || 'szoveg_talalat_xpath'] = first?.xpath || '';
+      vars[block.elementName || 'szoveg_talalat_elem'] = first?.element ? descriptor(first.element) : '';
       vars.szoveg_talalat_lista = hits.slice(0, 25).map(h => `${h.place} | ${h.selector} | ${h.context}`).join('\n');
       return { ok: true, found: hits.length > 0, count: hits.length, first: first ? { place: first.place, selector: first.selector, context: first.context } : null };
     }
@@ -1063,7 +1113,8 @@
           else window.scrollBy({ top: (block.direction === 'up' ? -1 : 1) * Number(block.amount || 500), behavior: 'smooth' });
         }
       } else {
-        const el = await waitForElement(block.target, 5000, { requireVisible: false });
+        const target = targetForBlock(block, vars);
+        const el = await waitForElement(target, 5000, { requireVisible: false });
         if (!el) throw new Error('Nem található görgetési cél.');
         if (!dryRun) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
       }
@@ -1162,9 +1213,10 @@
       return { ok: true, fileName: vars.pdf_file_name, dryRun };
     }
     if (block.type === 'preflight') {
-      const ok = Boolean(findElement(block.target, { requireVisible: Boolean(block.requireVisible) }));
-      if (!ok && block.onFail === 'stop') throw new Error(`Elem ellenőrzés sikertelen: ${block.target?.label || ''}`);
-      if (!ok && block.onFail === 'notify' && !dryRun) await safeRuntimeSend({ type: 'BF_SYSTEM_NOTIFICATION', title: 'BlockFlow ellenőrzés', message: `Nem található elem: ${block.target?.label || ''}` });
+      const target = targetForBlock(block, vars);
+      const ok = Boolean(findElement(target, { requireVisible: Boolean(block.requireVisible) }));
+      if (!ok && block.onFail === 'stop') throw new Error(`Elem ellenőrzés sikertelen: ${target?.label || block.target?.label || ''}`);
+      if (!ok && block.onFail === 'notify' && !dryRun) await safeRuntimeSend({ type: 'BF_SYSTEM_NOTIFICATION', title: 'BlockFlow ellenőrzés', message: `Nem található elem: ${target?.label || block.target?.label || ''}` });
       return { ok };
     }
     if (block.type === 'localSet') {
@@ -1312,7 +1364,7 @@
 
   async function runWorkflow(workflow, options = {}) {
     stopRequested = false;
-    const vars = { current_url: location.href, today: new Date().toISOString().slice(0, 10), selected_text: String(getSelection?.() || '') };
+    const vars = { current_url: location.href, today: new Date().toISOString().slice(0, 10), selected_text: String(getSelection?.() || ''), last_result: '', last_text: '', last_value: '', last_selector: '', last_xpath: '', last_element: '', last_screenshot: '' };
     const log = [];
     const rootBlocks = workflow.blocks || [];
 
@@ -1500,7 +1552,8 @@
         }
 
         try {
-          await executeBlock(b, vars, options);
+          const execRes = await executeBlock(b, vars, options);
+          updateLastOutput(vars, b, execRes);
         } catch (err) {
           err.blockId = err.blockId || b.id;
           err.partialVars = vars;

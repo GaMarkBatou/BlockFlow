@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "BlockFlow Automation MVP 0.29",
-  "description": "Local browser automation builder with watcher logic, robust extraction, email/PDF tools, page text search and user-friendly block editing.",
-  "version": "0.29.0",
+  "name": "BlockFlow Automation MVP 0.30",
+  "description": "Local browser automation builder with collapsible block palette, flow-aware outputs, watcher logic, robust extraction, email/PDF tools and page text search.",
+  "version": "0.30.0",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",

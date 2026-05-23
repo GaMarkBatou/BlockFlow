@@ -7,6 +7,8 @@ let currentTargetUrl = '';
 let currentTargetHost = '';
 let currentTargetPath = '/';
 let isDirty = false;
+let paletteCollapsed = {};
+try { paletteCollapsed = JSON.parse(localStorage.getItem('bf_palette_collapsed') || '{}') || {}; } catch { paletteCollapsed = {}; }
 
 const $ = sel => document.querySelector(sel);
 const CONTAINERS = new Set(['ifBlock', 'repeatBlock', 'rowLoop', 'triggerGroup', 'conditionGroup', 'tryBlock', 'retryBlock', 'elementLoop', 'iframeBlock', 'groupBlock']);
@@ -184,10 +186,25 @@ function renderPalette() {
     : (selected && CONTAINERS.has(selected.type)
       ? `<div class="status">Kiválasztott konténer: <b>${escapeHtml(BF.BLOCKS[selected.type].name)}</b>. Az új blokkok ide, behúzva kerülnek.</div>`
       : `<div class="status muted">Konténer kijelölésekor az új blokkok automatikusan alá kerülnek behúzva.</div>`);
-  $('#palette').innerHTML = hint + Object.entries(grouped).map(([cat, items]) => `<div class="section-title">${cat}</div>` + items.map(item => {
-    const disabled = (needsStarter && !['trigger','triggerGroup','scheduledTrigger'].includes(item.type)) || (item.type.startsWith('condition') && !['triggerGroup','conditionGroup'].includes(selected?.type));
-    return `<button class="palette-btn ${disabled?'disabled':''}" data-add="${item.type}" draggable="${disabled ? 'false' : 'true'}" ${disabled?'disabled title="Először válassz indító blokkot, figyelő feltételnél pedig jelölj ki egy Figyelő triggert."':'title="Kattints a hozzáadáshoz, vagy húzd be a megfelelő helyre."'}><span>${BF.BLOCKS[item.type].name}</span><span>+</span></button>`;
-  }).join('')).join('');
+  const controls = `<div class="palette-tools"><button class="small" id="paletteOpenAll">Mind nyitása</button><button class="small" id="paletteCloseAll">Mind zárása</button></div>`;
+  $('#palette').innerHTML = hint + controls + Object.entries(grouped).map(([cat, items]) => {
+    const collapsed = Boolean(paletteCollapsed[cat]);
+    return `<div class="palette-category ${collapsed ? 'collapsed' : ''}" data-palette-cat="${escapeAttr(cat)}">
+      <button class="section-title palette-category-title" data-toggle-palette="${escapeAttr(cat)}" title="Kategória nyitása/zárása"><span>${collapsed ? '▸' : '▾'}</span><b>${escapeHtml(cat)}</b><small>${items.length}</small></button>
+      <div class="palette-category-body" ${collapsed ? 'hidden' : ''}>${items.map(item => {
+        const disabled = (needsStarter && !['trigger','triggerGroup','scheduledTrigger'].includes(item.type)) || (item.type.startsWith('condition') && !['triggerGroup','conditionGroup'].includes(selected?.type));
+        return `<button class="palette-btn ${disabled?'disabled':''}" data-add="${item.type}" draggable="${disabled ? 'false' : 'true'}" ${disabled?'disabled title="Először válassz indító blokkot, figyelő feltételnél pedig jelölj ki egy Figyelő triggert."':'title="Kattints a hozzáadáshoz, vagy húzd be a megfelelő helyre."'}><span>${BF.BLOCKS[item.type].name}</span><span>+</span></button>`;
+      }).join('')}</div>
+    </div>`;
+  }).join('');
+  document.querySelectorAll('[data-toggle-palette]').forEach(btn => btn.onclick = () => {
+    const cat = btn.dataset.togglePalette;
+    paletteCollapsed[cat] = !paletteCollapsed[cat];
+    localStorage.setItem('bf_palette_collapsed', JSON.stringify(paletteCollapsed));
+    renderPalette();
+  });
+  const openAll = $('#paletteOpenAll'); if (openAll) openAll.onclick = () => { paletteCollapsed = {}; localStorage.setItem('bf_palette_collapsed', JSON.stringify(paletteCollapsed)); renderPalette(); };
+  const closeAll = $('#paletteCloseAll'); if (closeAll) closeAll.onclick = () => { Object.keys(grouped).forEach(cat => paletteCollapsed[cat] = true); localStorage.setItem('bf_palette_collapsed', JSON.stringify(paletteCollapsed)); renderPalette(); };
   document.querySelectorAll('[data-add]').forEach(b => {
     b.onclick = () => addBlock(b.dataset.add);
     b.ondragstart = e => {
@@ -197,27 +214,66 @@ function renderPalette() {
     };
   });
 }
+
 function addBlock(type) {
   const isStarter = ['trigger','triggerGroup','scheduledTrigger'].includes(type);
   if (!hasAnyStarter() && !isStarter) return alert('Először válassz indító blokkot: Indítás, Figyelő trigger vagy Időzített indítás.');
   if (type === 'trigger' && containsType(activeWorkflow.blocks, 'trigger')) return alert('Egy manuális indító blokk már van a workflow-ban.');
   const selected = findBlock(selectedBlockId)?.block;
   const block = BF.newBlock(type);
+  let list = activeWorkflow.blocks;
+  let previous = null;
 
   if (type.startsWith('condition')) {
-    const targetTrigger = selected?.type === 'triggerGroup' ? selected : findSingleTriggerGroup();
+    const targetTrigger = selected?.type === 'triggerGroup' || selected?.type === 'conditionGroup' ? selected : findSingleTriggerGroup();
     if (!targetTrigger) return alert('Figyelő feltételt csak Figyelő trigger alá lehet tenni. Jelöld ki a Figyelő triggert, vagy húzd a feltételt a trigger behúzott területére.');
     targetTrigger.children ||= [];
-    targetTrigger.children.push(block);
-  } else if (!isStarter && selected && CONTAINERS.has(selected.type) && selected.type !== 'triggerGroup') {
+    list = targetTrigger.children;
+    previous = list[list.length - 1] || null;
+    autoPrefillBlock(block, previous);
+    list.push(block);
+  } else if (!isStarter && selected && CONTAINERS.has(selected.type) && selected.type !== 'triggerGroup' && selected.type !== 'conditionGroup') {
     selected.children ||= [];
-    selected.children.push(block);
+    list = selected.children;
+    previous = list[list.length - 1] || selected;
+    autoPrefillBlock(block, previous);
+    list.push(block);
   } else {
-    activeWorkflow.blocks.push(block);
+    list = activeWorkflow.blocks;
+    previous = list[list.length - 1] || null;
+    autoPrefillBlock(block, previous);
+    list.push(block);
   }
   selectedBlockId = block.id;
   markDirty();
   renderAll();
+}
+
+function blockPrimaryOutput(block) {
+  if (!block) return null;
+  const token = name => `{{${name}}}`;
+  if (block.type === 'extract') return { kind:'text', varName:block.varName || 'adat', token:token(block.varName || 'adat') };
+  if (block.type === 'textSearch') return { kind:'elementText', varName:block.resultName || 'szoveg_talalat', token:token(block.contextName || 'szoveg_talalat_szoveg'), elementVar:block.elementName || 'szoveg_talalat_elem', selectorVar:block.selectorName || 'szoveg_talalat_selector', xpathVar:block.xpathName || 'szoveg_talalat_xpath' };
+  if (block.type === 'screenshot') return { kind:'image', varName:block.resultName || 'screenshot_data_url', token:token(block.resultName || 'screenshot_data_url') };
+  if (block.type === 'userInput') return { kind:'text', varName:block.resultName || 'user_input', token:token(block.resultName || 'user_input') };
+  if (block.type === 'userChoice') return { kind:'text', varName:block.resultName || 'valasztas', token:token(block.resultName || 'valasztas') };
+  if (['transform','textSlice','regex','tableExtract','clipboardRead','localGet','compare','math','returnResult'].includes(block.type) && (block.resultName || block.varName)) return { kind:'text', varName:block.resultName || block.varName, token:token(block.resultName || block.varName) };
+  if (block.type === 'findElements') return { kind:'elements', varName:block.resultName || 'talalatok', token:token(block.countName || 'talalat_db') };
+  return null;
+}
+
+function autoPrefillBlock(block, previous) {
+  const out = blockPrimaryOutput(previous);
+  if (!block || !out) return;
+  const token = out.token || '';
+  if (['transform','textSlice','regex','mask','validateData'].includes(block.type) && token) block.source = token;
+  if (block.type === 'copy' && token) block.value = token;
+  if (block.type === 'fill' && token) block.value = token;
+  if (block.type === 'email' && token) block.body = token;
+  if (block.type === 'pdfText' && token) block.text = token;
+  if (block.type === 'pdfScreenshot' && out.kind === 'image') { block.source = 'variable'; block.dataVar = out.varName; }
+  if ((block.type === 'click' || block.type === 'scroll' || block.type === 'preflight') && out.elementVar) { block.targetMode = 'last'; block.targetVar = out.elementVar; }
+  if (block.type === 'ifBlock' && previous?.type === 'textSearch') { block.conditionMode = 'textExists'; block.text = `{{${previous.contextName || 'szoveg_talalat_szoveg'}}`; }
 }
 
 function findSingleTriggerGroup() {
@@ -256,6 +312,7 @@ function createBlockInContainer(type, containerId) {
   if (!canPlaceBlockInContainer(block, containerId)) return;
   const list = listForContainer(containerId);
   if (!list) return;
+  autoPrefillBlock(block, list[list.length - 1] || findBlock(containerId)?.block);
   list.push(block);
   selectedBlockId = block.id;
   markDirty();
@@ -345,10 +402,22 @@ function renderBlockList(blocks, level, parentId) {
         <div class="shortcut-line"><span class="block-icon">${blockIcon(b)}</span><span class="block-title">${escapeHtml(BF.blockTitle(b))}</span></div>
         <div class="block-inline">${blockInline(b)}</div>
         <div class="block-desc">${escapeHtml(BF.blockDesc(b))}</div>
+        ${blockOutputHtml(b)}
       </div>
       ${childHtml}
     </div>`;
   }).join('');
+}
+
+function blockOutputHtml(b) {
+  const out = blockPrimaryOutput(b);
+  if (!out) return '';
+  const chips = [];
+  if (out.varName) chips.push(`{{${escapeHtml(out.varName)}}}`);
+  if (out.elementVar) chips.push(`elem: {{${escapeHtml(out.elementVar)}}}`);
+  if (out.selectorVar) chips.push(`selector: {{${escapeHtml(out.selectorVar)}}}`);
+  if (!chips.length) return '';
+  return `<div class="block-output"><span>Továbbadja:</span>${chips.map(c => `<b>${c}</b>`).join('')}</div>`;
 }
 
 function blockIcon(b) {
@@ -361,6 +430,7 @@ function inlineNumber(field, value, placeholder='', cls='tiny') { return `<input
 function inlineCheck(field, checked, label) { return `<label class="inline-check"><input type="checkbox" data-inline-check="${field}" ${checked ? 'checked' : ''}> ${escapeHtml(label)}</label>`; }
 function inlineSelect(field, value, options, cls='') { return `<select class="inline-select ${cls}" data-inline-field="${field}">${options.map(([v,l])=>`<option value="${escapeAttr(v)}" ${v===value?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select>`; }
 function inlinePick(b, label='Cél elem') { return `<button class="inline-pick ${b.target ? 'has-target' : ''}" data-inline-pick="target" title="Elem kiválasztása az oldalról"><span>${escapeHtml(label)}</span><b>${escapeHtml(targetLabel(b))}</b></button>`; }
+function inlineTargetSource(b) { return `${inlineSelect('targetMode', b.targetMode || 'manual', [['manual','kézi elem'],['last','előző találat'],['var','elem változó'],['selector','selector változó'],['xpath','XPath változó']])}${(b.targetMode === 'var' || b.targetMode === 'selector' || b.targetMode === 'xpath') ? inlineInput('targetVar', b.targetVar || (b.targetMode === 'selector' ? 'szoveg_talalat_selector' : b.targetMode === 'xpath' ? 'szoveg_talalat_xpath' : 'szoveg_talalat_elem'), 'változó') : ''}`; }
 function inlineOpenInspector(label='Bővített') { return `<button class="inline-more" data-inline-more="1" title="Bővített beállítások a jobb oldalon">${escapeHtml(label)}</button>`; }
 function targetLabel(b) { return b.target ? (b.target.label || b.target.tag || 'kiválasztott elem') : 'nincs cél'; }
 function scopeLabel(scope) {
@@ -398,7 +468,7 @@ function blockInline(b) {
   if (b.type === 'pdfScreenshot') return `${inlineSelect('source', b.source || 'current', [['current','aktuális oldal'],['last','utolsó screenshot'],['variable','változó']])} ${inlineInput('caption', b.caption || '', 'felirat')} ${inlineSelect('sizeMode', b.sizeMode || 'fitWidth', [['fitWidth','teljes szélesség'],['original','eredeti'],['fitPage','oldalhoz igazítva']])}`;
   if (b.type === 'pdfPageBreak') return `${inlineCheck('onlyIfLowSpace', Boolean(b.onlyIfLowSpace), 'csak ha kevés hely van')}`;
   if (b.type === 'pdfSave') return `${inlineSelect('action', b.action || 'downloadPreview', [['download','letöltés'],['preview','előnézet'],['downloadPreview','letöltés + előnézet']])} ${inlineInput('fileName', b.fileName || '{{today}}_riport.pdf', 'fájlnév', 'wide')}`;
-  if (b.type === 'click') return `${inlinePick(b)} ${inlineCheck('confirmRisky', b.confirmRisky !== false, 'megerősítés')}`;
+  if (b.type === 'click') return `${inlineTargetSource(b)} ${b.targetMode && b.targetMode !== 'manual' ? '' : inlinePick(b)} ${inlineCheck('confirmRisky', b.confirmRisky !== false, 'megerősítés')}`;
   if (b.type === 'fill') return `${inlinePick(b, 'Hova')} ${inlineInput('value', b.value || '', 'mit illesszen be', 'wide')}`;
   if (b.type === 'extract') return `${inlinePick(b, 'Honnan')} ${inlineSelect('extractMode', b.extractMode || 'auto', [['auto','automatikus'],['value','mezőérték'],['text','szöveg'],['html','HTML'],['attribute','attribútum']])} ${inlineSelect('searchScope', b.searchScope || 'dom', [['dom','teljes DOM'],['visible','látható']])} ${inlineInput('varName', b.varName || 'adat', 'változó neve')}`;
   if (b.type === 'wait') return `${inlineSelect('waitMode', b.waitMode || 'time', [['time','idő'],['text','szöveg'],['element','elem']])} ${b.waitMode === 'time' ? inlineNumber('ms', b.ms || 1000, 'ms') : b.waitMode === 'text' ? inlineInput('text', b.text || '', 'várt szöveg', 'wide') : inlinePick(b)} ${inlineNumber('timeoutMs', b.timeoutMs || 5000, 'timeout')}`;
@@ -425,14 +495,14 @@ function blockInline(b) {
   if (b.type === 'tableExtract') return `${inlinePick(b, 'Tábla/lista')} ${inlineSelect('rowMode', b.rowMode || 'first', [['first','első sor'],['last','utolsó sor'],['contains','sor tartalmazza']])} ${inlineNumber('columnIndex', b.columnIndex || 1, 'oszlop')} ${inlineInput('resultName', b.resultName || 'tabla_adat', 'eredmény')}`;
   if (b.type === 'elementLoop') return `${inlinePick(b, 'Konténer')} ${inlineInput('selector', b.selector || '', 'selector opcionális')} ${inlineInput('itemVar', b.itemVar || 'elem_szoveg', 'elem változó')} ${inlineNumber('maxItems', b.maxItems || 20, 'max')}`;
   if (b.type === 'waitUntil') return `${inlineSelect('conditionMode', b.conditionMode || 'textExists', [['textExists','szöveg'],['elementExists','elem'],['valueContains','mezőérték'],['urlContains','URL']])} ${b.conditionMode === 'elementExists' || b.conditionMode === 'valueContains' ? inlinePick(b) : inlineInput('text', b.text || b.value || '', 'várt érték', 'wide')} ${inlineNumber('timeoutMs', b.timeoutMs || 10000, 'timeout')}`;
-  if (b.type === 'scroll') return `${inlineSelect('mode', b.mode || 'element', [['element','elemhez'],['page','oldal']])} ${b.mode === 'page' ? inlineSelect('direction', b.direction || 'down', [['down','le'],['up','fel'],['top','tetejére'],['bottom','aljára']]) + inlineNumber('amount', b.amount || 500, 'px') : inlinePick(b)}`;
+  if (b.type === 'scroll') return `${inlineSelect('mode', b.mode || 'element', [['element','elemhez'],['page','oldal']])} ${b.mode === 'page' ? inlineSelect('direction', b.direction || 'down', [['down','le'],['up','fel'],['top','tetejére'],['bottom','aljára']]) + inlineNumber('amount', b.amount || 500, 'px') : inlineTargetSource(b) + (b.targetMode && b.targetMode !== 'manual' ? '' : inlinePick(b))}`;
   if (b.type === 'keyPress') return `${inlinePick(b, 'Cél opcionális')} ${inlineInput('key', b.key || 'Enter', 'billentyű')} ${inlineCheck('ctrl', Boolean(b.ctrl), 'Ctrl')} ${inlineCheck('shift', Boolean(b.shift), 'Shift')}`;
   if (b.type === 'clipboardRead') return inlineInput('resultName', b.resultName || 'clipboard', 'eredmény');
   if (b.type === 'openUrl') return `${inlineInput('url', b.url || '', 'URL', 'wide')} ${inlineSelect('mode', b.mode || 'newTab', [['sameTab','aktuális tab'],['newTab','új tab'],['newWindow','új ablak']])}`;
   if (b.type === 'pageInfo') return inlineInput('prefix', b.prefix || 'page', 'változó prefix');
   if (b.type === 'screenshot') return `${inlineInput('resultName', b.resultName || 'screenshot_data_url', 'eredmény')} ${inlineSelect('action', b.action || (b.openPreview ? 'preview' : 'preview'), [['preview','előnézet'],['download','letöltés'],['clipboard','vágólap'],['variable','csak változó']])} ${inlineInput('fileName', b.fileName || 'blockflow-screenshot', 'fájlnév')}`;
   if (b.type === 'tryBlock') return `${inlineChip('próba', `${(b.children || []).length} blokk`)} ${inlineChip('hiba ág', `${(b.elseChildren || []).length} blokk`)}`;
-  if (b.type === 'preflight') return `${inlinePick(b, 'Ellenőrzött elem')} ${inlineSelect('onFail', b.onFail || 'stop', [['stop','álljon le'],['warn','csak napló'],['notify','értesítsen']])}`;
+  if (b.type === 'preflight') return `${inlineTargetSource(b)} ${b.targetMode && b.targetMode !== 'manual' ? '' : inlinePick(b, 'Ellenőrzött elem')} ${inlineSelect('onFail', b.onFail || 'stop', [['stop','álljon le'],['warn','csak napló'],['notify','értesítsen']])}`;
   if (b.type === 'localSet') return `${inlineInput('key', b.key || '', 'kulcs')} ${inlineInput('value', b.value || '', 'érték', 'wide')}`;
   if (b.type === 'localGet') return `${inlineInput('key', b.key || '', 'kulcs')} ${inlineInput('resultName', b.resultName || 'local_adat', 'eredmény')}`;
   if (b.type === 'compare') return `${inlineInput('left', b.left || '', 'bal oldal')} ${inlineSelect('operator', b.operator || 'equals', [['equals','=' ],['notEquals','≠'],['contains','tartalmazza'],['greater','>'],['less','<']])} ${inlineInput('right', b.right || '', 'jobb oldal')} ${inlineInput('resultName', b.resultName || 'osszehasonlitas', 'eredmény')}`;
@@ -608,6 +678,7 @@ function moveBefore(id, beforeId) {
     const block = BF.newBlock(String(id).slice(4));
     const containerId = before.parent?.id || (before.list === activeWorkflow.blocks ? 'root' : null);
     if (!canPlaceBlockInContainer(block, containerId || 'root')) return;
+    autoPrefillBlock(block, before.list[before.index - 1] || before.parent || null);
     before.list.splice(before.index, 0, block);
     selectedBlockId = block.id;
     markDirty();
@@ -793,7 +864,7 @@ function renderInspector() {
   if (b.type === 'transform') html += textField('source','Forrás', b.source || '{{adat}}') + selectField('operation','Művelet', b.operation || 'trim', [['trim','Trim'],['upper','Nagybetű'],['lower','Kisbetű'],['singleLine','Egy sorba'],['removeEmptyLines','Üres sorok törlése'],['digitsOnly','Csak számok'],['lettersOnly','Csak betűk'],['noAccents','Ékezetek eltávolítása']]) + textField('resultName','Eredmény változó', b.resultName || 'atalakitott_adat');
   if (b.type === 'textSlice') html += textField('source','Forrás', b.source || '{{adat}}') + selectField('mode','Mód', b.mode || 'between', [['between','Kezdő és záró szöveg között'],['line','Adott sor'],['chars','Karakter tartomány']]) + textField('startText','Kezdő szöveg', b.startText || '') + textField('endText','Záró szöveg', b.endText || '') + numberField('lineNumber','Sor száma', b.lineNumber || 1) + numberField('charStart','Karakter kezdete', b.charStart || 0) + numberField('charEnd','Karakter vége', b.charEnd || 100) + textField('resultName','Eredmény változó', b.resultName || 'szovegresz');
   if (b.type === 'regex') html += textField('source','Forrás', b.source || '{{adat}}') + textField('pattern','Regex minta', b.pattern || '') + textField('flags','Flagek', b.flags || 'i') + numberField('group','Capture group', b.group || 0) + checkboxField('allMatches','Összes találat', Boolean(b.allMatches)) + textField('resultName','Eredmény változó', b.resultName || 'regex_talalat');
-  if (b.type === 'textSearch') html += textField('query','Keresett szöveg', b.query || '') + selectField('operator','Egyezés módja', b.operator || 'contains', [['contains','Tartalmazza'],['equals','Pontosan egyezik']]) + selectField('searchScope','Hol keressen?', b.searchScope || 'all', [['all','Teljes oldal: szöveg + mezőérték + attribútum'],['visible','Csak látható szöveg'],['dom','Teljes DOM szövege']]) + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive)) + checkboxField('includeValues','Input/textarea/select értékeket is keresse', b.includeValues !== false) + checkboxField('includeAttributes','Title/aria/placeholder/alt attribútumokban is keressen', b.includeAttributes !== false) + textField('resultName','Találat igaz/hamis változó', b.resultName || 'szoveg_talalat') + textField('countName','Találatszám változó', b.countName || 'szoveg_talalat_db') + textField('contextName','Első találat környezete változó', b.contextName || 'szoveg_talalat_szoveg') + textField('placeName','Találat helye változó', b.placeName || 'szoveg_talalat_hely') + textField('selectorName','CSS selector változó', b.selectorName || 'szoveg_talalat_selector') + textField('xpathName','XPath változó', b.xpathName || 'szoveg_talalat_xpath') + `<div class="status">Példa eredmény: {{szoveg_talalat}} = true, {{szoveg_talalat_hely}} = textarea value, {{szoveg_talalat_selector}} = #mezőId. Ezeket emailben, PDF-ben vagy Ha blokkban is használhatod.</div>`;
+  if (b.type === 'textSearch') html += textField('query','Keresett szöveg', b.query || '') + selectField('operator','Egyezés módja', b.operator || 'contains', [['contains','Tartalmazza'],['equals','Pontosan egyezik']]) + selectField('searchScope','Hol keressen?', b.searchScope || 'all', [['all','Teljes oldal: szöveg + mezőérték + attribútum'],['visible','Csak látható szöveg'],['dom','Teljes DOM szövege']]) + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive)) + checkboxField('includeValues','Input/textarea/select értékeket is keresse', b.includeValues !== false) + checkboxField('includeAttributes','Title/aria/placeholder/alt attribútumokban is keressen', b.includeAttributes !== false) + textField('resultName','Találat igaz/hamis változó', b.resultName || 'szoveg_talalat') + textField('countName','Találatszám változó', b.countName || 'szoveg_talalat_db') + textField('contextName','Első találat környezete változó', b.contextName || 'szoveg_talalat_szoveg') + textField('placeName','Találat helye változó', b.placeName || 'szoveg_talalat_hely') + textField('selectorName','CSS selector változó', b.selectorName || 'szoveg_talalat_selector') + textField('xpathName','XPath változó', b.xpathName || 'szoveg_talalat_xpath') + textField('elementName','Elemhivatkozás változó', b.elementName || 'szoveg_talalat_elem') + `<div class="status">Példa eredmény: {{szoveg_talalat}} = true, {{szoveg_talalat_hely}} = textarea value, {{szoveg_talalat_selector}} = #mezőId. Ezeket emailben, PDF-ben vagy Ha blokkban is használhatod.</div>`;
   if (b.type === 'setVar') html += textField('varName','Változó neve', b.varName || 'valtozo') + textArea('value','Érték', b.value || '');
   if (b.type === 'userInput') html += textField('title','Cím', b.title || '') + textArea('message','Kérdés', b.message || '') + selectField('inputType','Mező típusa', b.inputType || 'text', [['text','Rövid szöveg'],['textarea','Hosszú szöveg']]) + textField('placeholder','Placeholder', b.placeholder || '') + textField('defaultValue','Alapérték', b.defaultValue || '') + textField('resultName','Eredmény változó', b.resultName || 'user_input');
   if (b.type === 'userChoice') html += textField('title','Cím', b.title || '') + textArea('message','Kérdés', b.message || '') + textArea('options','Opciók soronként', b.options || '') + textField('resultName','Eredmény változó', b.resultName || 'valasztas');

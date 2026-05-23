@@ -1,4 +1,4 @@
-# BlockFlow Automation MVP 0.29
+# BlockFlow Automation MVP 0.30
 
 BlockFlow egy lokális Chrome extension, amellyel általános weboldalakon lehet böngészőautomatizmusokat összeállítani vizuális, blokkos felületen. A cél az, hogy a gyakori adminisztrációs, adatgyűjtési, email-előkészítési, figyelési és riportkészítési folyamatokat programozás nélkül lehessen felépíteni.
 
@@ -24,7 +24,7 @@ Az extension nem használ AI-t és nem küld adatot külső szolgáltatásnak. A
 2. Nyisd meg: `chrome://extensions`.
 3. Kapcsold be a Developer mode / Fejlesztői mód kapcsolót.
 4. Kattints a **Load unpacked** gombra.
-5. Válaszd ki a kicsomagolt `blockflow-extension-v0.29` mappát.
+5. Válaszd ki a kicsomagolt `blockflow-extension-v0.30` mappát.
 6. Frissítsd újra a már nyitott céloldalakat, hogy az új content script biztosan betöltődjön.
 
 ## Fő felületek
@@ -39,7 +39,7 @@ Az extension ikonjára kattintva megjelenik egy kis popup, ahonnan megnyitható:
 
 ### Builder
 
-A Builder a fő szerkesztőfelület. Külön ablakban nyílik meg, hogy kényelmesebb legyen a workflow építése. A v0.29-ben a Builder alapértelmezett szélessége nagyobb lett, a jobb oldali beállítási sáv pedig kényelmesebben olvasható.
+A Builder a fő szerkesztőfelület. Külön ablakban nyílik meg, hogy kényelmesebb legyen a workflow építése. A v0.30-ban a Builder alapértelmezett szélessége nagyobb lett, a jobb oldali beállítási sáv pedig kényelmesebben olvasható.
 
 A Builder három fő részből áll:
 
@@ -88,11 +88,11 @@ A Feltételcsoport ugyanezeket tudja, és trigger alá vagy másik feltételcsop
 Figyelő trigger
   Status változik: ebből → abba
   Feltételcsoport: bármelyik igaz
-    Mező tartalmazza - Eggyik
-    Mező tartalmazza - Másik
+    Mező tartalmazza Egyik
+    Mező tartalmazza Másik
 ```
 
-Ez azt jelenti, hogy a workflow csak akkor indul, ha a státuszváltozás megtörtént, és közben a Mező "Eggyik" vagy "Másik" értéket tartalmaz.
+Ez azt jelenti, hogy a workflow csak akkor indul, ha a státuszváltozás megtörtént, és közben a CBI mező High vagy Critical értéket tartalmaz.
 
 ## Blokkok mozgatása
 
@@ -106,6 +106,27 @@ Példák:
 - konténeren belül a mozgatás az adott szinten történik
 
 Ez csökkenti a félreérthető vagy érvénytelen műveleteket.
+
+## Kompakt blokkpaletta és Apple Shortcuts-szerű folyamat
+
+A blokkpaletta kategóriái összecsukhatók, így kevesebbet kell görgetni. A kategóriák állapota megmarad a Builder újranyitása után is. Elérhető a **Mind nyitása** és **Mind zárása** opció.
+
+A v0.30-tól több blokk automatikusan felajánlja vagy előkitölti az előző blokk eredményét. Például:
+
+- Adat kinyerése után az Email, PDF szöveg, Maszkolás vagy Adat átalakítása blokk automatikusan az előző kinyert változót használhatja.
+- Szöveg keresése után a Kattintás és Görgetés blokk tud az előző találati elemre hivatkozni.
+- Képernyőkép után a PDF screenshot blokk automatikusan használhatja az utolsó képernyőképet.
+
+A futás során elérhető általános utolsó eredmény változók:
+
+- `{{last_result}}`
+- `{{last_text}}`
+- `{{last_value}}`
+- `{{last_selector}}`
+- `{{last_xpath}}`
+- `{{last_element}}`
+- `{{last_screenshot}}`
+
 
 ## Elem kiválasztása az oldalról
 
@@ -121,7 +142,7 @@ Több blokk használ oldalelem-kiválasztást:
 - Táblázatból kinyerés
 - Popup/új ablak adatkinyerés
 
-A kiválasztó a cél tabot fókuszálja, hover kerettel jelzi az aktuális elemet, majd stabil elemleírást ment. A kinyerésnél több azonosítót is használhat: ID, CSS selector, XPath, label, ARIA, title, valamint BMC/Remedy jellegű `aid`, `adb`, `SOMET_...` mezőazonosítókat.
+A kiválasztó a cél tabot fókuszálja, hover kerettel jelzi az aktuális elemet, majd stabil elemleírást ment. A kinyerésnél több azonosítót is használhat: ID, CSS selector, XPath, label, ARIA, title, valamint BMC/Remedy jellegű `arid`, `ardbn`, `WIN_...` mezőazonosítókat.
 
 ## Adat kinyerése
 
@@ -137,7 +158,7 @@ Ez különösen hasznos olyan enterprise rendszereknél, ahol az oldal HTML-je m
 
 ## Szöveg keresése az oldalon
 
-A v0.29-ben bekerült a **Szöveg keresése az oldalon** blokk. Ez egyszerű, regex nélküli keresésre való.
+A v0.30-ban bekerült a **Szöveg keresése az oldalon** blokk. Ez egyszerű, regex nélküli keresésre való.
 
 Beállítható:
 
@@ -156,6 +177,7 @@ Visszaadott változók:
 - `{{szoveg_talalat_hely}}`: hol találta meg, például textarea value vagy attribútum: title
 - `{{szoveg_talalat_selector}}`: CSS selector
 - `{{szoveg_talalat_xpath}}`: XPath
+- `{{szoveg_talalat_elem}}`: belső elemhivatkozás, amelyet például a Kattintás vagy Görgetés blokk felhasználhat
 - `{{szoveg_talalat_lista}}`: első találatok rövid listája
 
 Ez akkor hasznos, ha egy oldalról nem konkrét mezőt akarsz kinyerni, hanem meg akarod tudni, hogy egy kifejezés hol szerepel.
@@ -304,6 +326,7 @@ A projekt fejlesztése több lépésben épült fel:
 14. PDF riportkészítés adatokból és screenshotokból
 15. jobb oldali magyarázó beállítási panel
 16. v0.29: kattintható változó chipek, kontextusfüggő blokkmozgató gombok, szélesebb Builder, Szöveg keresése az oldalon blokk helyvisszaadással
+17. v0.30: összecsukható blokkpaletta, előző blokk eredményének automatikus használata, Szöveg keresése találati elemének felhasználása kattintáshoz/görgetéshez
 
 ## Ismert korlátok
 

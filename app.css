@@ -450,3 +450,15 @@ html, body {
   box-shadow: 0 0 0 3px rgba(34,197,94,.18);
 }
 .block-actions:empty { display: none; }
+
+/* v0.30 palette folding and flow outputs */
+.palette-tools{display:flex;gap:6px;margin:10px 0 8px}
+.palette-category{border:1px solid transparent;border-radius:12px;margin:8px 0}
+.palette-category-title{width:100%;display:flex;align-items:center;gap:8px;justify-content:flex-start;background:transparent;color:var(--muted);padding:7px 4px;margin:0;border-radius:10px;text-transform:uppercase;letter-spacing:.08em;font-size:12px;font-weight:800;text-align:left}
+.palette-category-title b{flex:1;color:var(--muted)}
+.palette-category-title small{font-size:11px;background:#eef2ff;color:#243b93;border-radius:999px;padding:2px 7px;letter-spacing:0;text-transform:none}
+.palette-category-body[hidden]{display:none!important}
+.palette-category.collapsed{background:#fbfcff;border-color:var(--line)}
+.block-output{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:7px;font-size:12px;color:#475467}
+.block-output span{font-weight:700;color:#667085}
+.block-output b{background:#ecfdf3;border:1px solid #bbf7d0;color:#166534;border-radius:999px;padding:3px 7px;font-weight:700}
