@@ -253,7 +253,7 @@ function blockPrimaryOutput(block) {
   if (!block) return null;
   const token = name => `{{${name}}}`;
   if (block.type === 'extract') return { kind:'text', varName:block.varName || 'adat', token:token(block.varName || 'adat') };
-  if (block.type === 'textSearch') return { kind:'elementText', varName:block.resultName || 'szoveg_talalat', token:token(block.contextName || 'szoveg_talalat_szoveg'), elementVar:block.elementName || 'szoveg_talalat_elem', selectorVar:block.selectorName || 'szoveg_talalat_selector', xpathVar:block.xpathName || 'szoveg_talalat_xpath' };
+  if (block.type === 'textSearch') return { kind:'elementText', varName:block.resultName || 'szoveg_talalat', token:token(block.selectorName || 'szoveg_talalat_selector'), textToken:token(block.contextName || 'szoveg_talalat_szoveg'), elementVar:block.elementName || 'szoveg_talalat_elem', selectorVar:block.selectorName || 'szoveg_talalat_selector', xpathVar:block.xpathName || 'szoveg_talalat_xpath', primaryTargetMode:'selector', primaryTargetVar:block.selectorName || 'szoveg_talalat_selector' };
   if (block.type === 'screenshot') return { kind:'image', varName:block.resultName || 'screenshot_data_url', token:token(block.resultName || 'screenshot_data_url') };
   if (block.type === 'userInput') return { kind:'text', varName:block.resultName || 'user_input', token:token(block.resultName || 'user_input') };
   if (block.type === 'userChoice') return { kind:'text', varName:block.resultName || 'valasztas', token:token(block.resultName || 'valasztas') };
@@ -266,13 +266,14 @@ function autoPrefillBlock(block, previous) {
   const out = blockPrimaryOutput(previous);
   if (!block || !out) return;
   const token = out.token || '';
-  if (['transform','textSlice','regex','mask','validateData'].includes(block.type) && token) block.source = token;
-  if (block.type === 'copy' && token) block.value = token;
-  if (block.type === 'fill' && token) block.value = token;
-  if (block.type === 'email' && token) block.body = token;
-  if (block.type === 'pdfText' && token) block.text = token;
+  const textToken = out.textToken || token;
+  if (['transform','textSlice','regex','mask','validateData'].includes(block.type) && textToken) block.source = textToken;
+  if (block.type === 'copy' && textToken) block.value = textToken;
+  if (block.type === 'fill' && textToken) block.value = textToken;
+  if (block.type === 'email' && textToken) block.body = textToken;
+  if (block.type === 'pdfText' && textToken) block.text = textToken;
   if (block.type === 'pdfScreenshot' && out.kind === 'image') { block.source = 'variable'; block.dataVar = out.varName; }
-  if ((block.type === 'click' || block.type === 'scroll' || block.type === 'preflight') && out.elementVar) { block.targetMode = 'last'; block.targetVar = out.elementVar; }
+  if ((block.type === 'click' || block.type === 'scroll' || block.type === 'preflight') && (out.selectorVar || out.elementVar)) { block.targetMode = out.primaryTargetMode || (out.selectorVar ? 'selector' : 'last'); block.targetVar = out.primaryTargetVar || out.selectorVar || out.elementVar; }
   if (block.type === 'ifBlock' && previous?.type === 'textSearch') { block.conditionMode = 'textExists'; block.text = `{{${previous.contextName || 'szoveg_talalat_szoveg'}}`; }
 }
 
@@ -479,7 +480,7 @@ function blockInline(b) {
   if (b.type === 'systemNotify') return `${inlineInput('title', b.title || 'BlockFlow', 'cím')} ${inlineInput('message', b.message || '', 'értesítés szövege', 'wide')}`;
   if (b.type === 'email') return `${inlineInput('to', b.to || '', 'címzett')} ${inlineInput('subject', b.subject || '', 'tárgy')} ${inlineInput('resultName', b.resultName || 'email_draft', 'draft változó')}`;
   if (b.type === 'openEmail') return `${inlineInput('draftName', b.draftName || 'email_draft', 'draft változó')} ${inlineNumber('maxUrlLength', b.maxUrlLength || 1800, 'mailto max')}`;
-  if (b.type === 'mask') return `${inlineInput('source', b.source || '{{adat}}', 'forrás', 'wide')} ${inlineSelect('maskMode', b.maskMode || 'characters', [['characters','karakter'],['lines','sor']])} ${inlineCheck('invertMask', Boolean(b.invertMask), 'invert')} ${inlineInput('resultName', b.resultName || 'maszkolt_adat', 'eredmény')}`;
+  if (b.type === 'mask') return `${inlineInput('source', b.source || '{{adat}}', 'forrás', 'wide')} ${inlineSelect('maskMode', b.maskMode || 'characters', [['characters','karakter'],['lines','sor']])} ${inlineCheck('invertMask', Boolean(b.invertMask), 'invert')} ${inlineCheck('clearTrim', Boolean(b.clearTrim), 'clear/trim')} ${inlineInput('resultName', b.resultName || 'maszkolt_adat', 'eredmény')}`;
   if (b.type === 'popupWait') return `${inlineNumber('timeoutMs', b.timeoutMs || 10000, 'timeout')}`;
   if (b.type === 'popupClick') return `${inlineInput('buttonText', b.buttonText || 'OK', 'gomb szövege')} ${inlineNumber('timeoutMs', b.timeoutMs || 5000, 'timeout')}`;
   if (b.type === 'popupExtract') return `${inlineSelect('extractMode', b.extractMode || 'text', [['text','teljes szöveg'],['title','cím']])} ${inlineInput('varName', b.varName || 'popup_szoveg', 'változó neve')}`;
@@ -492,7 +493,7 @@ function blockInline(b) {
   if (b.type === 'setVar') return `${inlineInput('varName', b.varName || 'valtozo', 'változó')} ${inlineInput('value', b.value || '', 'érték', 'wide')}`;
   if (b.type === 'userInput') return `${inlineInput('message', b.message || '', 'kérdés', 'wide')} ${inlineInput('resultName', b.resultName || 'user_input', 'eredmény')}`;
   if (b.type === 'userChoice') return `${inlineInput('message', b.message || '', 'kérdés', 'wide')} ${inlineInput('options', b.options || '', 'opciók soronként')} ${inlineInput('resultName', b.resultName || 'valasztas', 'eredmény')}`;
-  if (b.type === 'tableExtract') return `${inlinePick(b, 'Tábla/lista')} ${inlineSelect('rowMode', b.rowMode || 'first', [['first','első sor'],['last','utolsó sor'],['contains','sor tartalmazza']])} ${inlineNumber('columnIndex', b.columnIndex || 1, 'oszlop')} ${inlineInput('resultName', b.resultName || 'tabla_adat', 'eredmény')}`;
+  if (b.type === 'tableExtract') return `${inlinePick(b, 'Tábla/lista')} ${inlineSelect('rowMode', b.rowMode || 'first', [['first','első sor'],['last','utolsó sor'],['nth','N. sor'],['contains','sor tartalmazza']])} ${b.rowMode === 'nth' ? inlineNumber('rowIndex', b.rowIndex || 1, 'N') : ''} ${inlineNumber('columnIndex', b.columnIndex || 1, 'oszlop')} ${inlineInput('resultName', b.resultName || 'tabla_adat', 'eredmény')}`;
   if (b.type === 'elementLoop') return `${inlinePick(b, 'Konténer')} ${inlineInput('selector', b.selector || '', 'selector opcionális')} ${inlineInput('itemVar', b.itemVar || 'elem_szoveg', 'elem változó')} ${inlineNumber('maxItems', b.maxItems || 20, 'max')}`;
   if (b.type === 'waitUntil') return `${inlineSelect('conditionMode', b.conditionMode || 'textExists', [['textExists','szöveg'],['elementExists','elem'],['valueContains','mezőérték'],['urlContains','URL']])} ${b.conditionMode === 'elementExists' || b.conditionMode === 'valueContains' ? inlinePick(b) : inlineInput('text', b.text || b.value || '', 'várt érték', 'wide')} ${inlineNumber('timeoutMs', b.timeoutMs || 10000, 'timeout')}`;
   if (b.type === 'scroll') return `${inlineSelect('mode', b.mode || 'element', [['element','elemhez'],['page','oldal']])} ${b.mode === 'page' ? inlineSelect('direction', b.direction || 'down', [['down','le'],['up','fel'],['top','tetejére'],['bottom','aljára']]) + inlineNumber('amount', b.amount || 500, 'px') : inlineTargetSource(b) + (b.targetMode && b.targetMode !== 'manual' ? '' : inlinePick(b))}`;
@@ -521,7 +522,7 @@ function blockInline(b) {
   if (b.type === 'callWorkflow') return `${inlineInput('workflowId', b.workflowId || '', 'workflow ID vagy név')} ${inlineInput('resultPrefix', b.resultPrefix || 'called', 'eredmény prefix')}`;
   if (b.type === 'returnResult') return `${inlineInput('value', b.value || '{{adat}}', 'érték')} ${inlineInput('resultName', b.resultName || 'result', 'név')}`;
   if (b.type === 'stopRun') return inlineInput('message', b.message || 'Futás leállítva.', 'üzenet', 'wide');
-  if (b.type === 'sound') return inlineSelect('tone', b.tone || 'success', [['success','siker'],['error','hiba'],['notify','jelzés']]);
+  if (b.type === 'sound') return `${inlineSelect('soundSource', b.soundSource || 'builtIn', [['builtIn','beépített'],['custom','saját hang']])} ${b.soundSource === 'custom' ? `<span class="pill">${escapeHtml(b.customSoundName || 'nincs fájl')}</span>` : inlineSelect('tone', b.tone || 'success', [['success','siker'],['error','hiba'],['notify','jelzés']])}`;
   return '';
 }
 
@@ -557,7 +558,7 @@ function bindBlockEvents() {
       const block = findBlock(blockEl?.dataset.block)?.block;
       if (!block) return;
       const field = input.dataset.inlineField;
-      block[field] = ['timeoutMs','ms','maxUrlLength','repeatCount','maxRows','keepStart','keepEnd','keepFirstLines','keepLastLines','throttleSec','intervalSec','intervalMinutes','charStart','charEnd','lineNumber','group','columnIndex','maxItems','attempts','delayMs','amount'].includes(field) ? Number(input.value) : input.value;
+      block[field] = ['timeoutMs','ms','maxUrlLength','repeatCount','maxRows','keepStart','keepEnd','keepFirstLines','keepLastLines','throttleSec','intervalSec','intervalMinutes','charStart','charEnd','lineNumber','group','columnIndex','rowIndex','maxItems','attempts','delayMs','amount','volume'].includes(field) ? Number(input.value) : input.value;
       markDirty();
       renderVariables();
     };
@@ -777,8 +778,8 @@ const BLOCK_HELP = {
   textSlice: { purpose:'Egy hosszabb szövegből részletet vág ki.', params:['Mód: két szöveg között, adott sor, vagy karaktertartomány.','Eredmény változó: a kivágott rész neve.'] },
   regex: { purpose:'Reguláris kifejezéssel keres mintát egy szövegben.', params:['Minta: regex kifejezés.','Capture group: melyik zárójeles találatot mentse.','Összes találat: több eredményt is menthet.'] },
   textSearch: { purpose:'Egyszerű szöveget keres az oldalon regex nélkül, és visszaadja azt is, hogy hol találta meg.', params:['Keresett szöveg: a keresendő szó vagy mondatrész.','Hol keressen: látható szövegben, teljes DOM-ban vagy mezőértékekkel/attribútumokkal együtt.','Eredmények: igaz/hamis, találatszám, környező szöveg, hely típusa, CSS selector és XPath változókba kerül.'] },
-  mask: { purpose:'Érzékeny adatot maszkol karakterek vagy sorok alapján.', params:['Karakter mód: eleje/vége megtartása, köztes rész maszkolása.','Sor mód: első/utolsó sorok megtartása.','Invert: a kijelölt részt maszkolja, nem a köztes részt.'] },
-  tableExtract: { purpose:'Táblázatból vagy listából olvas ki egy adott cellát/sort.', params:['Sor mód: első, utolsó vagy tartalmazza.','Oszlop száma: 1-től indul.','Eredmény változó: ide menti a cella értékét.'] },
+  mask: { purpose:'Érzékeny adatot maszkol karakterek vagy sorok alapján.', params:['Karakter mód: eleje/vége megtartása, köztes rész maszkolása.','Sor mód: első/utolsó sorok megtartása.','Invert: a kijelölt részt maszkolja. Clear/trim: a maszkolandó rész törlődik, nem helyettesítődik.'] },
+  tableExtract: { purpose:'Táblázatból vagy listából olvas ki egy adott cellát/sort.', params:['Sor mód: első, utolsó, N. sor vagy tartalmazza.','Az N. sor 1-től indul, opcionálisan a fejléc kihagyásával.','Oszlop száma: 1-től indul.'] },
   findElements: { purpose:'Több elemet keres, és találatszámot vagy szöveges listát ment.', params:['Cél elem vagy selector: a találatok mintája.','Maximum elem: mennyi találatot dolgozzon fel.','Változók: találatok és darabszám.'] },
   elementLoop: { purpose:'Több megtalált elemre ismétli a behúzott blokkokat.', params:['Selector vagy kiválasztott minta alapján keres.','Item változó: az aktuális elem szövege.','Index változó: az aktuális sorszám.'] },
   rowLoop: { purpose:'Táblázat/lista sorain fut végig egyszerűen.', params:['Cél táblázat/lista.','Sor változó: az aktuális sor szövege.','Maximum sor: véd a túl hosszú feldolgozástól.'] },
@@ -786,7 +787,7 @@ const BLOCK_HELP = {
   userInput: { purpose:'Adatot kér be a felhasználótól futás közben.', params:['Mező típusa: rövid vagy hosszú szöveg.','Alapérték és placeholder segíti a kitöltést.','Eredmény változó: ide kerül a megadott adat.'] },
   userChoice: { purpose:'Opciók közül választást kér a felhasználótól.', params:['Opciók: soronként egy válasz.','Eredmény változó: a kiválasztott opció.'] },
   systemNotify: { purpose:'Chrome rendszerértesítést küld.', params:['Cím és üzenet változókkal is kitölthető.','Nem állítja meg a workflow-t.'] },
-  sound: { purpose:'Rövid hangjelzést ad visszajelzésként.', params:['Típus: siker, hiba vagy figyelmeztetés jellegű hang.'] },
+  sound: { purpose:'Rövid hangjelzést ad visszajelzésként.', params:['Beépített hang vagy saját feltöltött mp3/wav/ogg használható.','Állítható hangerő és ismétlésszám.'] },
   email: { purpose:'Email draft adatot állít össze változókból.', params:['Címzett, tárgy, törzs.','Nem küld emailt, csak draft változót készít.'] },
   emailTemplate: { purpose:'Mentett email sablont tölt be és draft változóvá alakít.', params:['Sablon kiválasztása.','Címzett és eredményváltozó állítható.'] },
   emailPreview: { purpose:'Megmutatja az email tartalmát, mielőtt megnyitod vagy másolod.', params:['Döntési ablak: megnyitás, másolás vagy megszakítás.','Eredmény változóba menthető a választás.'] },
@@ -857,7 +858,8 @@ function renderInspector() {
   if (b.type === 'copy') html += valueSourceHelp() + textArea('value','Mit másoljon?', b.value || '');
   if (b.type === 'userPrompt') html += selectField('mode','Működés', b.mode || 'wait', [['wait','Felugró ablak és várjon felhasználói visszajelzésre'],['notify','Csak felugró üzenet, automatikusan továbbmegy']]) + textField('title','Ablak címe', b.title || 'BlockFlow') + textArea('message','Üzenet szövege', b.message || '') + textField('buttonText','Folytatás gomb szövege', b.buttonText || 'Folytatás') + textField('cancelText','Megszakítás gomb szövege', b.cancelText || 'Megszakítás') + textField('resultName','Eredmény változó neve opcionális', b.resultName || '') + `<div class="status">Várakozó módban a futás megáll, amíg a felhasználó folytatja vagy megszakítja. Értesítő módban csak megjelenik egy rövid felugró üzenet.</div>`;
   if (b.type === 'systemNotify') html += textField('title','Értesítés címe', b.title || 'BlockFlow') + textArea('message','Értesítés szövege', b.message || '') + `<div class="status">Chrome rendszerértesítést küld. Ehhez az extension értesítési jogosultságot használ.</div>`;
-  if (b.type === 'mask') html += valueSourceHelp() + textArea('source','Forrás szöveg vagy változó', b.source || '{{adat}}') + selectField('maskMode','Maszkolás módja', b.maskMode || 'characters', [['characters','Karakterek alapján'],['lines','Sorok alapján']]) + checkboxField('invertMask','Invert maszkolás: a megadott részeket maszkolja, a többit hagyja meg', Boolean(b.invertMask)) + textField('resultName','Eredmény változó neve', b.resultName || 'maszkolt_adat') + textField('maskChar','Maszk karakter üresen hagyható', b.maskChar ?? '*') + (b.maskMode === 'lines' ? numberField('keepFirstLines','Érintett/meghagyott első sorok', b.keepFirstLines ?? 1) + numberField('keepLastLines','Érintett/meghagyott utolsó sorok', b.keepLastLines ?? 1) + textField('maskLineText','Maszkolt sor szövege üresen hagyható', b.maskLineText ?? '***') : numberField('keepStart','Érintett/meghagyott első karakterek', b.keepStart ?? 2) + numberField('keepEnd','Érintett/meghagyott utolsó karakterek', b.keepEnd ?? 2)) + `<div class="status">Normál mód: a megadott első/utolsó rész látható marad. Invert módban pont ezek lesznek maszkolva. Üres maszk esetén a maszkolt rész nem kap helyettesítő karaktert.</div>`;
+  if (b.type === 'sound') html += selectField('soundSource','Hangforrás', b.soundSource || 'builtIn', [['builtIn','Beépített hang'],['custom','Saját feltöltött hang']]) + (b.soundSource === 'custom' ? `<div class="field"><label>Saját hangfájl</label><input type="file" id="customSoundFile" accept="audio/*"><small class="muted">Jelenlegi: ${escapeHtml(b.customSoundName || 'nincs feltöltve')}</small></div><button class="small" id="previewCustomSound">Hang előnézet</button>` : selectField('tone','Hang típusa', b.tone || 'success', [['success','Siker'],['error','Hiba'],['notify','Jelzés']])) + numberField('volume','Hangerő 0-1', b.volume ?? 0.7) + numberField('repeatCount','Ismétlés száma', b.repeatCount || 1);
+  if (b.type === 'mask') html += valueSourceHelp() + textArea('source','Forrás szöveg vagy változó', b.source || '{{adat}}') + selectField('maskMode','Maszkolás módja', b.maskMode || 'characters', [['characters','Karakterek alapján'],['lines','Sorok alapján']]) + checkboxField('invertMask','Invert maszkolás: a megadott részeket maszkolja, a többit hagyja meg', Boolean(b.invertMask)) + checkboxField('clearTrim','Clear / trim mód: a maszkolandó rész törlődik', Boolean(b.clearTrim)) + textField('resultName','Eredmény változó neve', b.resultName || 'maszkolt_adat') + textField('maskChar','Maszk karakter üresen hagyható', b.maskChar ?? '*') + (b.maskMode === 'lines' ? numberField('keepFirstLines','Érintett/meghagyott első sorok', b.keepFirstLines ?? 1) + numberField('keepLastLines','Érintett/meghagyott utolsó sorok', b.keepLastLines ?? 1) + textField('maskLineText','Maszkolt sor szövege üresen hagyható', b.maskLineText ?? '***') : numberField('keepStart','Érintett/meghagyott első karakterek', b.keepStart ?? 2) + numberField('keepEnd','Érintett/meghagyott utolsó karakterek', b.keepEnd ?? 2)) + `<div class="status">Clear/trim módban a maszkolandó rész teljesen törlődik. Normál módban maszk karakter vagy sorhelyettesítő kerül a helyére.</div>`;
   if (b.type === 'email') html += textField('to','Címzett', b.to || '') + textField('subject','Tárgy', b.subject || '') + textArea('body','Törzs', b.body || '') + textField('resultName','Draft változó neve', b.resultName || 'email_draft');
   if (b.type === 'openEmail') html += textField('draftName','Email draft változó', b.draftName || 'email_draft') + numberField('maxUrlLength','Mailto max hossz', b.maxUrlLength || 1800) + `<div class="status">Az extension nem küld emailt. Csak mailto ablakot nyit; hosszú törzs esetén vágólapra másol.</div>`;
   if (b.type === 'scheduledTrigger') html += checkboxField('triggerEnabled','Időzítő aktív', b.triggerEnabled !== false) + selectField('scheduleMode','Időzítés módja', b.scheduleMode || 'interval', [['interval','Percenként'],['daily','Napi időpont']]) + numberField('intervalMinutes','Intervallum percben', b.intervalMinutes || 15) + textField('timeOfDay','Napi időpont HH:MM', b.timeOfDay || '08:00') + textField('days','Napok', b.days || 'mon,tue,wed,thu,fri');
@@ -868,7 +870,7 @@ function renderInspector() {
   if (b.type === 'setVar') html += textField('varName','Változó neve', b.varName || 'valtozo') + textArea('value','Érték', b.value || '');
   if (b.type === 'userInput') html += textField('title','Cím', b.title || '') + textArea('message','Kérdés', b.message || '') + selectField('inputType','Mező típusa', b.inputType || 'text', [['text','Rövid szöveg'],['textarea','Hosszú szöveg']]) + textField('placeholder','Placeholder', b.placeholder || '') + textField('defaultValue','Alapérték', b.defaultValue || '') + textField('resultName','Eredmény változó', b.resultName || 'user_input');
   if (b.type === 'userChoice') html += textField('title','Cím', b.title || '') + textArea('message','Kérdés', b.message || '') + textArea('options','Opciók soronként', b.options || '') + textField('resultName','Eredmény változó', b.resultName || 'valasztas');
-  if (b.type === 'tableExtract') html += selectField('rowMode','Sor kiválasztása', b.rowMode || 'first', [['first','Első'],['last','Utolsó'],['contains','Tartalmazza']]) + textField('rowContains','Sor tartalmazza', b.rowContains || '') + numberField('columnIndex','Oszlop száma', b.columnIndex || 1) + textField('resultName','Eredmény változó', b.resultName || 'tabla_adat');
+  if (b.type === 'tableExtract') html += selectField('rowMode','Sor kiválasztása', b.rowMode || 'first', [['first','Első'],['last','Utolsó'],['nth','N. sor'],['contains','Tartalmazza']]) + (b.rowMode === 'nth' ? numberField('rowIndex','N. sor száma', b.rowIndex || 1) : '') + textField('rowContains','Sor tartalmazza', b.rowContains || '') + checkboxField('includeHeader','Fejlécsort is beleszámolja', Boolean(b.includeHeader)) + checkboxField('skipEmptyRows','Üres sorokat kihagyja', b.skipEmptyRows !== false) + selectField('missingRowMode','Ha nincs ilyen sor', b.missingRowMode || 'empty', [['empty','Üres érték'],['error','Hiba']]) + numberField('columnIndex','Oszlop száma', b.columnIndex || 1) + textField('resultName','Eredmény változó', b.resultName || 'tabla_adat');
   if (b.type === 'elementLoop') html += textField('selector','Selector opcionális', b.selector || '') + textField('itemVar','Elem szöveg változó', b.itemVar || 'elem_szoveg') + textField('indexVar','Index változó', b.indexVar || 'elem_index') + numberField('maxItems','Maximum elem', b.maxItems || 20);
   if (b.type === 'waitUntil') html += selectField('conditionMode','Feltétel', b.conditionMode || 'textExists', [['textExists','Szöveg megjelenik'],['elementExists','Elem megjelenik'],['valueContains','Mezőérték tartalmazza'],['urlContains','URL tartalmazza']]) + textField('text','Szöveg', b.text || '') + textField('value','Érték', b.value || '') + numberField('timeoutMs','Timeout ms', b.timeoutMs || 10000);
   if (b.type === 'openUrl') html += textField('url','URL', b.url || '') + selectField('mode','Megnyitás', b.mode || 'newTab', [['sameTab','Aktuális tab'],['newTab','Új tab'],['newWindow','Új ablak']]);
@@ -886,6 +888,22 @@ function renderInspector() {
     const handler = () => updateField(input.dataset.field, input.type === 'checkbox' ? input.checked : input.value);
     input.oninput = handler; input.onchange = handler;
   });
+  const soundFile = $('#customSoundFile');
+  if (soundFile) soundFile.onchange = async e => {
+    const f = e.target.files?.[0]; if (!f) return;
+    if (!/^audio\//.test(f.type || '') && !/\.(mp3|wav|ogg|m4a)$/i.test(f.name || '')) return alert('Csak hangfájl tölthető fel.');
+    if (f.size > 1024 * 1024) return alert('A saját hang legyen rövid, maximum 1 MB.');
+    const dataUrl = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(f); });
+    const block = findBlock(selectedBlockId)?.block; if (!block) return;
+    block.soundSource = 'custom'; block.customSoundName = f.name; block.customSoundData = dataUrl;
+    markDirty(); renderInspector(); renderBlocks(); $('#log').textContent = `Saját hang feltöltve: ${f.name}`;
+  };
+  const previewSound = $('#previewCustomSound');
+  if (previewSound) previewSound.onclick = () => {
+    const block = findBlock(selectedBlockId)?.block;
+    if (block?.customSoundData) { const a = new Audio(block.customSoundData); a.volume = Math.max(0, Math.min(1, Number(block.volume ?? 0.7))); a.play().catch(()=>{}); }
+    else alert('Nincs feltöltött saját hang.');
+  };
   const pick = $('#pickElement'); if (pick) pick.onclick = () => startPick(b.id, 'target');
   const test = $('#testBlock'); if (test) test.onclick = () => testBlock(b);
   const popupTest = $('#testPopup'); if (popupTest) popupTest.onclick = testPopup;
@@ -936,12 +954,12 @@ function selectField(field,label,value,options){ return `<div class="field"><lab
 function updateField(field, value) {
   const b = findBlock(selectedBlockId)?.block;
   if (!b) return;
-  b[field] = ['timeoutMs','ms','maxUrlLength','repeatCount','maxRows','keepStart','keepEnd','keepFirstLines','keepLastLines','throttleSec','intervalSec','intervalMinutes','charStart','charEnd','lineNumber','group','columnIndex','maxItems','attempts','delayMs','amount'].includes(field) ? Number(value) : value;
+  b[field] = ['timeoutMs','ms','maxUrlLength','repeatCount','maxRows','keepStart','keepEnd','keepFirstLines','keepLastLines','throttleSec','intervalSec','intervalMinutes','charStart','charEnd','lineNumber','group','columnIndex','rowIndex','maxItems','attempts','delayMs','amount','volume'].includes(field) ? Number(value) : value;
   markDirty();
   renderBlocks();
   renderVariables();
   renderImportWarning();
-  if (['waitMode','conditionMode','maskMode','scope','domain','path','url','urlContains','logic','operator','changeMode','readMode','searchScope','firstRun','pageSize','orientation','source','action','style','align'].includes(field)) renderInspector();
+  if (['waitMode','conditionMode','maskMode','scope','domain','path','url','urlContains','logic','operator','changeMode','readMode','searchScope','firstRun','pageSize','orientation','source','action','style','align','soundSource','rowMode'].includes(field)) renderInspector();
 }
 
 function renderVariables() {
@@ -1308,6 +1326,144 @@ async function renderVersions() {
   panel.querySelectorAll('[data-restore-version]').forEach(btn => btn.onclick = async () => { const v=versions[Number(btn.dataset.restoreVersion)]; if(!v || !confirm('Visszaállítod ezt a verziót?')) return; const restored=v.workflow; restored.id=activeWorkflow.id; activeWorkflow=restored; normalizeWorkflow(activeWorkflow); selectedBlockId=firstBlock(activeWorkflow.blocks)?.id; await BF.saveWorkflow(activeWorkflow); const store=await BF.getStore(); workflows=store.workflows; renderAll(); });
 }
 
+
+function buildWatchersForExport(workflow) {
+  const blockWatchers = [];
+  BF.walkBlocks(workflow.blocks || [], b => {
+    if (b.type !== 'triggerGroup' || b.triggerEnabled === false) return;
+    const cloneCondition = c => ({
+      type: c.type,
+      text: c.text || '',
+      caseSensitive: Boolean(c.caseSensitive),
+      target: c.target || null,
+      requireVisible: c.requireVisible !== false,
+      operator: c.operator || 'contains',
+      value: c.value || '',
+      readMode: c.readMode || 'auto',
+      attributeName: c.attributeName || 'title',
+      searchScope: c.searchScope || 'dom',
+      changeMode: c.changeMode || 'fromTo',
+      fromValue: c.fromValue || '',
+      toValue: c.toValue || '',
+      firstRun: c.firstRun || 'learn',
+      logic: c.logic || 'all',
+      children: (c.children || []).filter(x => String(x.type || '').startsWith('condition')).map(cloneCondition),
+      id: c.id
+    });
+    const conditions = (b.children || []).filter(c => String(c.type || '').startsWith('condition')).map(cloneCondition);
+    if (!conditions.length) return;
+    blockWatchers.push({
+      id: `block:${workflow.id}:${b.id}`,
+      source: 'block', sourceBlockId: b.id, workflowId: workflow.id, enabled: true,
+      mode: 'group', logic: b.logic || 'all', conditions,
+      scope: b.scope || 'any', domain: b.domain || '', path: b.path || '/', url: b.url || '', urlContains: b.urlContains || '',
+      intervalSec: Math.max(1, Number(b.intervalSec || 2)), throttleSec: Math.max(1, Number(b.throttleSec || 15)),
+      runOnce: Boolean(b.runOnce), createdAt: b.createdAt || new Date().toISOString()
+    });
+  });
+  return blockWatchers;
+}
+
+function buildSchedulesForExport(workflow) {
+  const schedules = [];
+  BF.walkBlocks(workflow.blocks || [], b => {
+    if (b.type !== 'scheduledTrigger' || b.triggerEnabled === false) return;
+    schedules.push({ id: `sched:${workflow.id}:${b.id}`, workflowId: workflow.id, sourceBlockId: b.id, enabled: true, scheduleMode: b.scheduleMode || 'interval', intervalMinutes: Math.max(1, Number(b.intervalMinutes || 15)), timeOfDay: b.timeOfDay || '08:00', days: b.days || 'mon,tue,wed,thu,fri' });
+  });
+  return schedules;
+}
+
+function makeStandaloneBackground(workflow, watchers, schedules, baseBackground) {
+  const workflowJson = JSON.stringify(workflow);
+  const watchersJson = JSON.stringify(watchers);
+  const schedulesJson = JSON.stringify(schedules);
+  return `// Generated by BlockFlow Mini extension export.\nconst GENERATED_WORKFLOW = ${workflowJson};\nconst GENERATED_WATCHERS = ${watchersJson};\nconst GENERATED_SCHEDULES = ${schedulesJson};\n\n${baseBackground}\n\nasync function bfInstallGeneratedAutomation(){\n  try {\n    await chrome.storage.local.set({ workflows:[GENERATED_WORKFLOW], activeWorkflowId:GENERATED_WORKFLOW.id, watchers:GENERATED_WATCHERS, schedules:GENERATED_SCHEDULES });\n    if (typeof refreshSchedules === 'function') await refreshSchedules();\n  } catch(e) { console.warn('BlockFlow generated install hiba', e); }\n}\nchrome.runtime.onInstalled.addListener(bfInstallGeneratedAutomation);\nchrome.runtime.onStartup.addListener(bfInstallGeneratedAutomation);\nchrome.action.onClicked.addListener(async (tab) => {\n  try {\n    await bfInstallGeneratedAutomation();\n    const target = await getUsableTargetTab(tab?.id);\n    if (!target?.id) return;\n    await ensureContentScript(target.id);\n    await chrome.tabs.sendMessage(target.id, { type:'BF_RUN_WORKFLOW', workflow:GENERATED_WORKFLOW, options:{ forceRun:false } });\n  } catch(e) { console.error('Generated BlockFlow futtatási hiba', e); try { chrome.notifications?.create({type:'basic', iconUrl:'icons/icon128.png', title:GENERATED_WORKFLOW.name || 'Automatizmus', message:String(e.message || e).slice(0,500)}); } catch(_) {} }\n});\n`;
+}
+
+function crc32(str) {
+  const table = crc32.table || (crc32.table = Array.from({length:256}, (_,n)=>{ let c=n; for(let k=0;k<8;k++) c = c&1 ? 0xedb88320 ^ (c>>>1) : c>>>1; return c>>>0; }));
+  let crc = -1;
+  for (let i=0;i<str.length;i++) crc = (crc>>>8) ^ table[(crc ^ str.charCodeAt(i)) & 255];
+  return (crc ^ -1) >>> 0;
+}
+function dosTime(date=new Date()) { return ((date.getHours()<<11) | (date.getMinutes()<<5) | Math.floor(date.getSeconds()/2)) & 0xffff; }
+function dosDate(date=new Date()) { return (((date.getFullYear()-1980)<<9) | ((date.getMonth()+1)<<5) | date.getDate()) & 0xffff; }
+function u16(n){ return String.fromCharCode(n & 255, (n>>>8)&255); }
+function u32(n){ return String.fromCharCode(n & 255, (n>>>8)&255, (n>>>16)&255, (n>>>24)&255); }
+async function filesToZipBlob(files) {
+  const encoder = new TextEncoder();
+  const chunks = []; const central = []; let offset = 0;
+  for (const f of files) {
+    const nameBytes = encoder.encode(f.name);
+    const contentBytes = typeof f.content === 'string' ? encoder.encode(f.content) : f.content;
+    let binary = ''; for (const b of contentBytes) binary += String.fromCharCode(b);
+    const crc = crc32(binary); const t = dosTime(); const d = dosDate();
+    const local = 'PK\x03\x04' + u16(20) + u16(0) + u16(0) + u16(t) + u16(d) + u32(crc) + u32(contentBytes.length) + u32(contentBytes.length) + u16(nameBytes.length) + u16(0);
+    chunks.push(encoder.encode(local), nameBytes, contentBytes);
+    const centralHeader = 'PK\x01\x02' + u16(20) + u16(20) + u16(0) + u16(0) + u16(t) + u16(d) + u32(crc) + u32(contentBytes.length) + u32(contentBytes.length) + u16(nameBytes.length) + u16(0) + u16(0) + u16(0) + u16(0) + u32(0) + u32(offset);
+    central.push(encoder.encode(centralHeader), nameBytes);
+    offset += local.length + nameBytes.length + contentBytes.length;
+  }
+  const centralSize = central.reduce((a,c)=>a+c.length,0); const centralOffset = offset;
+  const end = 'PK\x05\x06' + u16(0) + u16(0) + u16(files.length) + u16(files.length) + u32(centralSize) + u32(centralOffset) + u16(0);
+  return new Blob([...chunks, ...central, encoder.encode(end)], { type:'application/zip' });
+}
+
+async function exportMiniExtension() {
+  await saveCurrent();
+  const wf = JSON.parse(JSON.stringify(activeWorkflow));
+  const name = prompt('Mini extension neve', wf.name || 'BlockFlow automatizmus');
+  if (name === null) return;
+  const version = prompt('Verzió', '1.0.0');
+  if (version === null) return;
+  const desc = prompt('Leírás', 'BlockFlow-ból generált önálló automatizmus.') || 'BlockFlow-ból generált önálló automatizmus.';
+  const watchers = buildWatchersForExport(wf);
+  const schedules = buildSchedulesForExport(wf);
+  const [bg, cs, css, fbHtml, fbCss, fbJs, icon16, icon48, icon128] = await Promise.all([
+    fetch(chrome.runtime.getURL('background.js')).then(r=>r.text()),
+    fetch(chrome.runtime.getURL('contentScript.js')).then(r=>r.text()),
+    fetch(chrome.runtime.getURL('contentScript.css')).then(r=>r.text()),
+    fetch(chrome.runtime.getURL('feedback.html')).then(r=>r.text()),
+    fetch(chrome.runtime.getURL('feedback.css')).then(r=>r.text()),
+    fetch(chrome.runtime.getURL('feedback.js')).then(r=>r.text()),
+    fetch(chrome.runtime.getURL('icons/icon16.png')).then(r=>r.arrayBuffer()).catch(()=>new ArrayBuffer(0)),
+    fetch(chrome.runtime.getURL('icons/icon48.png')).then(r=>r.arrayBuffer()).catch(()=>new ArrayBuffer(0)),
+    fetch(chrome.runtime.getURL('icons/icon128.png')).then(r=>r.arrayBuffer()).catch(()=>new ArrayBuffer(0))
+  ]);
+  const manifest = {
+    manifest_version: 3,
+    name: name || wf.name || 'BlockFlow Mini Automation',
+    description: desc,
+    version: /^\d+\.\d+\.\d+$/.test(version || '') ? version : '1.0.0',
+    minimum_chrome_version: '116',
+    permissions: ['storage','activeTab','scripting','tabs','clipboardWrite','notifications','clipboardRead','alarms','downloads'],
+    host_permissions: ['<all_urls>'],
+    action: { default_title: name || wf.name || 'Automatizmus futtatása' },
+    background: { service_worker: 'background.js' },
+    content_scripts: [{ matches: ['<all_urls>'], js: ['contentScript.js'], css: ['contentScript.css'], run_at: 'document_idle' }],
+    icons: { '16':'icons/icon16.png', '48':'icons/icon48.png', '128':'icons/icon128.png' }
+  };
+  const readme = `# ${name || wf.name}\n\nBlockFlow-ból generált, Builder nélküli mini Chrome extension.\n\nTelepítés: chrome://extensions → Developer mode → Load unpacked → válaszd ki a kicsomagolt mappát.\n\nMűködés: ikonra kattintva futtat, a figyelők/időzítők pedig automatikusan regisztrálódnak.\n`;
+  const files = [
+    { name:'manifest.json', content: JSON.stringify(manifest, null, 2) },
+    { name:'background.js', content: makeStandaloneBackground(wf, watchers, schedules, bg) },
+    { name:'contentScript.js', content: cs },
+    { name:'contentScript.css', content: css },
+    { name:'README_MINI.md', content: readme },
+    { name:'feedback.html', content: fbHtml },
+    { name:'feedback.css', content: fbCss },
+    { name:'feedback.js', content: fbJs },
+    { name:'icons/icon16.png', content: new Uint8Array(icon16) },
+    { name:'icons/icon48.png', content: new Uint8Array(icon48) },
+    { name:'icons/icon128.png', content: new Uint8Array(icon128) }
+  ];
+  const blob = await filesToZipBlob(files);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = `${safeFile(name || wf.name || 'blockflow-mini')}.zip`; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+  $('#log').textContent = `Mini extension ZIP elkészült: ${a.download}`;
+}
+
 $('#workflowName').oninput = () => { activeWorkflow.name = $('#workflowName').value; markDirty(); renderWorkflowList(); };
 $('#saveWorkflow').onclick = async () => { await saveCurrent(); $('#log').textContent = 'Mentve.'; renderAll(); };
 $('#newWorkflow').onclick = async () => { await saveCurrent(); const w = BF.DEFAULT_WORKFLOW(); workflows.push(w); activeWorkflow = w; selectedBlockId = null; await BF.saveWorkflow(w); isDirty = false; renderAll(); };
@@ -1320,6 +1476,7 @@ $('#dryRunWorkflow').onclick = () => runCurrent(true, false);
 $('#stopRun').onclick = async () => { const res = await BF.sendToTarget({ type: 'BF_STOP_RUN' }, targetTabId); $('#log').textContent = res.ok ? 'Stop kérés elküldve.' : (res.error || 'Stop hiba.'); };
 $('#exportOne').onclick = () => BF.downloadJson(`${safeFile(activeWorkflow.name)}.json`, BF.exportPayload([activeWorkflow]));
 $('#exportAll').onclick = () => BF.downloadJson(`blockflow-backup.json`, BF.exportPayload(workflows));
+$('#exportMini').onclick = () => exportMiniExtension().catch(err => { console.error(err); alert(err.message || String(err)); });
 $('#importBtn').onclick = () => $('#importFile').click();
 $('#importFile').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;

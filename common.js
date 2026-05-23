@@ -1,5 +1,5 @@
 const BF = (() => {
-  const SCHEMA_VERSION = 14;
+  const SCHEMA_VERSION = 15;
 
   const DEFAULT_WORKFLOW = () => ({
     id: crypto.randomUUID(),
@@ -71,7 +71,7 @@ const BF = (() => {
     callWorkflow: { name: 'Másik automatizmus futtatása', desc: 'Másik workflow-t hív meg.' },
     returnResult: { name: 'Eredmény visszaadása', desc: 'Workflow eredményváltozót állít be.' },
     stopRun: { name: 'Leállítás', desc: 'Megállítja a futást megadott üzenettel.' },
-    sound: { name: 'Hangjelzés', desc: 'Rövid hangjelzést ad.' },
+    sound: { name: 'Hangjelzés', desc: 'Rövid hangjelzést ad, akár saját feltöltött hanggal.' },
     pdfStart: { name: 'PDF indítása', desc: 'Új PDF dokumentum létrehozása futás közben.' },
     pdfText: { name: 'PDF szöveg hozzáadása', desc: 'Szöveget, címsort vagy megjegyzést ad az aktuális PDF-hez.' },
     pdfTable: { name: 'PDF táblázat hozzáadása', desc: 'Kulcs-érték vagy oszlopos táblázatot ad az aktuális PDF-hez.' },
@@ -175,7 +175,7 @@ const BF = (() => {
     if (type === 'email') return { id, type, to: '{{email}}', subject: '', body: '', resultName: 'email_draft' };
     if (type === 'openEmail') return { id, type, draftName: 'email_draft', maxUrlLength: 1800 };
     if (type === 'rowLoop') return { id, type, target: null, rowVar: 'sor_szoveg', maxRows: 20, children: [] };
-    if (type === 'mask') return { id, type, source: '{{adat}}', resultName: 'maszkolt_adat', maskMode: 'characters', invertMask: false, maskChar: '*', keepStart: 2, keepEnd: 2, keepFirstLines: 1, keepLastLines: 1, maskLineText: '***' };
+    if (type === 'mask') return { id, type, source: '{{adat}}', resultName: 'maszkolt_adat', maskMode: 'characters', invertMask: false, clearTrim: false, maskChar: '*', keepStart: 2, keepEnd: 2, keepFirstLines: 1, keepLastLines: 1, maskLineText: '***' };
     if (type === 'transform') return { id, type, source: '{{adat}}', operation: 'trim', resultName: 'atalakitott_adat' };
     if (type === 'textSlice') return { id, type, source: '{{adat}}', mode: 'between', startText: '', endText: '', lineNumber: 1, charStart: 0, charEnd: 100, resultName: 'szovegresz' };
     if (type === 'regex') return { id, type, source: '{{adat}}', pattern: '', flags: 'i', group: 0, allMatches: false, resultName: 'regex_talalat' };
@@ -183,7 +183,7 @@ const BF = (() => {
     if (type === 'setVar') return { id, type, varName: 'valtozo', value: '' };
     if (type === 'userInput') return { id, type, title: 'Adat bekérése', message: 'Adj meg egy értéket:', inputType: 'text', placeholder: '', defaultValue: '', resultName: 'user_input' };
     if (type === 'userChoice') return { id, type, title: 'Választás', message: 'Válassz egy opciót:', options: 'Igen\nNem', resultName: 'valasztas' };
-    if (type === 'tableExtract') return { id, type, target: null, rowMode: 'first', rowContains: '', columnIndex: 1, resultName: 'tabla_adat', timeoutMs: 5000 };
+    if (type === 'tableExtract') return { id, type, target: null, rowMode: 'first', rowIndex: 1, rowContains: '', columnIndex: 1, includeHeader: false, skipEmptyRows: true, missingRowMode: 'empty', resultName: 'tabla_adat', timeoutMs: 5000 };
     if (type === 'elementLoop') return { id, type, target: null, selector: '', itemVar: 'elem_szoveg', indexVar: 'elem_index', maxItems: 20, children: [] };
     if (type === 'waitUntil') return { id, type, conditionMode: 'textExists', text: '', target: null, operator: 'contains', value: '', timeoutMs: 10000 };
     if (type === 'scroll') return { id, type, mode: 'element', target: null, targetMode: 'manual', targetVar: '', direction: 'down', amount: 500 };
@@ -212,7 +212,7 @@ const BF = (() => {
     if (type === 'callWorkflow') return { id, type, workflowId: '', resultPrefix: 'called' };
     if (type === 'returnResult') return { id, type, value: '{{adat}}', resultName: 'result' };
     if (type === 'stopRun') return { id, type, message: 'Futás leállítva.' };
-    if (type === 'sound') return { id, type, tone: 'success' };
+    if (type === 'sound') return { id, type, soundSource: 'builtIn', tone: 'success', customSoundName: '', customSoundData: '', volume: 0.7, repeatCount: 1 };
     if (type === 'scheduledTrigger') return { id, type, triggerEnabled: true, scheduleMode: 'interval', intervalMinutes: 15, timeOfDay: '08:00', days: 'mon,tue,wed,thu,fri' };
     if (type === 'userPrompt') return { id, type, title: 'BlockFlow', message: 'Ellenőrizd az eredményt, majd folytasd.', mode: 'wait', buttonText: 'Folytatás', cancelText: 'Megszakítás', resultName: '' };
     if (type === 'systemNotify') return { id, type, title: 'BlockFlow', message: 'Az automatizmus elért egy értesítési ponthoz.' };
@@ -227,8 +227,8 @@ const BF = (() => {
 
   function blockTitle(block) {
     const meta = BLOCKS[block.type] || { name: block.type };
-    if (block.type === 'click') return `Kattints: ${block.target?.label || 'nincs kiválasztva'}`;
-    if (block.type === 'fill') return `Illeszd be ide: ${block.target?.label || 'nincs kiválasztva'}`;
+    if (block.type === 'click') return `Kattints: ${block.target?.label || (block.targetMode && block.targetMode !== 'manual' ? (block.targetMode === 'selector' ? '{{' + (block.targetVar || 'szoveg_talalat_selector') + '}}' : block.targetMode === 'xpath' ? '{{' + (block.targetVar || 'szoveg_talalat_xpath') + '}}' : '{{' + (block.targetVar || 'last_element') + '}}') : 'nincs kiválasztva')}`;
+    if (block.type === 'fill') return `Illeszd be ide: ${block.target?.label || (block.targetMode && block.targetMode !== 'manual' ? '{{' + (block.targetVar || 'last_element') + '}}' : 'nincs kiválasztva')}`;
     if (block.type === 'extract') return `Nyerd ki: ${block.target?.label || 'nincs kiválasztva'} → {{${block.varName || 'adat'}}}`;
     if (block.type === 'wait') return block.waitMode === 'time' ? `Várj ${block.ms || 1000} ms` : `Várakozás: ${block.waitMode}`;
     if (block.type === 'triggerGroup') return `Figyelő trigger: ${triggerLogicLabel(block.logic || 'all')}`;
@@ -284,7 +284,7 @@ const BF = (() => {
     if (block.type === 'callWorkflow') return `Másik automatizmus futtatása`;
     if (block.type === 'returnResult') return `Eredmény visszaadása → {{${block.resultName || 'result'}}}`;
     if (block.type === 'stopRun') return `Leállítás`;
-    if (block.type === 'sound') return `Hangjelzés: ${block.tone || 'success'}`;
+    if (block.type === 'sound') return block.soundSource === 'custom' ? `Hangjelzés: saját hang${block.customSoundName ? ' · ' + short(block.customSoundName) : ''}` : `Hangjelzés: ${block.tone || 'success'}`;
     if (block.type === 'pdfStart') return `PDF indítása: ${short(block.fileName || 'riport.pdf')}`;
     if (block.type === 'pdfText') return `PDF szöveg: ${short(block.heading || block.text || '')}`;
     if (block.type === 'pdfTable') return `PDF táblázat: ${short(block.title || 'Adatok')}`;
@@ -354,7 +354,7 @@ const BF = (() => {
     if (block.type === 'rowLoop') return `Max sor: ${block.maxRows || 20} · gyermek blokkok: ${(block.children||[]).length}`;
     if (block.type === 'email') return `Címzett: ${block.to || ''} | Tárgy: ${short(block.subject || '')}`;
     if (block.type === 'copy') return short(block.value || '');
-    if (block.type === 'mask') return `${block.maskMode === 'lines' ? 'Soralapú' : 'Karakteralapú'}${block.invertMask ? ' · invert' : ''} · Forrás: ${short(block.source || '')}`;
+    if (block.type === 'mask') return `${block.maskMode === 'lines' ? 'Soralapú' : 'Karakteralapú'}${block.invertMask ? ' · invert' : ''}${block.clearTrim ? ' · clear/trim' : ''} · Forrás: ${short(block.source || '')}`;
     if (block.type === 'textSearch') return `${block.searchScope === 'visible' ? 'látható szöveg' : block.searchScope === 'dom' ? 'teljes DOM' : 'teljes oldal'} · ${block.caseSensitive ? 'kis/nagybetű számít' : 'kis/nagybetű nem számít'} · hely mentése: {{${block.placeName || 'szoveg_talalat_hely'}}} · elem: {{${block.elementName || 'szoveg_talalat_elem'}}}`;
     if (['transform','textSlice','regex','setVar','compare','math','validateData'].includes(block.type)) return `Forrás: ${short(block.source || block.left || block.value || '')}`;
     if (['comment','groupBlock'].includes(block.type)) return short(block.note || block.title || '');
@@ -532,12 +532,13 @@ const BF = (() => {
     if (!starterCount) issues.push({ level:'error', blockId:null, text:'Hiányzik az aktív indító blokk. Legalább egy szükséges: Indítás vagy aktív Figyelő trigger.' });
 
     const needsTarget = ['click','fill','extract','rowLoop'];
+    function hasDynamicTarget(b) { return b && b.targetMode && b.targetMode !== 'manual' && String(b.targetVar || '').trim(); }
     walkBlocks(workflow.blocks || [], b => {
-      if (needsTarget.includes(b.type) && !b.target) issues.push({ level:'error', blockId:b.id, text:`${BLOCKS[b.type]?.name || b.type}: hiányzik a cél elem.` });
+      if (needsTarget.includes(b.type) && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:`${BLOCKS[b.type]?.name || b.type}: hiányzik a cél elem.` });
       if (b.type === 'triggerGroup' && b.triggerEnabled !== false && !(b.children || []).length) issues.push({ level:'error', blockId:b.id, text:'Figyelő trigger: legalább egy feltétel szükséges.' });
       if ((b.type === 'conditionElement' || b.type === 'conditionField' || b.type === 'conditionChange') && !b.target) issues.push({ level:'error', blockId:b.id, text:`${BLOCKS[b.type]?.name || b.type}: hiányzik a cél elem.` });
-      if (b.type === 'wait' && b.waitMode === 'element' && !b.target) issues.push({ level:'error', blockId:b.id, text:'Várakozás elemre: hiányzik a cél elem.' });
-      if (b.type === 'ifBlock' && ['elementExists','valueContains'].includes(b.conditionMode) && !b.target) issues.push({ level:'error', blockId:b.id, text:'Ha blokk: hiányzik a cél elem.' });
+      if (b.type === 'wait' && b.waitMode === 'element' && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:'Várakozás elemre: hiányzik a cél elem.' });
+      if (b.type === 'ifBlock' && ['elementExists','valueContains'].includes(b.conditionMode) && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:'Ha blokk: hiányzik a cél elem.' });
       if (b.type === 'ifBlock' && b.conditionMode === 'textExists' && !String(b.text||'').trim()) issues.push({ level:'warning', blockId:b.id, text:'Ha blokk: üres keresett szöveg.' });
       if (b.type === 'conditionText' && !String(b.text||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Szöveg feltétel: üres figyelt szöveg.' });
       if (b.type === 'conditionUrl' && !['empty','notEmpty'].includes(b.operator || 'contains') && !String(b.value||'').trim()) issues.push({ level:'error', blockId:b.id, text:'URL feltétel: hiányzik az ellenőrzött érték.' });

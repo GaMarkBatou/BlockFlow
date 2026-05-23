@@ -478,6 +478,7 @@
   function maskValue(block, vars) {
     const raw = interpolate(block.source || '', vars);
     const invert = Boolean(block.invertMask);
+    const clearTrim = Boolean(block.clearTrim);
     const maskChar = block.maskChar == null ? '*' : String(block.maskChar).slice(0, 1);
     const repeatMask = n => maskChar ? maskChar.repeat(Math.max(0, n)) : '';
     if ((block.maskMode || 'characters') === 'lines') {
@@ -485,22 +486,27 @@
       const keepFirst = Math.max(0, Number(block.keepFirstLines || 0));
       const keepLast = Math.max(0, Number(block.keepLastLines || 0));
       const maskText = block.maskLineText == null ? '***' : String(block.maskLineText);
-      return lines.map((line, idx) => {
+      const out = [];
+      lines.forEach((line, idx) => {
         const fromEnd = lines.length - idx;
         const inEdge = idx < keepFirst || fromEnd <= keepLast;
-        if (!invert) return inEdge ? line : maskText;
-        return inEdge ? maskText : line;
-      }).join('\n');
+        const shouldMask = invert ? inEdge : !inEdge;
+        if (shouldMask) { if (!clearTrim) out.push(maskText); }
+        else out.push(line);
+      });
+      return out.join('\n');
     }
-    const text = String(raw);
-    const chars = Array.from(text);
+    const chars = Array.from(String(raw));
     const keepStart = Math.max(0, Number(block.keepStart || 0));
     const keepEnd = Math.max(0, Number(block.keepEnd || 0));
-    return chars.map((ch, idx) => {
+    const out = [];
+    chars.forEach((ch, idx) => {
       const inEdge = idx < keepStart || idx >= chars.length - keepEnd;
       const shouldMask = invert ? inEdge : !inEdge;
-      return shouldMask ? repeatMask(1) : ch;
-    }).join('');
+      if (shouldMask) { if (!clearTrim) out.push(repeatMask(1)); }
+      else out.push(ch);
+    });
+    return out.join('');
   }
 
 
@@ -647,14 +653,25 @@
   }
 
   function tableCellValue(container, block) {
-    const rows = rowsFromContainer(container, 500);
+    let rows = rowsFromContainer(container, 500);
+    if (block.skipEmptyRows !== false) rows = rows.filter(r => (r.innerText || r.textContent || '').trim() || r.querySelector('input,textarea,select'));
+    if (!block.includeHeader) {
+      const first = rows[0];
+      if (first && first.querySelectorAll('th').length && !first.querySelector('td')) rows = rows.slice(1);
+    }
     let row = null;
     if ((block.rowMode || 'first') === 'last') row = rows[rows.length - 1];
     else if (block.rowMode === 'contains') {
       const needle = interpolate(block.rowContains || '', {}).toLowerCase();
       row = rows.find(r => (r.innerText || r.textContent || '').toLowerCase().includes(needle));
+    } else if (block.rowMode === 'nth') {
+      const n = Math.max(1, Number(interpolate(block.rowIndex || 1, {}) || 1));
+      row = rows[n - 1];
     } else row = rows[0];
-    if (!row) return '';
+    if (!row) {
+      if (block.missingRowMode === 'error') throw new Error('Táblázatból kinyerés: nincs ilyen sor.');
+      return '';
+    }
     const cells = [...row.querySelectorAll('td,th,[role="cell"],input,textarea,select')];
     const idx = Math.max(0, Number(block.columnIndex || 1) - 1);
     const cell = cells[idx] || row;
@@ -1278,12 +1295,27 @@
     if (block.type === 'stopRun') throw new Error(interpolate(block.message || 'Futás leállítva.', vars));
     if (block.type === 'sound') {
       if (!dryRun) {
-        const ac = new AudioContext();
-        const osc = ac.createOscillator();
-        const gain = ac.createGain();
-        osc.frequency.value = block.tone === 'error' ? 220 : block.tone === 'notify' ? 660 : 880;
-        gain.gain.value = 0.04;
-        osc.connect(gain); gain.connect(ac.destination); osc.start(); setTimeout(() => { osc.stop(); ac.close(); }, 180);
+        const repeat = Math.max(1, Math.min(10, Number(block.repeatCount || 1)));
+        const volume = Math.max(0, Math.min(1, Number(block.volume ?? 0.7)));
+        if (block.soundSource === 'custom' && block.customSoundData) {
+          for (let i = 0; i < repeat; i++) {
+            const audio = new Audio(block.customSoundData);
+            audio.volume = volume;
+            await audio.play().catch(() => {});
+            await new Promise(r => setTimeout(r, Math.max(250, Number(block.customDelayMs || 700))));
+          }
+        } else {
+          for (let i = 0; i < repeat; i++) {
+            const ac = new AudioContext();
+            const osc = ac.createOscillator();
+            const gain = ac.createGain();
+            osc.frequency.value = block.tone === 'error' ? 220 : block.tone === 'notify' ? 660 : 880;
+            gain.gain.value = 0.04 * volume;
+            osc.connect(gain); gain.connect(ac.destination); osc.start();
+            await new Promise(r => setTimeout(r, 180));
+            try { osc.stop(); ac.close(); } catch (_) {}
+          }
+        }
       }
       return { ok: true, dryRun };
     }
