@@ -86,10 +86,10 @@ A Feltételcsoport ugyanezeket tudja, és trigger alá vagy másik feltételcsop
 
 ```text
 Figyelő trigger
-  Status változik: zugewiesen → in Bearbeitung
+  Status változik: ebből → abba
   Feltételcsoport: bármelyik igaz
-    CBI tartalmazza High
-    CBI tartalmazza Critical
+    Mező tartalmazza Eggyik
+    Mező tartalmazza Másik
 ```
 
 Ez azt jelenti, hogy a workflow csak akkor indul, ha a státuszváltozás megtörtént, és közben a CBI mező High vagy Critical értéket tartalmaz.
