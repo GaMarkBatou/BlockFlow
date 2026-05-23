@@ -300,6 +300,27 @@ function renderBlocks() {
   bindBlockEvents();
 }
 
+function isWatcherOnlyBlockType(type) { return ['conditionText','conditionElement','conditionField','conditionUrl','conditionChange','conditionGroup'].includes(type); }
+function canOutdentToRoot(block, parentId) {
+  if (!parentId) return false;
+  if (String(parentId).startsWith('else:')) return true;
+  if (isWatcherOnlyBlockType(block.type)) return false;
+  return true;
+}
+function blockActionButtons(b, idx, total, parentId) {
+  const parts = [];
+  if (idx > 0) {
+    parts.push(`<button class="small" title="Legfelülre" data-top="${b.id}">⇈</button>`);
+    parts.push(`<button class="small" title="Fel" data-up="${b.id}">↑</button>`);
+  }
+  if (idx < total - 1) {
+    parts.push(`<button class="small" title="Le" data-down="${b.id}">↓</button>`);
+    parts.push(`<button class="small" title="Legalulra" data-bottom="${b.id}">⇊</button>`);
+  }
+  if (canOutdentToRoot(b, parentId)) parts.push(`<button class="small" title="Kihúzás fő szintre" data-outdent="${b.id}">⇤</button>`);
+  if (canDeleteBlock(b)) parts.push(`<button class="small danger" title="Törlés" data-del="${b.id}">×</button>`);
+  return parts.join('');
+}
 function renderBlockList(blocks, level, parentId) {
   if (!blocks || !blocks.length) return level ? '<div class="empty nested-empty">Húzz ide blokkokat, vagy jelöld ki a konténert és adj hozzá blokkot a bal oldalon.</div>' : '<div class="empty starter-empty"><b>Válassz indítást a bal oldalon.</b><br>Indítás vagy Figyelő trigger szükséges az automatizmushoz.</div>';
   return blocks.map((b, idx) => {
@@ -319,12 +340,7 @@ function renderBlockList(blocks, level, parentId) {
     return `<div class="block-wrap" data-wrap="${b.id}" style="--level:${level}">
       <div class="block block-${b.type} ${b.id===selectedBlockId?'selected':''}" draggable="true" data-block="${b.id}" data-parent="${parentId || 'root'}">
         <div class="block-actions">
-          <button class="small" title="Legfelülre" data-top="${b.id}">⇈</button>
-          <button class="small" title="Fel" data-up="${b.id}">↑</button>
-          <button class="small" title="Le" data-down="${b.id}">↓</button>
-          <button class="small" title="Legalulra" data-bottom="${b.id}">⇊</button>
-          ${parentId ? `<button class="small" title="Kihúzás fő szintre" data-outdent="${b.id}">⇤</button>` : ''}
-          ${canDeleteBlock(b)?`<button class="small danger" title="Törlés" data-del="${b.id}">×</button>`:''}
+          ${blockActionButtons(b, idx, blocks.length, parentId)}
         </div>
         <div class="shortcut-line"><span class="block-icon">${blockIcon(b)}</span><span class="block-title">${escapeHtml(BF.blockTitle(b))}</span></div>
         <div class="block-inline">${blockInline(b)}</div>
@@ -336,7 +352,7 @@ function renderBlockList(blocks, level, parentId) {
 }
 
 function blockIcon(b) {
-  const map = { trigger:'▶', triggerGroup:'◎', scheduledTrigger:'⏲', conditionText:'T', conditionElement:'◇', conditionField:'▣', conditionUrl:'URL', conditionChange:'Δ', conditionGroup:'∧∨', click:'⌁', fill:'✎', extract:'⇣', wait:'⏱', waitUntil:'⏳', ifBlock:'?', repeatBlock:'↻', retryBlock:'⟳', tryBlock:'⚑', popupWait:'▣', popupExtract:'▣', popupClick:'▣', popupWindowWait:'◱', popupWindowExtract:'⇣', popupWindowClose:'×', copy:'⧉', clipboardRead:'⧉', email:'✉', emailTemplate:'✉', emailPreview:'✉', openEmail:'↗', rowLoop:'≡', elementLoop:'⋮', tableExtract:'▦', mask:'◩', transform:'A', textSlice:'✂', regex:'.*', setVar:'=', userPrompt:'💬', userInput:'⌨', userChoice:'☑', systemNotify:'🔔', scroll:'↕', keyPress:'⌨', openUrl:'↗', pageInfo:'ⓘ', screenshot:'▣', pdfStart:'PDF', pdfText:'¶', pdfTable:'▦', pdfScreenshot:'▣', pdfPageBreak:'↡', pdfSave:'⬇', preflight:'✓', localSet:'⬇', localGet:'⬆', compare:'=', math:'#', iframeBlock:'▤', findElements:'◇', validateData:'✓', comment:'//', groupBlock:'▣', callWorkflow:'↪', returnResult:'↩', stopRun:'■', sound:'♪' };
+  const map = { trigger:'▶', triggerGroup:'◎', scheduledTrigger:'⏲', conditionText:'T', conditionElement:'◇', conditionField:'▣', conditionUrl:'URL', conditionChange:'Δ', conditionGroup:'∧∨', click:'⌁', fill:'✎', extract:'⇣', wait:'⏱', waitUntil:'⏳', ifBlock:'?', repeatBlock:'↻', retryBlock:'⟳', tryBlock:'⚑', popupWait:'▣', popupExtract:'▣', popupClick:'▣', popupWindowWait:'◱', popupWindowExtract:'⇣', popupWindowClose:'×', copy:'⧉', clipboardRead:'⧉', email:'✉', emailTemplate:'✉', emailPreview:'✉', openEmail:'↗', rowLoop:'≡', elementLoop:'⋮', tableExtract:'▦', mask:'◩', transform:'A', textSlice:'✂', regex:'.*', textSearch:'⌕', setVar:'=', userPrompt:'💬', userInput:'⌨', userChoice:'☑', systemNotify:'🔔', scroll:'↕', keyPress:'⌨', openUrl:'↗', pageInfo:'ⓘ', screenshot:'▣', pdfStart:'PDF', pdfText:'¶', pdfTable:'▦', pdfScreenshot:'▣', pdfPageBreak:'↡', pdfSave:'⬇', preflight:'✓', localSet:'⬇', localGet:'⬆', compare:'=', math:'#', iframeBlock:'▤', findElements:'◇', validateData:'✓', comment:'//', groupBlock:'▣', callWorkflow:'↪', returnResult:'↩', stopRun:'■', sound:'♪' };
   return map[b.type] || '•';
 }
 function inlineChip(label, value) { return `<span class="inline-chip"><span>${escapeHtml(label)}</span><b>${escapeHtml(value || '—')}</b></span>`; }
@@ -402,6 +418,7 @@ function blockInline(b) {
   if (b.type === 'transform') return `${inlineInput('source', b.source || '{{adat}}', 'forrás', 'wide')} ${inlineSelect('operation', b.operation || 'trim', [['trim','trim'],['upper','NAGY'],['lower','kis'],['singleLine','egy sor'],['removeEmptyLines','üres sor törlés'],['digitsOnly','csak szám'],['lettersOnly','csak betű'],['noAccents','ékezet nélkül']])} ${inlineInput('resultName', b.resultName || 'atalakitott_adat', 'eredmény')}`;
   if (b.type === 'textSlice') return `${inlineInput('source', b.source || '{{adat}}', 'forrás', 'wide')} ${inlineSelect('mode', b.mode || 'between', [['between','között'],['line','sor'],['chars','karakterek']])} ${inlineInput('resultName', b.resultName || 'szovegresz', 'eredmény')}`;
   if (b.type === 'regex') return `${inlineInput('source', b.source || '{{adat}}', 'forrás')} ${inlineInput('pattern', b.pattern || '', 'regex minta', 'wide')} ${inlineInput('resultName', b.resultName || 'regex_talalat', 'eredmény')}`;
+  if (b.type === 'textSearch') return `${inlineInput('query', b.query || '', 'keresett szöveg', 'wide')} ${inlineSelect('operator', b.operator || 'contains', [['contains','tartalmazza'],['equals','pontosan']])} ${inlineSelect('searchScope', b.searchScope || 'all', [['all','teljes oldal'],['visible','látható'],['dom','teljes DOM']])} ${inlineCheck('caseSensitive', Boolean(b.caseSensitive), 'kis/nagybetű')} ${inlineInput('resultName', b.resultName || 'szoveg_talalat', 'eredmény')}`;
   if (b.type === 'setVar') return `${inlineInput('varName', b.varName || 'valtozo', 'változó')} ${inlineInput('value', b.value || '', 'érték', 'wide')}`;
   if (b.type === 'userInput') return `${inlineInput('message', b.message || '', 'kérdés', 'wide')} ${inlineInput('resultName', b.resultName || 'user_input', 'eredmény')}`;
   if (b.type === 'userChoice') return `${inlineInput('message', b.message || '', 'kérdés', 'wide')} ${inlineInput('options', b.options || '', 'opciók soronként')} ${inlineInput('resultName', b.resultName || 'valasztas', 'eredmény')}`;
@@ -657,11 +674,90 @@ function markDirty() {
   renderSaveState();
 }
 
+
+const BLOCK_HELP = {
+  trigger: { purpose:'Manuális indítópont. Akkor hasznos, ha az automatizmust kézzel szeretnéd futtatni.', params:['Nem igényel külön beállítást.','Ha csak Figyelő trigger van a workflow-ban, a sima Futtatás a feltételeket is ellenőrzi.'] },
+  scheduledTrigger: { purpose:'Időzített indítás: megadott időközönként vagy napi időpontban futtatja az automatizmust.', params:['Intervallum percben: milyen gyakran induljon.','Napi időpont: HH:MM formátum.','Napok: vesszővel elválasztva, például mon,tue,wed.'] },
+  triggerGroup: { purpose:'Automatikus figyelő indító. A benne lévő feltételek döntik el, elinduljon-e az automatizmus.', params:['Hol figyelje: domain, path, pontos URL, URL-részlet vagy bármely oldal.','Indítás, ha: minden/bármelyik/egyik sem feltétel igaz.','Ellenőrzés gyakorisága: milyen sűrűn nézze az oldalt.','Újraindítási szünet: ennyi ideig ne induljon újra sikeres indítás után.'] },
+  conditionText: { purpose:'Figyelőfeltétel: akkor igaz, ha a megadott szöveg megtalálható az oldalon.', params:['Figyelt szöveg: amit keresni kell.','Kis/nagybetű: bekapcsolva pontosan számít a betűméret.'] },
+  conditionElement: { purpose:'Figyelőfeltétel: akkor igaz, ha a kiválasztott elem létezik vagy látható.', params:['Cél elem: az oldalon kiválasztott mező/gomb/szöveg.','Csak látható elem: rejtett DOM elem ne számítson találatnak.'] },
+  conditionField: { purpose:'Figyelőfeltétel: egy mező vagy elem aktuális értékét ellenőrzi.', params:['Cél elem: a figyelt mező.','Feltétel: tartalmazza, pontosan ez, üres, nem üres stb.','Érték: ehhez hasonlítja a mező tartalmát.'] },
+  conditionUrl: { purpose:'Figyelőfeltétel: az aktuális URL alapján ad igaz/hamis eredményt.', params:['URL feltétel: tartalmazza, pontosan ez, ezzel kezdődik stb.','URL érték: a keresett domain, path vagy teljes URL-részlet.'] },
+  conditionChange: { purpose:'Figyelőfeltétel: csak akkor igaz, ha az előző ellenőrzéshez képest értékváltozás történt.', params:['Forrás elem: a figyelt mező vagy elem.','Változás típusa: miről→mire, bármiről→mire, miről→bármire vagy bármilyen változás.','Első ellenőrzéskor alapból csak megtanulja az aktuális értéket.','Az előző érték tabonként és workflow-nként külön tárolódik.'] },
+  conditionGroup: { purpose:'Logikai csoport a Figyelő trigger alatt. Több feltételt fog össze egyetlen feltétellé.', params:['Csoport logikája: minden igaz / bármelyik igaz / egyik sem igaz.','Alá csak figyelőfeltétel vagy újabb feltételcsoport kerüljön.'] },
+  click: { purpose:'Rákattint egy kiválasztott oldalelemre.', params:['Cél elem: a kattintandó gomb/link/mező.','Megerősítés: kockázatos kattintás előtt kérhet jóváhagyást.','Timeout: meddig keresse az elemet.'] },
+  fill: { purpose:'Szöveget illeszt vagy ír be egy mezőbe.', params:['Cél elem: a kitöltendő input/textarea.','Mit illesszen be: fix szöveg vagy változó, például {{adat}}.','A mezőt a blokk automatikusan fókuszba hozza.'] },
+  extract: { purpose:'Adatot olvas ki egy elemből vagy mezőből, majd változóba menti.', params:['Mit nyerjen ki: automatikus érték, mezőérték, szöveg, HTML vagy attribútum.','Hol keressen: teljes DOM-ban vagy csak látható elemek között.','Változó neve: ezen a néven használható később, például {{adat}}.'] },
+  wait: { purpose:'Várakoztatja a futást időre, szövegre vagy elemre.', params:['Idő mód: fix ms várakozás.','Szöveg/elem mód: timeoutig vár a találatra.'] },
+  waitUntil: { purpose:'Addig vár, amíg egy feltétel teljesül, vagy lejár a timeout.', params:['Feltétel: szöveg, elem, mezőérték vagy URL.','Timeout: maximális várakozási idő ms-ben.'] },
+  ifBlock: { purpose:'Futás közbeni elágazás. Igaz esetén az alatta lévő blokkok futnak, különben az else ág.', params:['Feltétel: szöveg, elem vagy mezőérték.','Igaz/különben ág: a behúzott blokkok száma a jobb panelen látszik.'] },
+  repeatBlock: { purpose:'A behúzott blokkokat többször lefuttatja.', params:['Ismétlések száma: hányszor fusson a belső blokklista.','A blokkokat a sárga behúzott területre kell tenni.'] },
+  retryBlock: { purpose:'Bizonytalan műveleteknél többször újrapróbálja a behúzott blokkokat.', params:['Próbálkozások száma és várakozás két próbálkozás között.','Ha sikerül, továbbmegy; ha nem, hibát naplóz.'] },
+  tryBlock: { purpose:'Hibakezelő konténer: megpróbálja a fő ágat, hiba esetén a hibaág futhat.', params:['Siker ág: normál blokkok.','Hiba ág: értesítés, naplózás, leállítás vagy alternatív művelet.'] },
+  scroll: { purpose:'Oldalt görget, vagy kiválasztott elemet hoz nézetbe.', params:['Mód: elemhez görgetés vagy irány szerinti görgetés.','Mennyiség: pixelben megadott görgetési távolság.'] },
+  keyPress: { purpose:'Billentyűt vagy billentyűkombinációt küld az oldalnak.', params:['Cél elem opcionális: előbb fókuszba kerül.','Billentyű: Enter, Tab, Escape, Ctrl+A/C/V vagy saját kombináció.'] },
+  copy: { purpose:'Szöveget vagy változót másol a vágólapra.', params:['Érték: fix szöveg vagy változókkal összeállított tartalom.'] },
+  clipboardRead: { purpose:'A vágólap aktuális szövegét változóba menti.', params:['Eredmény változó: később {{clipboard}} jelleggel használható.'] },
+  openUrl: { purpose:'URL-t nyit meg aktuális tabon, új tabon vagy új ablakban.', params:['URL: lehet változózott cím is.','Megnyitás módja: aktuális tab / új tab / új ablak.'] },
+  pageInfo: { purpose:'Az aktuális oldal adatait változókba menti.', params:['Menthető: URL, cím, domain.','Prefix: a létrejövő változónevek előtagja.'] },
+  screenshot: { purpose:'Képernyőképet készít az aktív cél tab látható részéről.', params:['Kezelés: előnézet, letöltés, vágólap vagy változóba mentés.','A Chrome csak látható/aktív tabról tud képernyőképet készíteni.'] },
+  setVar: { purpose:'Fix vagy változózott értéket ment egy új változóba.', params:['Változó neve: például statusz.','Érték: használhat {{adat}} típusú változókat.'] },
+  transform: { purpose:'Szöveget tisztít vagy átalakít.', params:['Forrás: kiinduló változó/szöveg.','Művelet: trim, kisbetű, nagybetű, csak számok, üres sorok törlése stb.','Eredmény változó: ide menti az átalakított szöveget.'] },
+  textSlice: { purpose:'Egy hosszabb szövegből részletet vág ki.', params:['Mód: két szöveg között, adott sor, vagy karaktertartomány.','Eredmény változó: a kivágott rész neve.'] },
+  regex: { purpose:'Reguláris kifejezéssel keres mintát egy szövegben.', params:['Minta: regex kifejezés.','Capture group: melyik zárójeles találatot mentse.','Összes találat: több eredményt is menthet.'] },
+  textSearch: { purpose:'Egyszerű szöveget keres az oldalon regex nélkül, és visszaadja azt is, hogy hol találta meg.', params:['Keresett szöveg: a keresendő szó vagy mondatrész.','Hol keressen: látható szövegben, teljes DOM-ban vagy mezőértékekkel/attribútumokkal együtt.','Eredmények: igaz/hamis, találatszám, környező szöveg, hely típusa, CSS selector és XPath változókba kerül.'] },
+  mask: { purpose:'Érzékeny adatot maszkol karakterek vagy sorok alapján.', params:['Karakter mód: eleje/vége megtartása, köztes rész maszkolása.','Sor mód: első/utolsó sorok megtartása.','Invert: a kijelölt részt maszkolja, nem a köztes részt.'] },
+  tableExtract: { purpose:'Táblázatból vagy listából olvas ki egy adott cellát/sort.', params:['Sor mód: első, utolsó vagy tartalmazza.','Oszlop száma: 1-től indul.','Eredmény változó: ide menti a cella értékét.'] },
+  findElements: { purpose:'Több elemet keres, és találatszámot vagy szöveges listát ment.', params:['Cél elem vagy selector: a találatok mintája.','Maximum elem: mennyi találatot dolgozzon fel.','Változók: találatok és darabszám.'] },
+  elementLoop: { purpose:'Több megtalált elemre ismétli a behúzott blokkokat.', params:['Selector vagy kiválasztott minta alapján keres.','Item változó: az aktuális elem szövege.','Index változó: az aktuális sorszám.'] },
+  rowLoop: { purpose:'Táblázat/lista sorain fut végig egyszerűen.', params:['Cél táblázat/lista.','Sor változó: az aktuális sor szövege.','Maximum sor: véd a túl hosszú feldolgozástól.'] },
+  userPrompt: { purpose:'Extension ablakban üzenetet mutat, és opcionálisan megállítja a workflow-t válaszig.', params:['Mód: csak értesít vagy visszajelzésre vár.','Gombszövegek: Folytatás/Megszakítás felirat.','Eredmény változó: a döntés menthető.'] },
+  userInput: { purpose:'Adatot kér be a felhasználótól futás közben.', params:['Mező típusa: rövid vagy hosszú szöveg.','Alapérték és placeholder segíti a kitöltést.','Eredmény változó: ide kerül a megadott adat.'] },
+  userChoice: { purpose:'Opciók közül választást kér a felhasználótól.', params:['Opciók: soronként egy válasz.','Eredmény változó: a kiválasztott opció.'] },
+  systemNotify: { purpose:'Chrome rendszerértesítést küld.', params:['Cím és üzenet változókkal is kitölthető.','Nem állítja meg a workflow-t.'] },
+  sound: { purpose:'Rövid hangjelzést ad visszajelzésként.', params:['Típus: siker, hiba vagy figyelmeztetés jellegű hang.'] },
+  email: { purpose:'Email draft adatot állít össze változókból.', params:['Címzett, tárgy, törzs.','Nem küld emailt, csak draft változót készít.'] },
+  emailTemplate: { purpose:'Mentett email sablont tölt be és draft változóvá alakít.', params:['Sablon kiválasztása.','Címzett és eredményváltozó állítható.'] },
+  emailPreview: { purpose:'Megmutatja az email tartalmát, mielőtt megnyitod vagy másolod.', params:['Döntési ablak: megnyitás, másolás vagy megszakítás.','Eredmény változóba menthető a választás.'] },
+  openEmail: { purpose:'Mailto ablakot nyit a korábban összeállított email draftból.', params:['Hosszú email esetén a törzset vágólapra teszi.','Az extension nem küld levelet automatikusan.'] },
+  localSet: { purpose:'Értéket ment a böngésző lokális extension storage-ába.', params:['Kulcs: név, amin később visszaolvasható.','Érték: változózott szöveg is lehet.'] },
+  localGet: { purpose:'Lokálisan mentett értéket olvas vissza.', params:['Kulcs: korábban mentett név.','Alapérték: ha nincs ilyen kulcs.','Eredmény változó: ide kerül az érték.'] },
+  compare: { purpose:'Két értéket hasonlít össze, és igaz/hamis eredményt ment.', params:['Bal és jobb oldal lehet fix szöveg vagy változó.','Operátor: egyenlő, tartalmazza, nagyobb, kisebb.'] },
+  math: { purpose:'Egyszerű számítást végez két értékkel.', params:['Művelet: összeadás, kivonás, szorzás, osztás.','Eredmény változóba ment.'] },
+  validateData: { purpose:'Adatot ellenőriz forma vagy tartalom alapján.', params:['Validáció: nem üres, email, tartalmazza, regex.','Hiba esetén: leállítás vagy csak naplózás.'] },
+  popupWait: { purpose:'Weboldali modal/popup megjelenésére vár.', params:['Timeout: meddig várjon.','A weboldal saját popupjaira vonatkozik, nem Chrome popupra.'] },
+  popupExtract: { purpose:'Weboldali popupból címet vagy szöveget ment változóba.', params:['Kinyerési mód: popup szöveg/cím.','Változó neve: ide kerül az adat.'] },
+  popupClick: { purpose:'Weboldali popupban gombra kattint szöveg alapján.', params:['Gombszöveg: például OK, Mentés, Bezárás.','Timeout: meddig keresse.'] },
+  popupWindowWait: { purpose:'Új tabra vagy böngészőablakra vár.', params:['Egyezés: URL vagy cím alapján.','Eredmény változó: a megtalált tab azonosítója.'] },
+  popupWindowExtract: { purpose:'Korábban megtalált új tab/ablak oldaláról nyer ki adatot.', params:['Tab változó: melyik ablakból olvasson.','Cél elem és kinyerési mód ugyanúgy működik, mint az Adat kinyerése blokknál.'] },
+  popupWindowClose: { purpose:'Bezárja a korábban megtalált popup/tab ablakot.', params:['Tab változó: a bezárandó ablak azonosítója.'] },
+  preflight: { purpose:'Futás előtt ellenőrzi, hogy egy elem elérhető-e.', params:['Ha nincs meg: leállhat vagy csak figyelmeztethet.','Hasznos kritikus lépések előtt.'] },
+  iframeBlock: { purpose:'A behúzott blokkokat iframe kontextusban próbálja futtatni.', params:['Cél iframe kiválasztása.','Cross-origin iframe-eket a böngésző korlátozhat.'] },
+  groupBlock: { purpose:'Vizuális csoportosítás hosszabb workflow-k rendszerezéséhez.', params:['Cím: a csoport neve.','Nem változtat a futási logikán, csak átláthatóbbá tesz.'] },
+  comment: { purpose:'Megjegyzés a workflow-ban. Nem fut le.', params:['Használható dokumentálásra vagy emlékeztetőként.'] },
+  callWorkflow: { purpose:'Másik automatizmust hív meg alfolyamatként.', params:['Workflow: melyik automatizmust futtassa.','Eredmény prefix: a meghívott folyamat eredményeinek előtagja.'] },
+  returnResult: { purpose:'Eredményt ad vissza egy workflow-ból.', params:['Érték: amit vissza szeretnél adni.','Eredmény neve: milyen változóként legyen elérhető.'] },
+  stopRun: { purpose:'Megállítja az aktuális futást.', params:['Üzenet: a naplóban és visszajelzésben látható ok.'] },
+  pdfStart: { purpose:'Új PDF dokumentumot indít a futásban.', params:['Cím és fájlnév változókkal is megadható.','Papírméret, tájolás, margó, fejléc/lábléc itt állítható.'] },
+  pdfText: { purpose:'Szöveges részt ad az aktuális PDF-hez.', params:['Címsor és szöveg változókkal.','Stílus, igazítás, betűméret és térköz állítható.'] },
+  pdfTable: { purpose:'Kulcs-érték táblázatot ad a PDF-hez.', params:['Sorok formátuma: Név | Érték.','Üres érték helyettesítése, szegély és oszlopszélesség állítható.'] },
+  pdfScreenshot: { purpose:'Screenshotot illeszt az aktuális PDF-be.', params:['Forrás: aktuális oldal, utolsó screenshot vagy változó.','Méret, felirat, keret és oldaltörés állítható.'] },
+  pdfPageBreak: { purpose:'Új oldalt szúr be az aktuális PDF-be.', params:['Opcionálisan csak akkor, ha kevés hely maradt az oldalon.'] },
+  pdfSave: { purpose:'Lezárja és letölti vagy előnézetben megnyitja az elkészült PDF-et.', params:['Művelet: letöltés, előnézet vagy mindkettő.','Fájlnév: változókat is tartalmazhat.'] }
+};
+
+function inspectorIntro(b) {
+  const meta = BF.BLOCKS[b.type] || { name: b.type, desc: '' };
+  const help = BLOCK_HELP[b.type] || { purpose: meta.desc || 'Ez a blokk a workflow egyik lépése.', params: ['A fő mezők a középső blokkon, a részletes opciók itt módosíthatók.'] };
+  const params = Array.isArray(help.params) ? help.params : [];
+  return `<div class="inspector-current"><div class="list-title">${escapeHtml(meta.name || b.type)}</div><div class="inspector-help"><div><b>Mire jó?</b> ${escapeHtml(help.purpose || meta.desc || '')}</div>${params.length ? `<div class="help-list"><b>Paraméterek:</b><ul>${params.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul></div>` : ''}</div></div>`;
+}
+
 function renderInspector() {
   const b = findBlock(selectedBlockId)?.block;
   const changedBlock = b && b.id !== lastInspectorBlockId;
   if (!b) { $('#inspector').innerHTML = '<div class="empty">Válassz blokkot.</div>'; return; }
-  let html = `<div class="inspector-current"><div class="list-title">${escapeHtml(BF.BLOCKS[b.type]?.name || b.type)}</div><div class="muted">A fő beállítások a középső blokkon is szerkeszthetők, itt a részletes opciók vannak.</div></div>`;
+  let html = inspectorIntro(b);
   if (['click','fill','extract','conditionElement','conditionField','conditionChange','tableExtract','scroll','keyPress','preflight','popupWindowExtract','iframeBlock','findElements','waitUntil'].includes(b.type)) html += targetEditor(b);
   if (b.type === 'click') html += checkboxField('confirmRisky','Kockázatos kattintásnál kérjen megerősítést', b.confirmRisky !== false) + numberField('timeoutMs','Max várakozás ms', b.timeoutMs || 5000);
   if (b.type === 'fill') html += valueSourceHelp() + textArea('value','Mit illesszen be?', b.value || '') + numberField('timeoutMs','Max várakozás ms', b.timeoutMs || 5000);
@@ -697,6 +793,7 @@ function renderInspector() {
   if (b.type === 'transform') html += textField('source','Forrás', b.source || '{{adat}}') + selectField('operation','Művelet', b.operation || 'trim', [['trim','Trim'],['upper','Nagybetű'],['lower','Kisbetű'],['singleLine','Egy sorba'],['removeEmptyLines','Üres sorok törlése'],['digitsOnly','Csak számok'],['lettersOnly','Csak betűk'],['noAccents','Ékezetek eltávolítása']]) + textField('resultName','Eredmény változó', b.resultName || 'atalakitott_adat');
   if (b.type === 'textSlice') html += textField('source','Forrás', b.source || '{{adat}}') + selectField('mode','Mód', b.mode || 'between', [['between','Kezdő és záró szöveg között'],['line','Adott sor'],['chars','Karakter tartomány']]) + textField('startText','Kezdő szöveg', b.startText || '') + textField('endText','Záró szöveg', b.endText || '') + numberField('lineNumber','Sor száma', b.lineNumber || 1) + numberField('charStart','Karakter kezdete', b.charStart || 0) + numberField('charEnd','Karakter vége', b.charEnd || 100) + textField('resultName','Eredmény változó', b.resultName || 'szovegresz');
   if (b.type === 'regex') html += textField('source','Forrás', b.source || '{{adat}}') + textField('pattern','Regex minta', b.pattern || '') + textField('flags','Flagek', b.flags || 'i') + numberField('group','Capture group', b.group || 0) + checkboxField('allMatches','Összes találat', Boolean(b.allMatches)) + textField('resultName','Eredmény változó', b.resultName || 'regex_talalat');
+  if (b.type === 'textSearch') html += textField('query','Keresett szöveg', b.query || '') + selectField('operator','Egyezés módja', b.operator || 'contains', [['contains','Tartalmazza'],['equals','Pontosan egyezik']]) + selectField('searchScope','Hol keressen?', b.searchScope || 'all', [['all','Teljes oldal: szöveg + mezőérték + attribútum'],['visible','Csak látható szöveg'],['dom','Teljes DOM szövege']]) + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive)) + checkboxField('includeValues','Input/textarea/select értékeket is keresse', b.includeValues !== false) + checkboxField('includeAttributes','Title/aria/placeholder/alt attribútumokban is keressen', b.includeAttributes !== false) + textField('resultName','Találat igaz/hamis változó', b.resultName || 'szoveg_talalat') + textField('countName','Találatszám változó', b.countName || 'szoveg_talalat_db') + textField('contextName','Első találat környezete változó', b.contextName || 'szoveg_talalat_szoveg') + textField('placeName','Találat helye változó', b.placeName || 'szoveg_talalat_hely') + textField('selectorName','CSS selector változó', b.selectorName || 'szoveg_talalat_selector') + textField('xpathName','XPath változó', b.xpathName || 'szoveg_talalat_xpath') + `<div class="status">Példa eredmény: {{szoveg_talalat}} = true, {{szoveg_talalat_hely}} = textarea value, {{szoveg_talalat_selector}} = #mezőId. Ezeket emailben, PDF-ben vagy Ha blokkban is használhatod.</div>`;
   if (b.type === 'setVar') html += textField('varName','Változó neve', b.varName || 'valtozo') + textArea('value','Érték', b.value || '');
   if (b.type === 'userInput') html += textField('title','Cím', b.title || '') + textArea('message','Kérdés', b.message || '') + selectField('inputType','Mező típusa', b.inputType || 'text', [['text','Rövid szöveg'],['textarea','Hosszú szöveg']]) + textField('placeholder','Placeholder', b.placeholder || '') + textField('defaultValue','Alapérték', b.defaultValue || '') + textField('resultName','Eredmény változó', b.resultName || 'user_input');
   if (b.type === 'userChoice') html += textField('title','Cím', b.title || '') + textArea('message','Kérdés', b.message || '') + textArea('options','Opciók soronként', b.options || '') + textField('resultName','Eredmény változó', b.resultName || 'valasztas');
@@ -780,8 +877,8 @@ function renderVariables() {
   const defs = BF.collectVariables(activeWorkflow);
   const refs = BF.collectVariableRefs ? BF.collectVariableRefs(activeWorkflow) : [];
   const all = [...new Set([...defs, ...refs])];
-  $('#variables').innerHTML = all.length ? all.map(v => `<span class="var-chip ${defs.includes(v)?'':'var-warn'}" data-var="${v}">{{${v}}}</span>`).join('') : '<div class="muted">Még nincs változó.</div>';
-  document.querySelectorAll('[data-var]').forEach(chip => chip.onclick = async () => { await navigator.clipboard.writeText(`{{${chip.dataset.var}}}`); $('#log').textContent = `Változó vágólapra másolva: {{${chip.dataset.var}}}`; });
+  $('#variables').innerHTML = all.length ? all.map(v => `<button class="var-chip ${defs.includes(v)?'':'var-warn'}" type="button" data-var="${v}" title="Másolás vágólapra: {{${v}}}">{{${v}}}</button>`).join('') : '<div class="muted">Még nincs változó.</div>';
+  document.querySelectorAll('[data-var]').forEach(chip => chip.onclick = async () => { await navigator.clipboard.writeText(`{{${chip.dataset.var}}}`); chip.classList.add('copied'); setTimeout(()=>chip.classList.remove('copied'), 800); $('#log').textContent = `Változó vágólapra másolva: {{${chip.dataset.var}}}`; });
 }
 
 function renderLiveVariables(vars) {

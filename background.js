@@ -125,7 +125,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       await chrome.windows.create({
         url: chrome.runtime.getURL('builder.html') + qs,
         type: 'popup',
-        width: 1320,
+        width: 1460,
         height: 900,
         focused: true
       });

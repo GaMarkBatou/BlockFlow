@@ -1,5 +1,5 @@
 const BF = (() => {
-  const SCHEMA_VERSION = 12;
+  const SCHEMA_VERSION = 13;
 
   const DEFAULT_WORKFLOW = () => ({
     id: crypto.randomUUID(),
@@ -38,6 +38,7 @@ const BF = (() => {
     transform: { name: 'Adat átalakítása', desc: 'Szöveg tisztítása, kis/nagybetű, számok/betűk megtartása.' },
     textSlice: { name: 'Szövegrész kinyerése', desc: 'Szöveget vág ki kezdő/záró minta, sor vagy karakter alapján.' },
     regex: { name: 'Regex keresés', desc: 'Reguláris kifejezés alapján találatot ment változóba.' },
+    textSearch: { name: 'Szöveg keresése az oldalon', desc: 'Egyszerű szöveget keres az oldalon, és visszaadja a találat helyét is.' },
     setVar: { name: 'Változó beállítása', desc: 'Fix vagy interpolált értéket ment változóba.' },
     userInput: { name: 'Adat bekérése', desc: 'Extension ablakban adatot kér a felhasználótól.' },
     userChoice: { name: 'Választás kérése', desc: 'Opciók közül választást kér, majd változóba menti.' },
@@ -108,6 +109,7 @@ const BF = (() => {
     { cat: 'Adatkinyerés', type: 'findElements' },
     { cat: 'Adatkinyerés', type: 'pageInfo' },
     { cat: 'Adatkinyerés', type: 'screenshot' },
+    { cat: 'Adatkinyerés', type: 'textSearch' },
     { cat: 'Adat', type: 'setVar' },
     { cat: 'Adat', type: 'transform' },
     { cat: 'Adat', type: 'textSlice' },
@@ -177,6 +179,7 @@ const BF = (() => {
     if (type === 'transform') return { id, type, source: '{{adat}}', operation: 'trim', resultName: 'atalakitott_adat' };
     if (type === 'textSlice') return { id, type, source: '{{adat}}', mode: 'between', startText: '', endText: '', lineNumber: 1, charStart: 0, charEnd: 100, resultName: 'szovegresz' };
     if (type === 'regex') return { id, type, source: '{{adat}}', pattern: '', flags: 'i', group: 0, allMatches: false, resultName: 'regex_talalat' };
+    if (type === 'textSearch') return { id, type, query: '', operator: 'contains', searchScope: 'all', caseSensitive: false, includeValues: true, includeAttributes: true, resultName: 'szoveg_talalat', countName: 'szoveg_talalat_db', contextName: 'szoveg_talalat_szoveg', placeName: 'szoveg_talalat_hely', selectorName: 'szoveg_talalat_selector', xpathName: 'szoveg_talalat_xpath' };
     if (type === 'setVar') return { id, type, varName: 'valtozo', value: '' };
     if (type === 'userInput') return { id, type, title: 'Adat bekérése', message: 'Adj meg egy értéket:', inputType: 'text', placeholder: '', defaultValue: '', resultName: 'user_input' };
     if (type === 'userChoice') return { id, type, title: 'Választás', message: 'Válassz egy opciót:', options: 'Igen\nNem', resultName: 'valasztas' };
@@ -248,6 +251,7 @@ const BF = (() => {
     if (block.type === 'transform') return `Adat átalakítása → {{${block.resultName || 'atalakitott_adat'}}}`;
     if (block.type === 'textSlice') return `Szövegrész kinyerése → {{${block.resultName || 'szovegresz'}}}`;
     if (block.type === 'regex') return `Regex keresés → {{${block.resultName || 'regex_talalat'}}}`;
+    if (block.type === 'textSearch') return `Szöveg keresése: ${short(block.query || '')} → {{${block.resultName || 'szoveg_talalat'}}}`;
     if (block.type === 'setVar') return `Változó: {{${block.varName || 'valtozo'}}}`;
     if (block.type === 'userInput') return `Adat bekérése → {{${block.resultName || 'user_input'}}}`;
     if (block.type === 'userChoice') return `Választás → {{${block.resultName || 'valasztas'}}}`;
@@ -351,6 +355,7 @@ const BF = (() => {
     if (block.type === 'email') return `Címzett: ${block.to || ''} | Tárgy: ${short(block.subject || '')}`;
     if (block.type === 'copy') return short(block.value || '');
     if (block.type === 'mask') return `${block.maskMode === 'lines' ? 'Soralapú' : 'Karakteralapú'}${block.invertMask ? ' · invert' : ''} · Forrás: ${short(block.source || '')}`;
+    if (block.type === 'textSearch') return `${block.searchScope === 'visible' ? 'látható szöveg' : block.searchScope === 'dom' ? 'teljes DOM' : 'teljes oldal'} · ${block.caseSensitive ? 'kis/nagybetű számít' : 'kis/nagybetű nem számít'} · hely mentése: {{${block.placeName || 'szoveg_talalat_hely'}}}`;
     if (['transform','textSlice','regex','setVar','compare','math','validateData'].includes(block.type)) return `Forrás: ${short(block.source || block.left || block.value || '')}`;
     if (['comment','groupBlock'].includes(block.type)) return short(block.note || block.title || '');
     if (block.type === 'scheduledTrigger') return block.triggerEnabled === false ? 'inaktív' : 'mentés után automatikus időzítőként aktív';
@@ -485,8 +490,9 @@ const BF = (() => {
       if (b.type === 'email' && b.resultName) vars.add(b.resultName);
       if (b.type === 'rowLoop' && b.rowVar) vars.add(b.rowVar);
       if (b.type === 'elementLoop') { if (b.itemVar) vars.add(b.itemVar); if (b.indexVar) vars.add(b.indexVar); }
-      ['transform','textSlice','regex','setVar','userInput','userChoice','tableExtract','clipboardRead','screenshot','localGet','compare','math','returnResult','findElements','emailTemplate','emailPreview'].forEach(t => { if (b.type === t && (b.resultName || b.varName || b.countName)) { if (b.resultName) vars.add(b.resultName); if (b.varName) vars.add(b.varName); if (b.countName) vars.add(b.countName); } });
+      ['transform','textSlice','regex','textSearch','setVar','userInput','userChoice','tableExtract','clipboardRead','screenshot','localGet','compare','math','returnResult','findElements','emailTemplate','emailPreview'].forEach(t => { if (b.type === t && (b.resultName || b.varName || b.countName)) { if (b.resultName) vars.add(b.resultName); if (b.varName) vars.add(b.varName); if (b.countName) vars.add(b.countName); } });
       if (b.type === 'pageInfo') { const p = b.prefix || 'page'; vars.add(`${p}_url`); vars.add(`${p}_title`); vars.add(`${p}_domain`); vars.add(`${p}_path`); }
+      if (b.type === 'textSearch') { ['resultName','countName','contextName','placeName','selectorName','xpathName'].forEach(k => { if (b[k]) vars.add(b[k]); }); vars.add('szoveg_talalat_lista'); }
       if (b.type === 'popupWindowWait' && b.resultName) vars.add(b.resultName);
     });
     return [...vars];
@@ -513,8 +519,9 @@ const BF = (() => {
       if (b.type === 'rowLoop' && b.rowVar) defined.add(b.rowVar);
       if (b.type === 'mask' && b.resultName) defined.add(b.resultName);
       if (b.type === 'elementLoop') { if (b.itemVar) defined.add(b.itemVar); if (b.indexVar) defined.add(b.indexVar); }
-      ['transform','textSlice','regex','setVar','userInput','userChoice','tableExtract','clipboardRead','screenshot','localGet','compare','math','returnResult','findElements','emailTemplate','emailPreview'].forEach(t => { if (b.type === t && (b.resultName || b.varName || b.countName)) { if (b.resultName) defined.add(b.resultName); if (b.varName) defined.add(b.varName); if (b.countName) defined.add(b.countName); } });
+      ['transform','textSlice','regex','textSearch','setVar','userInput','userChoice','tableExtract','clipboardRead','screenshot','localGet','compare','math','returnResult','findElements','emailTemplate','emailPreview'].forEach(t => { if (b.type === t && (b.resultName || b.varName || b.countName)) { if (b.resultName) defined.add(b.resultName); if (b.varName) defined.add(b.varName); if (b.countName) defined.add(b.countName); } });
       if (b.type === 'pageInfo') { const p = b.prefix || 'page'; defined.add(`${p}_url`); defined.add(`${p}_title`); defined.add(`${p}_domain`); defined.add(`${p}_path`); }
+      if (b.type === 'textSearch') { ['resultName','countName','contextName','placeName','selectorName','xpathName'].forEach(k => { if (b[k]) defined.add(b[k]); }); defined.add('szoveg_talalat_lista'); }
     });
     let starterCount = 0;
     walkBlocks(workflow.blocks || [], b => {
@@ -540,6 +547,7 @@ const BF = (() => {
         if ((mode === 'fromTo' || mode === 'fromAny') && !String(b.fromValue||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Érték változik feltétel: hiányzik a kiinduló érték.' });
       }
       if (b.type === 'email' && !String(b.to||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Email blokk: hiányzik a címzett.' });
+      if (b.type === 'textSearch' && !String(b.query||'').trim()) issues.push({ level:'warning', blockId:b.id, text:'Szöveg keresése: üres keresett szöveg.' });
       if (b.type === 'mask' && !String(b.source||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Maszkolás blokk: hiányzik a forrás szöveg vagy változó.' });
       if (b.type === 'mask' && !String(b.resultName||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Maszkolás blokk: hiányzik az eredmény változó neve.' });
       if (b.type === 'openEmail' && !String(b.draftName||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Email megnyitása: hiányzik a draft változó neve.' });

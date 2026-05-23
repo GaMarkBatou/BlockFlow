@@ -505,6 +505,101 @@
     }).slice(0, Math.max(0, Math.min(500, Number(maxItems || 50))));
   }
 
+
+
+  function xpathFor(el) {
+    if (!el || el.nodeType !== 1) return '';
+    if (el.id) return `//*[@id="${String(el.id).replace(/"/g, '\\"')}"]`;
+    const parts = [];
+    let node = el;
+    while (node && node.nodeType === 1 && node !== document.documentElement) {
+      const tag = node.tagName.toLowerCase();
+      const parent = node.parentElement;
+      if (!parent) break;
+      const siblings = [...parent.children].filter(x => x.tagName === node.tagName);
+      const idx = siblings.indexOf(node) + 1;
+      parts.unshift(`${tag}[${idx}]`);
+      node = parent;
+    }
+    return '/html/' + parts.join('/');
+  }
+
+  function shortContext(text, needle, caseSensitive = false, size = 80) {
+    const raw = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!raw) return '';
+    const hay = caseSensitive ? raw : raw.toLowerCase();
+    const n = caseSensitive ? String(needle || '') : String(needle || '').toLowerCase();
+    const idx = n ? hay.indexOf(n) : -1;
+    if (idx < 0) return raw.slice(0, size * 2);
+    const start = Math.max(0, idx - size);
+    const end = Math.min(raw.length, idx + String(needle || '').length + size);
+    return `${start > 0 ? '…' : ''}${raw.slice(start, end)}${end < raw.length ? '…' : ''}`;
+  }
+
+  function matchesPlainText(value, needle, operator = 'contains', caseSensitive = false) {
+    let hay = String(value || '');
+    let n = String(needle || '');
+    if (!caseSensitive) { hay = hay.toLowerCase(); n = n.toLowerCase(); }
+    if (!n) return false;
+    if (operator === 'equals') return hay.trim() === n.trim();
+    return hay.includes(n);
+  }
+
+  function findTextOccurrences(block, vars = {}) {
+    const needle = interpolate(block.query || '', vars);
+    const operator = block.operator || 'contains';
+    const caseSensitive = Boolean(block.caseSensitive);
+    const scope = block.searchScope || 'all';
+    const includeValues = block.includeValues !== false;
+    const includeAttributes = block.includeAttributes !== false;
+    const hits = [];
+    const seen = new Set();
+
+    function addHit(el, value, place) {
+      if (!value || !matchesPlainText(value, needle, operator, caseSensitive)) return;
+      const selector = el ? cssPath(el) : 'body';
+      const key = `${selector}|${place}|${String(value).slice(0, 180)}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      hits.push({
+        element: el || document.body,
+        value: String(value),
+        place,
+        selector,
+        xpath: el ? xpathFor(el) : '/html/body',
+        context: shortContext(value, needle, caseSensitive)
+      });
+    }
+
+    if (scope === 'visible') {
+      addHit(document.body, document.body.innerText || '', 'látható oldal szöveg');
+      return hits;
+    }
+
+    const elements = [document.body, ...document.body.querySelectorAll('*')].slice(0, 12000)
+      .filter(el => !['SCRIPT','STYLE','NOSCRIPT','TEMPLATE'].includes(el.tagName));
+
+    for (const el of elements) {
+      if (scope === 'dom') {
+        if (!el.children.length || ['INPUT','TEXTAREA','SELECT','OPTION','BUTTON','A'].includes(el.tagName)) {
+          addHit(el, el.textContent || '', 'DOM szöveg');
+        }
+      } else {
+        if (!el.children.length || ['BUTTON','A','LABEL','OPTION','SUMMARY'].includes(el.tagName)) {
+          addHit(el, el.innerText || el.textContent || '', 'oldal szöveg');
+        }
+      }
+      if (includeValues && ['INPUT','TEXTAREA','SELECT'].includes(el.tagName)) addHit(el, getElementValue(el, 'auto'), `${el.tagName.toLowerCase()} value`);
+      if (includeAttributes) {
+        for (const attr of ['title','aria-label','placeholder','alt','value','name']) {
+          const val = el.getAttribute?.(attr);
+          if (val) addHit(el, val, `attribútum: ${attr}`);
+        }
+      }
+    }
+    return hits;
+  }
+
   function tableCellValue(container, block) {
     const rows = rowsFromContainer(container, 500);
     let row = null;
@@ -912,6 +1007,20 @@
       vars[block.resultName || 'regex_talalat'] = value;
       return { ok: true, value };
     }
+
+    if (block.type === 'textSearch') {
+      const hits = findTextOccurrences(block, vars);
+      const first = hits[0] || null;
+      vars[block.resultName || 'szoveg_talalat'] = hits.length ? 'true' : 'false';
+      vars[block.countName || 'szoveg_talalat_db'] = String(hits.length);
+      vars[block.contextName || 'szoveg_talalat_szoveg'] = first?.context || '';
+      vars[block.placeName || 'szoveg_talalat_hely'] = first?.place || '';
+      vars[block.selectorName || 'szoveg_talalat_selector'] = first?.selector || '';
+      vars[block.xpathName || 'szoveg_talalat_xpath'] = first?.xpath || '';
+      vars.szoveg_talalat_lista = hits.slice(0, 25).map(h => `${h.place} | ${h.selector} | ${h.context}`).join('\n');
+      return { ok: true, found: hits.length > 0, count: hits.length, first: first ? { place: first.place, selector: first.selector, context: first.context } : null };
+    }
+
     if (block.type === 'userInput') {
       const res = await showInputPrompt(block, vars, dryRun, 'input');
       vars[block.resultName || 'user_input'] = res.value || '';
