@@ -88,11 +88,11 @@ A Feltételcsoport ugyanezeket tudja, és trigger alá vagy másik feltételcsop
 Figyelő trigger
   Status változik: ebből → abba
   Feltételcsoport: bármelyik igaz
-    Mező tartalmazza Eggyik
-    Mező tartalmazza Másik
+    Mező tartalmazza - Eggyik
+    Mező tartalmazza - Másik
 ```
 
-Ez azt jelenti, hogy a workflow csak akkor indul, ha a státuszváltozás megtörtént, és közben a CBI mező High vagy Critical értéket tartalmaz.
+Ez azt jelenti, hogy a workflow csak akkor indul, ha a státuszváltozás megtörtént, és közben a Mező "Eggyik" vagy "Másik" értéket tartalmaz.
 
 ## Blokkok mozgatása
 
@@ -121,7 +121,7 @@ Több blokk használ oldalelem-kiválasztást:
 - Táblázatból kinyerés
 - Popup/új ablak adatkinyerés
 
-A kiválasztó a cél tabot fókuszálja, hover kerettel jelzi az aktuális elemet, majd stabil elemleírást ment. A kinyerésnél több azonosítót is használhat: ID, CSS selector, XPath, label, ARIA, title, valamint BMC/Remedy jellegű `arid`, `ardbn`, `WIN_...` mezőazonosítókat.
+A kiválasztó a cél tabot fókuszálja, hover kerettel jelzi az aktuális elemet, majd stabil elemleírást ment. A kinyerésnél több azonosítót is használhat: ID, CSS selector, XPath, label, ARIA, title, valamint BMC/Remedy jellegű `aid`, `adb`, `SOMET_...` mezőazonosítókat.
 
 ## Adat kinyerése
 
