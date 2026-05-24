@@ -686,6 +686,10 @@
     return String(input || '').replace(/{{\s*([\w.-]+)\s*}}/g, (_, key) => vars[key] ?? '');
   }
 
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[ch]));
+  }
+
   function descriptorFromVars(value) {
     if (!value) return null;
     if (typeof value === 'object') return value;
@@ -1355,15 +1359,78 @@
   }
 
   function saveOrPreviewPdfBlob(blob, fileName, action) {
+    const cleanName = makeDownloadName(fileName);
     const url = URL.createObjectURL(blob);
-    if (action === 'preview' || action === 'downloadPreview') window.open(url, '_blank');
+    if (action === 'preview' || action === 'downloadPreview') {
+      const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(cleanName)}</title><style>body{margin:0;font-family:system-ui;background:#f6f7fb}.bar{height:48px;display:flex;align-items:center;gap:12px;padding:0 14px;background:#fff;border-bottom:1px solid #ddd}.btn{border:0;border-radius:8px;padding:9px 12px;background:#2563eb;color:#fff;text-decoration:none;font-weight:600}.name{font-weight:700;color:#111;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}iframe{width:100vw;height:calc(100vh - 49px);border:0;background:#fff}</style></head><body><div class="bar"><span class="name">${escapeHtml(cleanName)}</span><a class="btn" download="${escapeHtml(cleanName)}" href="${url}">Letöltés</a></div><iframe src="${url}"></iframe></body></html>`;
+      const previewUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+      window.open(previewUrl, '_blank');
+      setTimeout(() => URL.revokeObjectURL(previewUrl), 60000);
+    }
     if (action === 'download' || action === 'downloadPreview') {
       const a = document.createElement('a');
-      a.href = url; a.download = makeDownloadName(fileName);
+      a.href = url; a.download = cleanName;
       document.documentElement.appendChild(a); a.click(); a.remove();
     }
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    setTimeout(() => URL.revokeObjectURL(url), 120000);
   }
+
+
+  function docxDefaultOptions(block = {}, vars = {}) {
+    const page = (block.pageSize || 'a4') === 'letter' ? { w: 12240, h: 15840 } : { w: 11906, h: 16838 };
+    const landscape = block.orientation === 'landscape';
+    return {
+      title: interpolate(block.title || 'BlockFlow riport', vars),
+      fileName: makeDocxName(interpolate(block.fileName || 'blockflow-riport.docx', vars)),
+      width: landscape ? page.h : page.w,
+      height: landscape ? page.w : page.h,
+      margin: Number(block.margin || 720),
+      fontSize: Number(block.fontSize || 22)
+    };
+  }
+  function ensureDocx(vars, block = {}) { if (!vars.__bfDocx) vars.__bfDocx = { options: docxDefaultOptions(block, vars), items: [] }; return vars.__bfDocx; }
+  function makeDocxName(name) { const n = String(name || 'blockflow-riport.docx').trim() || 'blockflow-riport.docx'; return n.toLowerCase().endsWith('.docx') ? n : n + '.docx'; }
+  function xmlEscape(v){ return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); }
+  function docxParagraph(text, opts = {}) {
+    const align = opts.align && opts.align !== 'left' ? `<w:jc w:val="${opts.align}"/>` : '';
+    const style = opts.style === 'heading1' ? '<w:pStyle w:val="Heading1"/>' : opts.style === 'heading2' ? '<w:pStyle w:val="Heading2"/>' : '';
+    const pPr = (style || align) ? `<w:pPr>${style}${align}</w:pPr>` : '';
+    const bold = opts.bold ? '<w:b/>' : '';
+    const size = opts.size ? `<w:sz w:val="${Number(opts.size)}"/>` : '';
+    const rPr = (bold || size) ? `<w:rPr>${bold}${size}</w:rPr>` : '';
+    const lines = String(text ?? '').split(/\r?\n/);
+    return `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${xmlEscape(lines[0] || '')}</w:t>${lines.slice(1).map(x=>`<w:br/><w:t xml:space="preserve">${xmlEscape(x)}</w:t>`).join('')}</w:r></w:p>`;
+  }
+  function docxTableXml(rowsText, emptyValue='-', border=true) {
+    const rows = String(rowsText || '').split(/\r?\n/).filter(Boolean).map(line => line.split('|').map(x => x.trim()));
+    const borders = border ? '<w:tblBorders><w:top w:val="single" w:sz="4"/><w:left w:val="single" w:sz="4"/><w:bottom w:val="single" w:sz="4"/><w:right w:val="single" w:sz="4"/><w:insideH w:val="single" w:sz="4"/><w:insideV w:val="single" w:sz="4"/></w:tblBorders>' : '';
+    return `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>${borders}</w:tblPr>` + rows.map(cols => `<w:tr>${cols.map(c => `<w:tc><w:tcPr><w:tcW w:w="4500" w:type="dxa"/></w:tcPr>${docxParagraph(c || emptyValue)}</w:tc>`).join('')}</w:tr>`).join('') + '</w:tbl>';
+  }
+  function dataUrlInfo(dataUrl){ const m=String(dataUrl||'').match(/^data:(image\/(png|jpeg|jpg));base64,(.*)$/i); if(!m) return null; return { mime:m[1].toLowerCase().replace('jpg','jpeg'), ext:m[2].toLowerCase()==='jpeg'?'jpg':m[2].toLowerCase(), bytes:Uint8Array.from(atob(m[3]), c=>c.charCodeAt(0)) }; }
+  function docxImageXml(relId, widthPx=600){ const cx=Math.max(1, Math.round(Number(widthPx||600)*9525)); const cy=Math.round(cx*0.60); return `<w:p><w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="1" name="Kép"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="image"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`; }
+  function zipMakeCrcTable(){ const table=new Uint32Array(256); for(let n=0;n<256;n++){let c=n; for(let k=0;k<8;k++) c=(c&1)?(0xedb88320^(c>>>1)):(c>>>1); table[n]=c>>>0;} return table; }
+  const BF_DOCX_CRC_TABLE = zipMakeCrcTable();
+  function zipCrc(bytes){ let crc=0xffffffff; for(const b of bytes) crc=(crc>>>8)^BF_DOCX_CRC_TABLE[(crc^b)&255]; return (crc^0xffffffff)>>>0; }
+  function zipU16(out,n){ out.push(n&255,(n>>>8)&255); } function zipU32(out,n){ out.push(n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255); }
+  function zipDosTime(d=new Date()){ return ((d.getHours()<<11)|(d.getMinutes()<<5)|Math.floor(d.getSeconds()/2))&0xffff; } function zipDosDate(d=new Date()){ return (((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate())&0xffff; }
+  async function filesToZipBlobDocx(files){ const enc=new TextEncoder(); const chunks=[], central=[]; let offset=0; const now=new Date(), t=zipDosTime(now), d=zipDosDate(now); for(const f of files){ const name=enc.encode(f.name); const bytes=typeof f.content==='string'?enc.encode(f.content):new Uint8Array(f.content||[]); const crc=zipCrc(bytes); let h=[0x50,0x4b,0x03,0x04]; zipU16(h,20); zipU16(h,0); zipU16(h,0); zipU16(h,t); zipU16(h,d); zipU32(h,crc); zipU32(h,bytes.length); zipU32(h,bytes.length); zipU16(h,name.length); zipU16(h,0); const lh=new Uint8Array(h); chunks.push(lh,name,bytes); let c=[0x50,0x4b,0x01,0x02]; zipU16(c,20); zipU16(c,20); zipU16(c,0); zipU16(c,0); zipU16(c,t); zipU16(c,d); zipU32(c,crc); zipU32(c,bytes.length); zipU32(c,bytes.length); zipU16(c,name.length); zipU16(c,0); zipU16(c,0); zipU16(c,0); zipU16(c,0); zipU32(c,0); zipU32(c,offset); central.push(new Uint8Array(c),name); offset += lh.length + name.length + bytes.length; } const centralSize=central.reduce((a,b)=>a+b.length,0); let e=[0x50,0x4b,0x05,0x06]; zipU16(e,0); zipU16(e,0); zipU16(e,files.length); zipU16(e,files.length); zipU32(e,centralSize); zipU32(e,offset); zipU16(e,0); return new Blob([...chunks,...central,new Uint8Array(e)],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}); }
+  async function buildDocxBlob(docx, vars){
+    const opt=docx.options||docxDefaultOptions({},vars); const media=[]; const rels=[]; let body='';
+    if (opt.title) body += docxParagraph(opt.title, { style:'heading1', bold:true, size:32 });
+    for (const item of docx.items||[]) {
+      if (item.type==='pageBreak') body += '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+      if (item.type==='text') { if(item.heading) body += docxParagraph(item.heading,{style:item.style==='heading2'?'heading2':'heading1', bold:true, size:item.style==='heading2'?28:32}); if(item.text) body += docxParagraph(item.text,{align:item.align||'left'}); }
+      if (item.type==='table') { if(item.title) body += docxParagraph(item.title,{style:'heading2', bold:true, size:28}); body += docxTableXml(item.rows, item.emptyValue, item.border); }
+      if (item.type==='image' && item.dataUrl) { const info=dataUrlInfo(item.dataUrl); if(info){ const idx=media.length+1; const ext=info.ext==='jpeg'?'jpg':info.ext; const relId='rIdImg'+idx; media.push({name:`word/media/image${idx}.${ext}`, content:info.bytes}); rels.push(`<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image${idx}.${ext}"/>`); if(item.pageBreakBefore) body += '<w:p><w:r><w:br w:type="page"/></w:r></w:p>'; if(item.caption) body += docxParagraph(item.caption,{style:'heading2', bold:true, size:24}); body += docxImageXml(relId, item.width||600); } }
+    }
+    const sect=`<w:sectPr><w:pgSz w:w="${opt.width}" w:h="${opt.height}"/><w:pgMar w:top="${opt.margin}" w:right="${opt.margin}" w:bottom="${opt.margin}" w:left="${opt.margin}" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>`;
+    const documentXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${body}${sect}</w:body></w:document>`;
+    const contentTypes=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`;
+    const rootRels=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
+    const docRels=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels.join('')}</Relationships>`;
+    return filesToZipBlobDocx([{name:'[Content_Types].xml',content:contentTypes},{name:'_rels/.rels',content:rootRels},{name:'word/document.xml',content:documentXml},{name:'word/_rels/document.xml.rels',content:docRels},...media]);
+  }
+  function downloadDocxBlob(blob, fileName){ const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=makeDocxName(fileName); document.documentElement.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url), 60000); }
 
   async function executeBlock(block, vars, options = {}) {
     const dryRun = Boolean(options.dryRun);
@@ -1722,6 +1789,42 @@
       }
       vars.pdf_file_name = makeDownloadName(fileName);
       return { ok: true, fileName: vars.pdf_file_name, dryRun };
+    }
+    if (block.type === 'docxStart') {
+      vars.__bfDocx = { options: docxDefaultOptions(block, vars), items: [] };
+      return { ok: true, fileName: vars.__bfDocx.options.fileName };
+    }
+    if (block.type === 'docxText') {
+      const docx = ensureDocx(vars, {});
+      docx.items.push({ type:'text', heading: interpolate(block.heading || '', vars), text: interpolate(block.text || '', vars), style: block.style || 'normal', align: block.align || 'left' });
+      return { ok: true };
+    }
+    if (block.type === 'docxTable') {
+      const docx = ensureDocx(vars, {});
+      docx.items.push({ type:'table', title: interpolate(block.title || '', vars), rows: interpolate(block.rows || '', vars), border: block.border !== false, emptyValue: interpolate(block.emptyValue || '-', vars) });
+      return { ok: true };
+    }
+    if (block.type === 'docxScreenshot') {
+      const docx = ensureDocx(vars, {});
+      const dataUrl = await getPdfScreenshotData(block, vars, dryRun);
+      docx.items.push({ type:'image', dataUrl, caption: interpolate(block.caption || '', vars), width: Number(block.width || 600), pageBreakBefore: Boolean(block.pageBreakBefore) });
+      return { ok: true, dryRun, dataUrl: dataUrl ? '[captured]' : '' };
+    }
+    if (block.type === 'docxPageBreak') {
+      const docx = ensureDocx(vars, {});
+      docx.items.push({ type:'pageBreak' });
+      return { ok: true };
+    }
+    if (block.type === 'docxSave') {
+      const docx = ensureDocx(vars, {});
+      if (!docx.items.length) throw new Error('DOCX mentés: nincs DOCX tartalom.' );
+      const fileName = interpolate(block.fileName || docx.options.fileName || 'blockflow-riport.docx', vars);
+      if (!dryRun) {
+        const blob = await buildDocxBlob(docx, vars);
+        downloadDocxBlob(blob, fileName);
+      }
+      vars.docx_file_name = makeDocxName(fileName);
+      return { ok: true, fileName: vars.docx_file_name, dryRun };
     }
     if (block.type === 'preflight') {
       const target = targetForBlock(block, vars);

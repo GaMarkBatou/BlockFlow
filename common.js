@@ -1,5 +1,5 @@
 const BF = (() => {
-  const SCHEMA_VERSION = 16;
+  const SCHEMA_VERSION = 17;
 
   const DEFAULT_WORKFLOW = () => ({
     id: crypto.randomUUID(),
@@ -81,6 +81,12 @@ const BF = (() => {
     pdfScreenshot: { name: 'PDF screenshot hozzáadása', desc: 'Képernyőképet ad az aktuális PDF-hez.' },
     pdfPageBreak: { name: 'PDF új oldal', desc: 'Oldaltörést szúr be az aktuális PDF-be.' },
     pdfSave: { name: 'PDF mentése / előnézet', desc: 'Az összeállított PDF letöltése vagy előnézete.' },
+    docxStart: { name: 'DOCX indítása', desc: 'Új szerkeszthető Word/DOCX riport indítása.' },
+    docxText: { name: 'DOCX szöveg hozzáadása', desc: 'Szöveget vagy címsort ad az aktuális DOCX dokumentumhoz.' },
+    docxTable: { name: 'DOCX táblázat hozzáadása', desc: 'Kulcs-érték táblázatot ad a DOCX dokumentumhoz.' },
+    docxScreenshot: { name: 'DOCX screenshot / kép hozzáadása', desc: 'Képernyőképet vagy képváltozót illeszt a DOCX dokumentumba.' },
+    docxPageBreak: { name: 'DOCX új oldal', desc: 'Oldaltörést szúr be a DOCX dokumentumba.' },
+    docxSave: { name: 'DOCX mentése', desc: 'Letölti az összeállított DOCX riportot.' },
     scheduledTrigger: { name: 'Időzített indítás', desc: 'Automatikus indítás időközönként vagy megadott időpontban.' },
     systemNotify: { name: 'Rendszerértesítés', desc: 'Chrome rendszerértesítést küld szerkeszthető szöveggel.' }
   };
@@ -149,6 +155,12 @@ const BF = (() => {
     { cat: 'PDF', type: 'pdfScreenshot' },
     { cat: 'PDF', type: 'pdfPageBreak' },
     { cat: 'PDF', type: 'pdfSave' },
+    { cat: 'DOCX', type: 'docxStart' },
+    { cat: 'DOCX', type: 'docxText' },
+    { cat: 'DOCX', type: 'docxTable' },
+    { cat: 'DOCX', type: 'docxScreenshot' },
+    { cat: 'DOCX', type: 'docxPageBreak' },
+    { cat: 'DOCX', type: 'docxSave' },
     { cat: 'Haladó', type: 'iframeBlock' },
     { cat: 'Email', type: 'email' },
     { cat: 'Email', type: 'openEmail' },
@@ -231,6 +243,12 @@ const BF = (() => {
     if (type === 'pdfScreenshot') return { id, type, source: 'current', dataVar: 'screenshot_data_url', caption: 'Képernyőkép', sizeMode: 'fitWidth', pageBreakBefore: false, border: true };
     if (type === 'pdfPageBreak') return { id, type, onlyIfLowSpace: false };
     if (type === 'pdfSave') return { id, type, action: 'downloadPreview', fileName: '{{today}}_blockflow-riport.pdf', previewBeforeSave: false };
+    if (type === 'docxStart') return { id, type, title: 'BlockFlow riport', fileName: '{{today}}_blockflow-riport.docx', pageSize: 'a4', orientation: 'portrait', margin: 720, fontSize: 22 };
+    if (type === 'docxText') return { id, type, heading: '', text: 'Szöveg: {{adat}}', style: 'normal', align: 'left' };
+    if (type === 'docxTable') return { id, type, title: 'Adatok', rows: 'Ticket | {{ticket_id}}\nStátusz | {{status}}', border: true, emptyValue: '-' };
+    if (type === 'docxScreenshot') return { id, type, source: 'current', dataVar: 'screenshot_data_url', caption: 'Képernyőkép', width: 600, pageBreakBefore: false };
+    if (type === 'docxPageBreak') return { id, type };
+    if (type === 'docxSave') return { id, type, fileName: '{{today}}_blockflow-riport.docx' };
     return { id, type };
   }
 
@@ -303,6 +321,12 @@ const BF = (() => {
     if (block.type === 'pdfScreenshot') return `PDF screenshot: ${short(block.caption || block.source || '')}`;
     if (block.type === 'pdfPageBreak') return 'PDF új oldal';
     if (block.type === 'pdfSave') return `PDF mentése: ${short(block.fileName || 'riport.pdf')}`;
+    if (block.type === 'docxStart') return `DOCX indítása: ${short(block.fileName || 'riport.docx')}`;
+    if (block.type === 'docxText') return `DOCX szöveg: ${short(block.heading || block.text || '')}`;
+    if (block.type === 'docxTable') return `DOCX táblázat: ${short(block.title || 'Adatok')}`;
+    if (block.type === 'docxScreenshot') return `DOCX screenshot: ${short(block.caption || block.source || '')}`;
+    if (block.type === 'docxPageBreak') return 'DOCX új oldal';
+    if (block.type === 'docxSave') return `DOCX mentése: ${short(block.fileName || 'riport.docx')}`;
     if (block.type === 'scheduledTrigger') return `Időzített indítás: ${block.scheduleMode === 'daily' ? block.timeOfDay : (block.intervalMinutes || 15) + ' percenként'}`;
     if (block.type === 'userPrompt') return `${block.mode === 'wait' ? 'Várj visszajelzésre' : 'Felugró üzenet'}: ${short(block.title || 'BlockFlow')}`;
     if (block.type === 'systemNotify') return `Rendszerértesítés: ${short(block.title || 'BlockFlow')}`;

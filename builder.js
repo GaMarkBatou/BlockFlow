@@ -573,7 +573,7 @@ function blockOutputHtml(b) {
 }
 
 function blockIcon(b) {
-  const map = { trigger:'▶', triggerGroup:'◎', scheduledTrigger:'⏲', conditionText:'T', conditionElement:'◇', conditionField:'▣', conditionUrl:'URL', conditionChange:'Δ', conditionGroup:'∧∨', click:'⌁', fill:'✎', selectOption:'▾', extract:'⇣', wait:'⏱', waitUntil:'⏳', ifBlock:'?', repeatBlock:'↻', retryBlock:'⟳', tryBlock:'⚑', popupWait:'▣', popupExtract:'▣', popupClick:'▣', popupWindowWait:'◱', popupWindowExtract:'⇣', popupWindowClose:'×', copy:'⧉', clipboardRead:'⧉', email:'✉', emailTemplate:'✉', emailPreview:'✉', openEmail:'↗', rowLoop:'≡', elementLoop:'⋮', tableExtract:'▦', mask:'◩', transform:'A', textSlice:'✂', regex:'.*', textSearch:'⌕', errorSearch:'⚠', fieldByLabel:'🏷', setVar:'=', userPrompt:'💬', userInput:'⌨', userChoice:'☑', systemNotify:'🔔', scroll:'↕', keyPress:'⌨', openUrl:'↗', pageInfo:'ⓘ', screenshot:'▣', pdfStart:'PDF', pdfText:'¶', pdfTable:'▦', pdfScreenshot:'▣', pdfPageBreak:'↡', pdfSave:'⬇', preflight:'✓', localSet:'⬇', localGet:'⬆', compare:'=', math:'#', iframeBlock:'▤', findElements:'◇', validateData:'✓', comment:'//', groupBlock:'▣', callWorkflow:'↪', returnResult:'↩', stopRun:'■', sound:'♪' };
+  const map = { trigger:'▶', triggerGroup:'◎', scheduledTrigger:'⏲', conditionText:'T', conditionElement:'◇', conditionField:'▣', conditionUrl:'URL', conditionChange:'Δ', conditionGroup:'∧∨', click:'⌁', fill:'✎', selectOption:'▾', extract:'⇣', wait:'⏱', waitUntil:'⏳', ifBlock:'?', repeatBlock:'↻', retryBlock:'⟳', tryBlock:'⚑', popupWait:'▣', popupExtract:'▣', popupClick:'▣', popupWindowWait:'◱', popupWindowExtract:'⇣', popupWindowClose:'×', copy:'⧉', clipboardRead:'⧉', email:'✉', emailTemplate:'✉', emailPreview:'✉', openEmail:'↗', rowLoop:'≡', elementLoop:'⋮', tableExtract:'▦', mask:'◩', transform:'A', textSlice:'✂', regex:'.*', textSearch:'⌕', errorSearch:'⚠', fieldByLabel:'🏷', setVar:'=', userPrompt:'💬', userInput:'⌨', userChoice:'☑', systemNotify:'🔔', scroll:'↕', keyPress:'⌨', openUrl:'↗', pageInfo:'ⓘ', screenshot:'▣', pdfStart:'PDF', pdfText:'¶', pdfTable:'▦', pdfScreenshot:'▣', pdfPageBreak:'↡', pdfSave:'⬇', docxStart:'DOCX', docxText:'¶', docxTable:'▦', docxScreenshot:'▣', docxPageBreak:'↡', docxSave:'⬇', preflight:'✓', localSet:'⬇', localGet:'⬆', compare:'=', math:'#', iframeBlock:'▤', findElements:'◇', validateData:'✓', comment:'//', groupBlock:'▣', callWorkflow:'↪', returnResult:'↩', stopRun:'■', sound:'♪' };
   return map[b.type] || '•';
 }
 function inlineChip(label, value) { return `<span class="inline-chip"><span>${escapeHtml(label)}</span><b>${escapeHtml(value || '—')}</b></span>`; }
@@ -623,6 +623,12 @@ function blockInline(b) {
   if (b.type === 'pdfScreenshot') return `${inlineSelect('source', b.source || 'current', [['current','aktuális oldal'],['last','utolsó screenshot'],['variable','változó']])} ${inlineInput('caption', b.caption || '', 'felirat')} ${inlineSelect('sizeMode', b.sizeMode || 'fitWidth', [['fitWidth','teljes szélesség'],['original','eredeti'],['fitPage','oldalhoz igazítva']])}`;
   if (b.type === 'pdfPageBreak') return `${inlineCheck('onlyIfLowSpace', Boolean(b.onlyIfLowSpace), 'csak ha kevés hely van')}`;
   if (b.type === 'pdfSave') return `${inlineSelect('action', b.action || 'downloadPreview', [['download','letöltés'],['preview','előnézet'],['downloadPreview','letöltés + előnézet']])} ${inlineInput('fileName', b.fileName || '{{today}}_riport.pdf', 'fájlnév', 'wide')}`;
+  if (b.type === 'docxStart') return `${inlineInput('fileName', b.fileName || 'riport.docx', 'fájlnév', 'wide')} ${inlineSelect('pageSize', b.pageSize || 'a4', [['a4','A4'],['letter','Letter']])} ${inlineSelect('orientation', b.orientation || 'portrait', [['portrait','álló'],['landscape','fekvő']])}`;
+  if (b.type === 'docxText') return `${inlineInput('heading', b.heading || '', 'címsor')} ${inlineInput('text', b.text || '', 'szöveg', 'wide')}`;
+  if (b.type === 'docxTable') return `${inlineInput('title', b.title || 'Adatok', 'táblázat címe')} ${inlineCheck('border', b.border !== false, 'szegély')}`;
+  if (b.type === 'docxScreenshot') return `${inlineSelect('source', b.source || 'current', [['current','aktuális oldal'],['last','utolsó screenshot'],['variable','változó']])} ${inlineInput('caption', b.caption || '', 'felirat')} ${inlineNumber('width', b.width || 600, 'szélesség px')}`;
+  if (b.type === 'docxPageBreak') return 'Új oldal beszúrása a DOCX dokumentumba';
+  if (b.type === 'docxSave') return `${inlineInput('fileName', b.fileName || '{{today}}_riport.docx', 'fájlnév', 'wide')}`;
   if (b.type === 'click') return `${inlineTargetSource(b)} ${b.targetMode && b.targetMode !== 'manual' ? '' : inlinePick(b)} ${inlineCheck('confirmRisky', b.confirmRisky !== false, 'megerősítés')}`;
   if (b.type === 'fill') return `${inlinePick(b, 'Hova')} ${inlineInput('value', b.value || '', 'mit illesszen be', 'wide')} ${inlineSelect('fillMode', b.fillMode || 'framework', [['framework','framework mód'],['simple','egyszerű'],['typing','gépelés'],['paste','paste event']])}`;
   if (b.type === 'selectOption') return `${inlinePick(b, 'Dropdown')} ${inlineInput('optionText', b.optionText || '', 'opció szövege', 'wide')} ${inlineSelect('matchMode', b.matchMode || 'contains', [['contains','tartalmazza'],['equals','pontosan'],['starts','ezzel kezdődik']])}`;
@@ -975,7 +981,13 @@ const BLOCK_HELP = {
   pdfTable: { purpose:'Kulcs-érték táblázatot ad a PDF-hez.', params:['Sorok formátuma: Név | Érték.','Üres érték helyettesítése, szegély és oszlopszélesség állítható.'] },
   pdfScreenshot: { purpose:'Screenshotot illeszt az aktuális PDF-be.', params:['Forrás: aktuális oldal, utolsó screenshot vagy változó.','Méret, felirat, keret és oldaltörés állítható.'] },
   pdfPageBreak: { purpose:'Új oldalt szúr be az aktuális PDF-be.', params:['Opcionálisan csak akkor, ha kevés hely maradt az oldalon.'] },
-  pdfSave: { purpose:'Lezárja és letölti vagy előnézetben megnyitja az elkészült PDF-et.', params:['Művelet: letöltés, előnézet vagy mindkettő.','Fájlnév: változókat is tartalmazhat.'] }
+  pdfSave: { purpose:'Lezárja és letölti vagy előnézetben megnyitja az elkészült PDF-et.', params:['Művelet: letöltés, előnézet vagy mindkettő.','Fájlnév: változókat is tartalmazhat.'] },
+  docxStart: { purpose:'Új szerkeszthető DOCX/Word riportot indít.', params:['Fájlnév, cím, lapméret, tájolás és margó változókkal is megadható.'] },
+  docxText: { purpose:'Szöveget vagy címsort ad az aktuális DOCX riporthoz.', params:['Változókat is használhatsz, például {{adat}}.'] },
+  docxTable: { purpose:'Kulcs-érték táblázatot ad a DOCX riporthoz.', params:['Sorok formátuma: Név | Érték.'] },
+  docxScreenshot: { purpose:'Screenshotot vagy képváltozót illeszt a DOCX riportba.', params:['Forrás: aktuális oldal, utolsó screenshot vagy változó.'] },
+  docxPageBreak: { purpose:'Oldaltörést szúr be a DOCX dokumentumba.', params:['A következő tartalom új oldalon kezdődik.'] },
+  docxSave: { purpose:'Letölti az összeállított DOCX riportot.', params:['A fájlnév változókat is tartalmazhat.'] }
 };
 
 function inspectorIntro(b) {
@@ -1615,33 +1627,37 @@ chrome.action.onClicked.addListener(async (tab) => {
 `;
 }
 
-function crc32(str) {
-  const table = crc32.table || (crc32.table = Array.from({length:256}, (_,n)=>{ let c=n; for(let k=0;k<8;k++) c = c&1 ? 0xedb88320 ^ (c>>>1) : c>>>1; return c>>>0; }));
-  let crc = -1;
-  for (let i=0;i<str.length;i++) crc = (crc>>>8) ^ table[(crc ^ str.charCodeAt(i)) & 255];
-  return (crc ^ -1) >>> 0;
+function makeCrc32Table(){
+  const table = new Uint32Array(256);
+  for (let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1); table[n]=c>>>0; }
+  return table;
 }
+const BF_ZIP_CRC_TABLE = makeCrc32Table();
+function crc32Bytes(bytes){ let crc = 0xffffffff; for (const b of bytes) crc = (crc >>> 8) ^ BF_ZIP_CRC_TABLE[(crc ^ b) & 255]; return (crc ^ 0xffffffff) >>> 0; }
 function dosTime(date=new Date()) { return ((date.getHours()<<11) | (date.getMinutes()<<5) | Math.floor(date.getSeconds()/2)) & 0xffff; }
 function dosDate(date=new Date()) { return (((date.getFullYear()-1980)<<9) | ((date.getMonth()+1)<<5) | date.getDate()) & 0xffff; }
-function u16(n){ return String.fromCharCode(n & 255, (n>>>8)&255); }
-function u32(n){ return String.fromCharCode(n & 255, (n>>>8)&255, (n>>>16)&255, (n>>>24)&255); }
+function pushU16(out,n){ out.push(n & 255, (n>>>8)&255); }
+function pushU32(out,n){ out.push(n & 255, (n>>>8)&255, (n>>>16)&255, (n>>>24)&255); }
+function bytesHeaderLocal(crc,size,nameLen,t,d){ const out=[0x50,0x4b,0x03,0x04]; pushU16(out,20); pushU16(out,0); pushU16(out,0); pushU16(out,t); pushU16(out,d); pushU32(out,crc); pushU32(out,size); pushU32(out,size); pushU16(out,nameLen); pushU16(out,0); return new Uint8Array(out); }
+function bytesHeaderCentral(crc,size,nameLen,offset,t,d){ const out=[0x50,0x4b,0x01,0x02]; pushU16(out,20); pushU16(out,20); pushU16(out,0); pushU16(out,0); pushU16(out,t); pushU16(out,d); pushU32(out,crc); pushU32(out,size); pushU32(out,size); pushU16(out,nameLen); pushU16(out,0); pushU16(out,0); pushU16(out,0); pushU16(out,0); pushU32(out,0); pushU32(out,offset); return new Uint8Array(out); }
+function bytesEnd(count,centralSize,centralOffset){ const out=[0x50,0x4b,0x05,0x06]; pushU16(out,0); pushU16(out,0); pushU16(out,count); pushU16(out,count); pushU32(out,centralSize); pushU32(out,centralOffset); pushU16(out,0); return new Uint8Array(out); }
 async function filesToZipBlob(files) {
   const encoder = new TextEncoder();
   const chunks = []; const central = []; let offset = 0;
+  const now = new Date(); const t = dosTime(now); const d = dosDate(now);
   for (const f of files) {
     const nameBytes = encoder.encode(f.name);
-    const contentBytes = typeof f.content === 'string' ? encoder.encode(f.content) : f.content;
-    let binary = ''; for (const b of contentBytes) binary += String.fromCharCode(b);
-    const crc = crc32(binary); const t = dosTime(); const d = dosDate();
-    const local = 'PK\x03\x04' + u16(20) + u16(0) + u16(0) + u16(t) + u16(d) + u32(crc) + u32(contentBytes.length) + u32(contentBytes.length) + u16(nameBytes.length) + u16(0);
-    chunks.push(encoder.encode(local), nameBytes, contentBytes);
-    const centralHeader = 'PK\x01\x02' + u16(20) + u16(20) + u16(0) + u16(0) + u16(t) + u16(d) + u32(crc) + u32(contentBytes.length) + u32(contentBytes.length) + u16(nameBytes.length) + u16(0) + u16(0) + u16(0) + u16(0) + u32(0) + u32(offset);
-    central.push(encoder.encode(centralHeader), nameBytes);
+    const contentBytes = typeof f.content === 'string' ? encoder.encode(f.content) : new Uint8Array(f.content || []);
+    const crc = crc32Bytes(contentBytes);
+    const local = bytesHeaderLocal(crc, contentBytes.length, nameBytes.length, t, d);
+    chunks.push(local, nameBytes, contentBytes);
+    const centralHeader = bytesHeaderCentral(crc, contentBytes.length, nameBytes.length, offset, t, d);
+    central.push(centralHeader, nameBytes);
     offset += local.length + nameBytes.length + contentBytes.length;
   }
-  const centralSize = central.reduce((a,c)=>a+c.length,0); const centralOffset = offset;
-  const end = 'PK\x05\x06' + u16(0) + u16(0) + u16(files.length) + u16(files.length) + u32(centralSize) + u32(centralOffset) + u16(0);
-  return new Blob([...chunks, ...central, encoder.encode(end)], { type:'application/zip' });
+  const centralSize = central.reduce((a,c)=>a+c.length,0);
+  const centralOffset = offset;
+  return new Blob([...chunks, ...central, bytesEnd(files.length, centralSize, centralOffset)], { type:'application/zip' });
 }
 
 async function exportMiniExtension() {
