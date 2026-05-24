@@ -17,6 +17,7 @@ const CONTAINERS = new Set(['ifBlock', 'repeatBlock', 'rowLoop', 'triggerGroup',
 async function init() {
   const store = await BF.getStore();
   workflows = store.workflows;
+  workflows.forEach(w => normalizeWorkflow(w));
   activeWorkflow = workflows.find(w => w.id === store.activeWorkflowId) || workflows[0];
   normalizeWorkflow(activeWorkflow);
   selectedBlockId = firstBlock(activeWorkflow.blocks)?.id;
@@ -28,10 +29,13 @@ function normalizeWorkflow(workflow) {
   const walk = blocks => {
     for (let i = 0; i < (blocks || []).length; i++) {
       const b = blocks[i];
-      // v0.37: a Record által létrehozott blokkok teljesen normál blokkok.
-      // Régi workflow-kból eltávolítjuk a csak vizuális/record flaget, hogy
+      if (!b || typeof b !== 'object') continue;
+      if (!b.id) b.id = crypto.randomUUID();
+      // v0.39: a Record által létrehozott blokkok teljesen normál blokkok.
+      // Régi workflow-kból eltávolítunk minden csak vizuális/record/lock jelölést, hogy
       // semmi ne kezelje őket külön szerkesztés, mozgatás vagy törlés közben.
-      if (Object.prototype.hasOwnProperty.call(b, 'recorded')) delete b.recorded;
+      ['recorded','locked','readOnly','readonly','recordOnly','recordedBlock'].forEach(k => { if (Object.prototype.hasOwnProperty.call(b, k)) delete b[k]; });
+      if (b.source === 'record') delete b.source;
       if (CONTAINERS.has(b.type) && !Array.isArray(b.children)) b.children = [];
       if (b.type === 'ifBlock' && !Array.isArray(b.elseChildren)) b.elseChildren = [];
       if (b.type === 'tryBlock' && !Array.isArray(b.elseChildren)) b.elseChildren = [];
@@ -281,6 +285,7 @@ function renderWorkflowList() {
   </div>`).join('');
   document.querySelectorAll('[data-open]').forEach(b => b.onclick = async () => {
     await saveCurrent();
+    workflows.forEach(w => normalizeWorkflow(w));
     activeWorkflow = workflows.find(w => w.id === b.dataset.open);
     normalizeWorkflow(activeWorkflow);
     selectedBlockId = firstBlock(activeWorkflow.blocks)?.id;
@@ -575,7 +580,10 @@ function inlineChip(label, value) { return `<span class="inline-chip"><span>${es
 function inlineInput(field, value, placeholder='', cls='') { return `<input class="inline-input ${cls}" data-inline-field="${field}" value="${escapeAttr(value ?? '')}" placeholder="${escapeAttr(placeholder)}">`; }
 function inlineNumber(field, value, placeholder='', cls='tiny') { return `<input class="inline-input ${cls}" type="number" data-inline-field="${field}" value="${escapeAttr(value ?? '')}" placeholder="${escapeAttr(placeholder)}">`; }
 function inlineCheck(field, checked, label) { return `<label class="inline-check"><input type="checkbox" data-inline-check="${field}" ${checked ? 'checked' : ''}> ${escapeHtml(label)}</label>`; }
-function inlineSelect(field, value, options, cls='') { return `<select class="inline-select ${cls}" data-inline-field="${field}">${options.map(([v,l])=>`<option value="${escapeAttr(v)}" ${v===value?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select>`; }
+function inlineSelect(field, value, options, cls='') {
+  const opts = Array.isArray(options) ? options : [];
+  return `<select class="inline-select ${cls}" data-inline-field="${field}">${opts.map(([v,l])=>`<option value="${escapeAttr(v)}" ${v===value?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select>`;
+}
 function inlinePick(b, label='Cél elem') { return `<button class="inline-pick ${b.target ? 'has-target' : ''}" data-inline-pick="target" title="Elem kiválasztása az oldalról"><span>${escapeHtml(label)}</span><b>${escapeHtml(targetLabel(b))}</b></button>`; }
 function inlineTargetSource(b) { return `${inlineSelect('targetMode', b.targetMode || 'manual', [['manual','kézi elem'],['last','előző találat'],['var','elem változó'],['selector','selector változó'],['xpath','XPath változó']])}${(b.targetMode === 'var' || b.targetMode === 'selector' || b.targetMode === 'xpath') ? inlineInput('targetVar', b.targetVar || (b.targetMode === 'selector' ? 'szoveg_talalat_selector' : b.targetMode === 'xpath' ? 'szoveg_talalat_xpath' : 'szoveg_talalat_elem'), 'változó') : ''}`; }
 function inlineOpenInspector(label='Bővített') { return `<button class="inline-more" data-inline-more="1" title="Bővített beállítások a jobb oldalon">${escapeHtml(label)}</button>`; }
@@ -642,7 +650,7 @@ function blockInline(b) {
   if (b.type === 'setVar') return `${inlineInput('varName', b.varName || 'valtozo', 'változó')} ${inlineInput('value', b.value || '', 'érték', 'wide')}`;
   if (b.type === 'userInput') return `${inlineInput('message', b.message || '', 'kérdés', 'wide')} ${inlineInput('resultName', b.resultName || 'user_input', 'eredmény')}`;
   if (b.type === 'userChoice') return `${inlineInput('message', b.message || '', 'kérdés', 'wide')} ${inlineInput('options', b.options || '', 'opciók soronként')} ${inlineInput('resultName', b.resultName || 'valasztas', 'eredmény')}`;
-  if (b.type === 'tableExtract') return `${inlinePick(b, 'Tábla/lista')} ${inlineSelect('rowMode','columnMode','scrollTarget','mode', b.rowMode || 'first', [['first','első sor'],['last','utolsó sor'],['nth','N. sor'],['contains','sor tartalmazza']])} ${b.rowMode === 'nth' ? inlineNumber('rowIndex', b.rowIndex || 1, 'N') : ''} ${inlineSelect('columnMode', b.columnMode || 'index', [['index','oszlop szám'],['header','fejléc név']])} ${b.columnMode === 'header' ? inlineInput('columnHeader', b.columnHeader || '', 'fejléc') : inlineNumber('columnIndex', b.columnIndex || 1, 'oszlop')} ${inlineInput('resultName', b.resultName || 'tabla_adat', 'eredmény')}`;
+  if (b.type === 'tableExtract') return `${inlinePick(b, 'Tábla/lista')} ${inlineSelect('rowMode', b.rowMode || 'first', [['first','első sor'],['last','utolsó sor'],['nth','N. sor'],['contains','sor tartalmazza']])} ${b.rowMode === 'nth' ? inlineNumber('rowIndex', b.rowIndex || 1, 'N') : ''} ${inlineSelect('columnMode', b.columnMode || 'index', [['index','oszlop szám'],['header','fejléc név']])} ${b.columnMode === 'header' ? inlineInput('columnHeader', b.columnHeader || '', 'fejléc') : inlineNumber('columnIndex', b.columnIndex || 1, 'oszlop')} ${inlineInput('resultName', b.resultName || 'tabla_adat', 'eredmény')}`;
   if (b.type === 'elementLoop') return `${inlinePick(b, 'Konténer')} ${inlineInput('selector', b.selector || '', 'selector opcionális')} ${inlineInput('itemVar', b.itemVar || 'elem_szoveg', 'elem változó')} ${inlineNumber('maxItems', b.maxItems || 20, 'max')}`;
   if (b.type === 'waitUntil') return `${inlineSelect('conditionMode', b.conditionMode || 'textExists', [['textExists','szöveg'],['elementExists','elem megjelenik'],['elementVisible','elem látható'],['elementHidden','elem eltűnik'],['elementClickable','kattintható'],['valueContains','mezőérték'],['valueChanges','érték változik'],['urlContains','URL'],['urlChanges','URL változik'],['spinnerGone','spinner eltűnik'],['domStable','DOM stabil']])} ${['elementExists','elementVisible','elementHidden','elementClickable','valueContains','valueChanges'].includes(b.conditionMode) ? inlinePick(b) : inlineInput('text', b.text || b.value || '', 'várt érték', 'wide')} ${inlineNumber('timeoutMs', b.timeoutMs || 10000, 'timeout')}`;
   if (b.type === 'scroll') return `${inlineSelect('mode', b.mode || 'element', [['element','elemhez'],['page','oldal']])} ${b.mode === 'page' ? inlineSelect('direction', b.direction || 'down', [['down','le'],['up','fel'],['top','tetejére'],['bottom','aljára']]) + inlineNumber('amount', b.amount || 500, 'px') : inlineTargetSource(b) + (b.targetMode && b.targetMode !== 'manual' ? '' : inlinePick(b))}`;
@@ -1107,7 +1115,10 @@ function textField(field,label,value){ return `<div class="field"><label>${label
 function numberField(field,label,value){ return `<div class="field"><label>${label}</label><input data-field="${field}" type="number" value="${escapeAttr(value)}"></div>`; }
 function checkboxField(field,label,value){ return `<label class="check"><input data-field="${field}" type="checkbox" ${value?'checked':''}> ${label}</label>`; }
 function textArea(field,label,value){ return `<div class="field"><label>${label}</label><textarea data-field="${field}">${escapeHtml(value)}</textarea></div>`; }
-function selectField(field,label,value,options){ return `<div class="field"><label>${label}</label><select data-field="${field}">${options.map(([v,l])=>`<option value="${v}" ${v===value?'selected':''}>${l}</option>`).join('')}</select></div>`; }
+function selectField(field,label,value,options){
+  const opts = Array.isArray(options) ? options : [];
+  return `<div class="field"><label>${label}</label><select data-field="${field}">${opts.map(([v,l])=>`<option value="${escapeAttr(v)}" ${v===value?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select></div>`;
+}
 function updateField(field, value) {
   const b = findBlock(selectedBlockId)?.block;
   if (!b) return;
@@ -1189,6 +1200,7 @@ function reidBlocks(blocks) {
 }
 
 async function saveCurrent(){
+  normalizeWorkflow(activeWorkflow);
   activeWorkflow.name = $('#workflowName').value || 'Névtelen automatizmus';
   workflows = workflows.map(w => w.id === activeWorkflow.id ? activeWorkflow : w);
   await BF.saveWorkflow(activeWorkflow);

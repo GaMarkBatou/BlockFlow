@@ -1,4 +1,4 @@
-# BlockFlow Automation MVP 0.38
+# BlockFlow Automation MVP 0.39
 
 BlockFlow egy lokális Chrome extension, amellyel általános weboldalakon lehet böngészőautomatizmusokat összeállítani vizuális, blokkos felületen. A cél az, hogy a gyakori adminisztrációs, adatgyűjtési, email-előkészítési, figyelési és riportkészítési folyamatokat programozás nélkül lehessen felépíteni.
 
@@ -378,21 +378,21 @@ A v0.35 fő célja a modern webappok és a ServiceNow / SNOW jellegű jegykezel�
 Ezek a fejlesztések különösen hasznosak ServiceNow klasszikus és modern felületein, Agent/Workspace jellegű nézetekben, valamint React, Vue, Angular vagy web component alapú belső rendszereken.
 
 
-## v0.38 workflow-szerkesztési javítás
+## v0.39 workflow-szerkesztési javítás
 
 A blokkpalettából kattintással hozzáadott új blokk most már nem automatikusan a workflow végére kerül. Ha van kijelölt blokk, az új blokk közvetlenül a kijelölt blokk után lesz beszúrva ugyanazon a szinten. Ha nincs kijelölt blokk, a korábbi működés marad: az új blokk a workflow végére kerül.
 
 Figyelő feltételeknél a beszúrás a Figyelő trigger vagy Feltételcsoport kontextusát követi: meglévő feltétel kijelölésekor az új feltétel utána kerül, Figyelő trigger vagy Feltételcsoport kijelölésekor pedig annak belsejébe kerül. A drag-and-drop működés továbbra is a húzással megadott célhelyet használja.
 
 
-## v0.38 javítás
+## v0.39 javítás
 
 - A Record mód által létrehozott blokkok mostantól teljesen normál blokkokként kerülnek be a workflow-ba.
 - A rögzített blokkok szerkeszthetők, mozgathatók és törölhetők ugyanúgy, mint a kézzel hozzáadott blokkok.
 - Régebbi Record-blokkokból a csak vizuális `recorded` jelölés automatikusan eltávolításra kerül megnyitáskor.
 
 
-## v0.38 újdonságok
+## v0.39 újdonságok
 
 - Görgetés blokk belső görgethető konténer támogatással: automatikus, teljes oldal, legközelebbi konténer vagy kézzel kiválasztott konténer.
 - Kattintás előtt okos auto-scroll és kattintható szülő fallback.
