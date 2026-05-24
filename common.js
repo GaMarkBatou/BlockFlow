@@ -20,7 +20,8 @@ const BF = (() => {
     conditionChange: { name: 'Feltétel: érték változik', desc: 'Igaz, ha egy mező/szöveg az előző figyelési körhöz képest a megadott irányba változik.' },
     conditionGroup: { name: 'Feltételcsoport', desc: 'Figyelőn belüli logikai csoport: minden/bármelyik/egyik sem feltétel igaz.' },
     click: { name: 'Kattintás', desc: 'Kattint egy kiválasztott oldalelemre.' },
-    fill: { name: 'Beillesztés / kitöltés', desc: 'Szöveget ír egy mezőbe.' },
+    fill: { name: 'Beillesztés / kitöltés', desc: 'Szöveget ír egy mezőbe framework-kompatibilis eseményekkel is.' },
+    selectOption: { name: 'Legördülő opció kiválasztása', desc: 'Custom/modern dropdown megnyitása és opció kiválasztása szöveg alapján.' },
     extract: { name: 'Adat kinyerése', desc: 'Szöveget vagy mezőértéket változóba ment.' },
     wait: { name: 'Várakozás', desc: 'Időre, szövegre vagy elemre vár.' },
     ifBlock: { name: 'Ha...', desc: 'Feltételt ellenőriz, és hamis esetben átugorhat blokkokat.' },
@@ -94,6 +95,7 @@ const BF = (() => {
     { cat: 'Figyelő feltételek', type: 'conditionGroup' },
     { cat: 'Műveletek', type: 'click' },
     { cat: 'Műveletek', type: 'fill' },
+    { cat: 'Műveletek', type: 'selectOption' },
     { cat: 'Műveletek', type: 'wait' },
     { cat: 'Műveletek', type: 'copy' },
     { cat: 'Műveletek', type: 'scroll' },
@@ -156,7 +158,8 @@ const BF = (() => {
   function newBlock(type) {
     const id = crypto.randomUUID();
     if (type === 'click') return { id, type, target: null, targetMode: 'manual', targetVar: '', timeoutMs: 5000, confirmRisky: true };
-    if (type === 'fill') return { id, type, target: null, value: '', timeoutMs: 5000 };
+    if (type === 'fill') return { id, type, target: null, value: '', timeoutMs: 5000, fillMode: 'framework', blurAfter: true, typeDelayMs: 25, shadowSearch: true };
+    if (type === 'selectOption') return { id, type, target: null, targetMode: 'manual', targetVar: '', optionText: '', matchMode: 'contains', timeoutMs: 5000, openDelayMs: 250, shadowSearch: true };
     if (type === 'extract') return { id, type, target: null, extractMode: 'auto', searchScope: 'dom', allowHidden: true, varName: 'adat', timeoutMs: 5000 };
     if (type === 'wait') return { id, type, waitMode: 'time', ms: 1000, text: '', target: null, timeoutMs: 5000 };
     if (type === 'triggerGroup') return { id, type, triggerEnabled: true, logic: 'all', scope: 'domain', domain: '', path: '/', url: '', urlContains: '', intervalSec: 2, throttleSec: 15, runOnce: false, children: [] };
@@ -183,7 +186,7 @@ const BF = (() => {
     if (type === 'setVar') return { id, type, varName: 'valtozo', value: '' };
     if (type === 'userInput') return { id, type, title: 'Adat bekérése', message: 'Adj meg egy értéket:', inputType: 'text', placeholder: '', defaultValue: '', resultName: 'user_input' };
     if (type === 'userChoice') return { id, type, title: 'Választás', message: 'Válassz egy opciót:', options: 'Igen\nNem', resultName: 'valasztas' };
-    if (type === 'tableExtract') return { id, type, target: null, rowMode: 'first', rowIndex: 1, rowContains: '', columnIndex: 1, includeHeader: false, skipEmptyRows: true, missingRowMode: 'empty', resultName: 'tabla_adat', timeoutMs: 5000 };
+    if (type === 'tableExtract') return { id, type, target: null, rowMode: 'first', rowIndex: 1, rowContains: '', columnIndex: 1, includeHeader: false, skipEmptyRows: true, missingRowMode: 'empty', virtualSearch: false, maxScrolls: 10, scrollAmount: 600, resultName: 'tabla_adat', timeoutMs: 5000 };
     if (type === 'elementLoop') return { id, type, target: null, selector: '', itemVar: 'elem_szoveg', indexVar: 'elem_index', maxItems: 20, children: [] };
     if (type === 'waitUntil') return { id, type, conditionMode: 'textExists', text: '', target: null, operator: 'contains', value: '', timeoutMs: 10000 };
     if (type === 'scroll') return { id, type, mode: 'element', target: null, targetMode: 'manual', targetVar: '', direction: 'down', amount: 500 };
@@ -255,6 +258,7 @@ const BF = (() => {
     if (block.type === 'setVar') return `Változó: {{${block.varName || 'valtozo'}}}`;
     if (block.type === 'userInput') return `Adat bekérése → {{${block.resultName || 'user_input'}}}`;
     if (block.type === 'userChoice') return `Választás → {{${block.resultName || 'valasztas'}}}`;
+    if (block.type === 'selectOption') return 'Legördülő opció: ' + (block.optionText || 'nincs opció');
     if (block.type === 'tableExtract') return `Táblázatból kinyerés → {{${block.resultName || 'tabla_adat'}}}`;
     if (block.type === 'elementLoop') return `Minden találatra: {{${block.itemVar || 'elem_szoveg'}}}`;
     if (block.type === 'waitUntil') return `Várj amíg: ${conditionLabel(block)}`;
@@ -531,7 +535,7 @@ const BF = (() => {
     });
     if (!starterCount) issues.push({ level:'error', blockId:null, text:'Hiányzik az aktív indító blokk. Legalább egy szükséges: Indítás vagy aktív Figyelő trigger.' });
 
-    const needsTarget = ['click','fill','extract','rowLoop'];
+    const needsTarget = ['click','fill','selectOption','extract','rowLoop'];
     function hasDynamicTarget(b) { return b && b.targetMode && b.targetMode !== 'manual' && String(b.targetVar || '').trim(); }
     walkBlocks(workflow.blocks || [], b => {
       if (needsTarget.includes(b.type) && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:`${BLOCKS[b.type]?.name || b.type}: hiányzik a cél elem.` });

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "BlockFlow Automation MVP 0.34",
-  "description": "Local browser automation builder with Record mode, mini extension dependency export, PDF and flow-aware outputs.",
-  "version": "0.34.0",
+  "name": "BlockFlow Automation MVP 0.35",
+  "description": "Local browser automation builder with Record mode, ServiceNow/SNOW compatibility, framework-safe filling, mini export, PDF and flow-aware outputs.",
+  "version": "0.35.0",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",

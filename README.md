@@ -1,4 +1,4 @@
-# BlockFlow Automation MVP 0.34
+# BlockFlow Automation MVP 0.35
 
 BlockFlow egy lokális Chrome extension, amellyel általános weboldalakon lehet böngészőautomatizmusokat összeállítani vizuális, blokkos felületen. A cél az, hogy a gyakori adminisztrációs, adatgyűjtési, email-előkészítési, figyelési és riportkészítési folyamatokat programozás nélkül lehessen felépíteni.
 
@@ -353,3 +353,26 @@ A projekt fejlesztése több lépésben épült fel:
 A Mini extension export most már kezeli a **Másik automatizmus futtatása** blokkokat. Exportáláskor az aktuális automatizmus mellé bekerülnek a meghívott automatizmusok is, rekurzívan. Így ha egy workflow egy másik workflow-t alfolyamatként hív meg, a generált mini extension önállóan is megtalálja és le tudja futtatni a meghívott automatizmust.
 
 A mini extension továbbra sem tartalmaz Buildert, Sidebar-t vagy szerkesztőfelületet; csak a beégetett automatizmusokat és a futtatáshoz szükséges runtime-ot. A fő automatizmus figyelői és időzítői regisztrálódnak automatikusan, a meghívott workflow-k alfolyamatként kerülnek a csomagba.
+
+
+## v0.35 kompatibilitási fejlesztések
+
+A v0.35 fő célja a modern webappok és a ServiceNow / SNOW jellegű jegykezelő felületek stabilabb kezelése.
+
+Újdonságok:
+
+- **Framework-kompatibilis kitöltés** a Beillesztés / kitöltés blokkban. A blokk már nem csak egyszerűen beírja az értéket, hanem React/Vue/Angular/SNOW jellegű felületeknél is hasznos `input`, `change` és `blur` eseményeket küld.
+- **Kitöltési módok**:
+  - framework-kompatibilis értékadás
+  - egyszerű értékadás
+  - szimulált gépelés
+  - paste esemény jellegű mód
+- **Szimulált gépelés** érzékeny mezőkhöz, ahol a sima értékadás nem frissíti a webapp belső állapotát.
+- **SPA navigáció figyelése**: a figyelők érzékelik a `pushState`, `replaceState`, `popstate` és `hashchange` alapú oldalváltásokat is. Ez fontos single-page appoknál.
+- **Shadow DOM keresés**: az elemkereső több helyen képes shadow DOM alatt is keresni, például kattintásnál, kitöltésnél, adatkinyerésnél és szövegkeresésnél.
+- **Minden művelet előtt újrakeresés**: a futtatás nem régi DOM node-ra épít, hanem a mentett selector/descriptor alapján újrakeresi az elemet. Ez hasznos újrarenderelő React/Vue/Angular/SNOW felületeknél.
+- **Új blokk: Legördülő opció kiválasztása**. Custom, div-alapú vagy modern komponens-alapú dropdownokhoz készült. Először megnyitja a legördülőt, majd szöveg alapján megkeresi és kiválasztja az opciót.
+- **ServiceNow/SNOW jellegű attribútumok jobb kezelése**: az elemfelismerés figyel több modern attribútumot is, például `aria-label`, `role`, `data-testid`, `data-test-id`, `data-field`, `data-name`.
+- **Virtualizált lista/táblázat támogatás első lépése**: a Táblázatból kinyerés blokkban bekapcsolható görgetéses keresés, amikor a keresett sor nem található az aktuálisan látható DOM-részben.
+
+Ezek a fejlesztések különösen hasznosak ServiceNow klasszikus és modern felületein, Agent/Workspace jellegű nézetekben, valamint React, Vue, Angular vagy web component alapú belső rendszereken.

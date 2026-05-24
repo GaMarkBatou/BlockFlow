@@ -34,6 +34,84 @@
     } catch (_) { return null; }
   }
 
+
+  function allElementsDeep(root = document, includeShadow = true, limit = 20000) {
+    const out = [];
+    const seen = new Set();
+    function add(el) {
+      if (!el || el.nodeType !== 1 || seen.has(el) || out.length >= limit) return;
+      seen.add(el);
+      out.push(el);
+      if (includeShadow && el.shadowRoot) walk(el.shadowRoot);
+    }
+    function walk(node) {
+      if (!node || out.length >= limit) return;
+      const children = node.children ? Array.from(node.children) : [];
+      for (const child of children) {
+        add(child);
+        walk(child);
+        if (out.length >= limit) break;
+      }
+    }
+    if (root === document) {
+      add(document.documentElement);
+      walk(document);
+    } else {
+      add(root.host || root);
+      walk(root);
+    }
+    return out;
+  }
+
+  function querySelectorAllDeep(selector, includeShadow = true, root = document, limit = 5000) {
+    const out = [];
+    const seen = new Set();
+    function addMany(scope) {
+      try {
+        const found = scope.querySelectorAll ? Array.from(scope.querySelectorAll(selector)) : [];
+        for (const el of found) {
+          if (!seen.has(el)) { seen.add(el); out.push(el); if (out.length >= limit) return; }
+        }
+      } catch (_) {}
+    }
+    addMany(root);
+    if (includeShadow) {
+      for (const el of allElementsDeep(root, true, limit * 3)) {
+        if (el.shadowRoot) { addMany(el.shadowRoot); if (out.length >= limit) break; }
+      }
+    }
+    return out.slice(0, limit);
+  }
+
+  function getAttrAny(el, names) {
+    for (const name of names) {
+      const value = el?.getAttribute?.(name);
+      if (value) return value;
+    }
+    return '';
+  }
+
+  function notifySpaNavigation() {
+    try { window.dispatchEvent(new CustomEvent('BF_SPA_NAVIGATION', { detail: { href: location.href } })); } catch (_) {}
+  }
+
+  (function patchSpaNavigationOnce() {
+    if (window.__blockFlowSpaPatched) return;
+    window.__blockFlowSpaPatched = true;
+    for (const name of ['pushState','replaceState']) {
+      const original = history[name];
+      if (typeof original === 'function') {
+        history[name] = function(...args) {
+          const result = original.apply(this, args);
+          setTimeout(notifySpaNavigation, 0);
+          return result;
+        };
+      }
+    }
+    window.addEventListener('popstate', notifySpaNavigation, true);
+    window.addEventListener('hashchange', notifySpaNavigation, true);
+  })();
+
   function isVisible(el) {
     if (!el || el.nodeType !== 1) return false;
     const style = getComputedStyle(el);
@@ -82,6 +160,9 @@
       id: el.id || '',
       name: el.getAttribute('name') || '',
       role: el.getAttribute('role') || '',
+      dataTestId: getAttrAny(el, ['data-testid','data-test-id','data-test','data-qa','data-cy','data-component-id']),
+      dataField: getAttrAny(el, ['data-field','data-field-name','data-name','data-column','data-property','name']),
+      snName: getAttrAny(el, ['data-field','data-name','data-testid','data-type','component-id']),
       ariaLabel: el.getAttribute('aria-label') || '',
       placeholder: el.getAttribute('placeholder') || '',
       title: el.getAttribute('title') || '',
@@ -114,6 +195,12 @@
     if (d.containerArdbn) out.push({ selector: `${attrEq('ardbn', d.containerArdbn)} input, ${attrEq('ardbn', d.containerArdbn)} textarea, ${attrEq('ardbn', d.containerArdbn)} select`, weight: 68 });
     if (d.containerArid) out.push({ selector: `${attrEq('arid', d.containerArid)} input, ${attrEq('arid', d.containerArid)} textarea, ${attrEq('arid', d.containerArid)} select`, weight: 66 });
     if (d.name) out.push({ selector: `${d.tag || ''}${attrEq('name', d.name)}`, weight: 45 });
+    if (d.dataTestId) {
+      for (const a of ['data-testid','data-test-id','data-test','data-qa','data-cy','data-component-id']) out.push({ selector: `${d.tag || ''}${attrEq(a, d.dataTestId)}`, weight: 44 });
+    }
+    if (d.dataField) {
+      for (const a of ['data-field','data-field-name','data-name','data-column','data-property','name']) out.push({ selector: `${d.tag || ''}${attrEq(a, d.dataField)}`, weight: 42 });
+    }
     if (d.ariaLabel) out.push({ selector: `${d.tag || ''}${attrEq('aria-label', d.ariaLabel)}`, weight: 40 });
     if (d.placeholder) out.push({ selector: `${d.tag || ''}${attrEq('placeholder', d.placeholder)}`, weight: 35 });
     if (d.title) out.push({ selector: `${d.tag || ''}${attrEq('title', d.title)}`, weight: 30 });
@@ -127,8 +214,9 @@
 
   function fieldControlIn(el) {
     if (!el || el.nodeType !== 1) return null;
-    if (el.matches('input,textarea,select,[contenteditable="true"]')) return el;
-    return el.querySelector('input,textarea,select,[contenteditable="true"]') || el;
+    const selector = 'input,textarea,select,[contenteditable="true"],[role="textbox"],[role="combobox"],[role="searchbox"],[aria-multiline="true"]';
+    if (el.matches(selector)) return el;
+    return querySelectorAllDeep(selector, true, el, 1)[0] || el;
   }
 
   function scoreElement(el, d, base = 0, options = {}) {
@@ -180,11 +268,11 @@
       if (byFor) out.push(byFor);
     }
     const container = labelEl.closest('[arid],[ardbn],[artype],.df,.Panel,div,td,li,section') || labelEl.parentElement;
-    if (container) out.push(...container.querySelectorAll('input,textarea,select,[contenteditable="true"]'));
+    if (container) out.push(...querySelectorAllDeep('input,textarea,select,[contenteditable="true"],[role="textbox"],[role="combobox"]', true, container, 50));
     let sib = labelEl.nextElementSibling;
     for (let i = 0; sib && i < 4; i++, sib = sib.nextElementSibling) {
       if (sib.matches?.('input,textarea,select,[contenteditable="true"]')) out.push(sib);
-      out.push(...(sib.querySelectorAll?.('input,textarea,select,[contenteditable="true"]') || []));
+      out.push(...querySelectorAllDeep('input,textarea,select,[contenteditable="true"],[role="textbox"],[role="combobox"]', true, sib, 50));
     }
     return [...new Set(out)];
   }
@@ -197,7 +285,7 @@
     let bestScore = -999;
     for (const c of candidateSelectors(target)) {
       try {
-        const els = [...document.querySelectorAll(c.selector)].slice(0, 60);
+        const els = querySelectorAllDeep(c.selector, options.shadowSearch !== false, document, 60);
         for (const raw of els) {
           const el = fieldControlIn(raw);
           const score = scoreElement(el, target, c.weight, { requireVisible });
@@ -207,7 +295,7 @@
     }
     if (target?.label) {
       const needle = normalizeText(target.label).slice(0, 120);
-      const labels = [...document.querySelectorAll('label,[aria-label],[title]')].slice(0, 3000);
+      const labels = querySelectorAllDeep('label,[aria-label],[title],[data-field],[data-testid],[data-test-id]', options.shadowSearch !== false, document, 3000);
       for (const lab of labels) {
         const txt = normalizeText(lab.innerText || lab.textContent || lab.getAttribute('aria-label') || lab.getAttribute('title') || '');
         if (needle && (txt === needle || txt.includes(needle) || needle.includes(txt))) {
@@ -220,8 +308,8 @@
     }
     if (target?.text || target?.label) {
       const needle = normalizeText(target.text || target.label || '').slice(0, 100);
-      const poolSelector = 'button,a,input,textarea,select,[role="button"],label,div,span,[contenteditable="true"]';
-      let all = [...document.querySelectorAll(poolSelector)].slice(0, 5000);
+      const poolSelector = 'button,a,input,textarea,select,[role="button"],[role="link"],[role="textbox"],[role="combobox"],label,div,span,[contenteditable="true"]';
+      let all = querySelectorAllDeep(poolSelector, options.shadowSearch !== false, document, 5000);
       if (requireVisible) all = all.filter(isVisible);
       for (const raw of all) {
         const el = fieldControlIn(raw);
@@ -347,7 +435,65 @@
     }
     if (tag === 'textarea') return el.value || el.textContent || el.getAttribute('title') || el.getAttribute('aria-label') || '';
     if (el.isContentEditable) return (el.innerText || el.textContent || '').trim();
+    const role = el.getAttribute('role') || '';
+    if (['textbox','combobox','searchbox'].includes(role)) return (el.value || el.getAttribute('aria-valuetext') || el.getAttribute('aria-label') || el.innerText || el.textContent || '').trim();
     return (el.value || el.innerText || el.textContent || el.getAttribute('title') || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim();
+  }
+
+  function setNativeValue(el, value) {
+    const tag = el.tagName?.toLowerCase();
+    const proto = tag === 'textarea' ? HTMLTextAreaElement.prototype : tag === 'select' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+    const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+    if (desc && desc.set && 'value' in el) desc.set.call(el, value);
+    else if ('value' in el) el.value = value;
+    else el.textContent = value;
+  }
+
+  function dispatchFrameworkEvents(el, opts = {}) {
+    const events = ['input','change'];
+    for (const name of events) el.dispatchEvent(new Event(name, { bubbles: true, composed: true }));
+    el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, composed: true, key: '' }));
+    if (opts.blurAfter !== false) { try { el.blur(); } catch (_) {} el.dispatchEvent(new Event('blur', { bubbles: true, composed: true })); }
+  }
+
+  async function simulatedType(el, value, delayMs = 25) {
+    el.focus();
+    setNativeValue(el, '');
+    dispatchFrameworkEvents(el, { blurAfter: false });
+    for (const ch of String(value)) {
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true, composed: true }));
+      setNativeValue(el, (el.value || el.textContent || '') + ch);
+      el.dispatchEvent(new InputEvent('input', { data: ch, inputType: 'insertText', bubbles: true, composed: true }));
+      el.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true, composed: true }));
+      if (delayMs > 0) await sleep(delayMs);
+    }
+    dispatchFrameworkEvents(el);
+  }
+
+  async function setElementValueCompat(el, value, block = {}) {
+    const mode = block.fillMode || 'framework';
+    el.focus();
+    if (mode === 'typing') { await simulatedType(el, value, Number(block.typeDelayMs || 25)); return; }
+    if (mode === 'paste') {
+      setNativeValue(el, value);
+      el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, composed: true, clipboardData: new DataTransfer() }));
+      dispatchFrameworkEvents(el, { blurAfter: block.blurAfter !== false });
+      return;
+    }
+    if (el.tagName?.toLowerCase() === 'select') {
+      const text = String(value);
+      const opt = Array.from(el.options || []).find(o => o.value === text || (o.textContent || '').trim() === text);
+      if (opt) el.value = opt.value; else setNativeValue(el, value);
+    } else if (el.getAttribute('type') === 'checkbox') {
+      el.checked = ['true','1','yes','igen','on'].includes(String(value).toLowerCase());
+    } else if (el.getAttribute('type') === 'radio') {
+      el.checked = true;
+    } else {
+      if (mode === 'simple') { if ('value' in el) el.value = value; else el.textContent = value; }
+      else setNativeValue(el, value);
+    }
+    if (mode !== 'simple') dispatchFrameworkEvents(el, { blurAfter: block.blurAfter !== false });
+    else el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
   }
 
   async function waitForText(text, timeoutMs = 5000, caseSensitive = false) {
@@ -469,7 +615,7 @@
     if (!el) return [];
     let rows = [];
     if (el.matches('tr,li,[role="row"]')) rows = [el];
-    else rows = [...el.querySelectorAll('tbody tr,tr,li,[role="row"],.row,[class*="row"]')];
+    else rows = querySelectorAllDeep('tbody tr,tr,li,[role="row"],.row,[class*="row"]', true, el, maxRows * 3 || 500);
     rows = rows.filter(isVisible);
     const seen = new Set();
     rows = rows.filter(r => { const key = r.innerText || r.textContent || r.outerHTML.slice(0,80); if (seen.has(key)) return false; seen.add(key); return true; });
@@ -543,7 +689,7 @@
     if (block.selector) {
       try { els = [...document.querySelectorAll(block.selector)]; } catch (_) { els = []; }
     } else if (block.target) {
-      const base = findElement(block.target, { requireVisible: false });
+      const base = findElement(block.target, { requireVisible: false, shadowSearch: block.shadowSearch !== false });
       if (base) {
         if (base.matches('tr,li,[role="row"],.row,[class*="row"]')) els = [base];
         else els = rowsFromContainer(base, maxItems);
@@ -630,7 +776,7 @@
       return hits;
     }
 
-    const elements = [document.body, ...document.body.querySelectorAll('*')].slice(0, 12000)
+    const elements = [document.body, ...allElementsDeep(document, block.shadowSearch !== false, 12000)].slice(0, 12000)
       .filter(el => !['SCRIPT','STYLE','NOSCRIPT','TEMPLATE'].includes(el.tagName));
 
     for (const el of elements) {
@@ -645,13 +791,31 @@
       }
       if (includeValues && ['INPUT','TEXTAREA','SELECT'].includes(el.tagName)) addHit(el, getElementValue(el, 'auto'), `${el.tagName.toLowerCase()} value`);
       if (includeAttributes) {
-        for (const attr of ['title','aria-label','placeholder','alt','value','name']) {
+        for (const attr of ['title','aria-label','placeholder','alt','value','name','data-testid','data-test-id','data-field','data-name','role']) {
           const val = el.getAttribute?.(attr);
           if (val) addHit(el, val, `attribútum: ${attr}`);
         }
       }
     }
     return hits;
+  }
+
+  async function tableCellValueWithVirtualScroll(container, block, vars = {}) {
+    let value = tableCellValue(container, block);
+    if (value || block.virtualSearch !== true || block.rowMode !== 'contains') return value;
+    const maxScrolls = Math.max(1, Math.min(50, Number(block.maxScrolls || 10)));
+    const scroller = container.scrollHeight > container.clientHeight ? container : (container.closest('[style*="overflow"],.table,.list,[role="grid"]') || document.scrollingElement || document.documentElement);
+    for (let i = 0; i < maxScrolls; i++) {
+      const before = scroller.scrollTop || window.scrollY || 0;
+      if (scroller === document.scrollingElement || scroller === document.documentElement) window.scrollBy(0, Number(block.scrollAmount || 600));
+      else scroller.scrollTop = before + Number(block.scrollAmount || 600);
+      await sleep(Number(block.scrollDelayMs || 250));
+      value = tableCellValue(container, block);
+      if (value) return value;
+      const after = scroller.scrollTop || window.scrollY || 0;
+      if (after === before) break;
+    }
+    return '';
   }
 
   function tableCellValue(container, block) {
@@ -990,7 +1154,7 @@
     }
     if (block.type === 'click') {
       const target = targetForBlock(block, vars);
-      const el = await waitForElement(target, Number(block.timeoutMs || 5000));
+      const el = await waitForElement(target, Number(block.timeoutMs || 5000), { shadowSearch: block.shadowSearch !== false });
       if (!el) throw new Error(`Nem található kattintási cél: ${target?.label || block.target?.label || 'nincs megadva'}`);
       el.scrollIntoView({ block: 'center', behavior: 'smooth' });
       el.classList.add('bf-run-outline');
@@ -1004,25 +1168,36 @@
     }
     if (block.type === 'fill') {
       const target = targetForBlock(block, vars);
-      const el = await waitForElement(target, Number(block.timeoutMs || 5000));
+      const el = await waitForElement(target, Number(block.timeoutMs || 5000), { shadowSearch: block.shadowSearch !== false });
       if (!el) throw new Error(`Nem található mező: ${target?.label || block.target?.label || 'nincs megadva'}`);
       const value = interpolate(block.value || '', vars);
       el.scrollIntoView({ block: 'center', behavior: 'smooth' });
       el.classList.add('bf-run-outline');
-      if (!dryRun) {
-        el.focus();
-        if ('value' in el) el.value = value;
-        else el.textContent = value;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-      }
+      if (!dryRun) await setElementValueCompat(el, value, block);
       setTimeout(() => el.classList.remove('bf-run-outline'), 700);
       return { ok: true, value, dryRun };
+    }
+    if (block.type === 'selectOption') {
+      const target = targetForBlock(block, vars);
+      const root = await waitForElement(target, Number(block.timeoutMs || 5000), { requireVisible: true, shadowSearch: block.shadowSearch !== false });
+      if (!root) throw new Error(`Nem található legördülő: ${target?.label || block.target?.label || 'nincs megadva'}`);
+      const optionText = interpolate(block.optionText || '', vars);
+      if (!dryRun) root.click();
+      await sleep(Number(block.openDelayMs || 250));
+      const options = querySelectorAllDeep('option,[role="option"],li,button,div,span', block.shadowSearch !== false, document, 8000).filter(isVisible);
+      const needle = normalizeText(optionText);
+      const opt = options.find(o => { const t = normalizeText(o.innerText || o.textContent || o.getAttribute('aria-label') || o.getAttribute('title') || o.value || ''); return needle && (block.matchMode === 'equals' ? t === needle : t.includes(needle)); });
+      if (!opt) throw new Error(`Nem található legördülő opció: ${optionText}`);
+      opt.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      opt.classList.add('bf-run-outline');
+      if (!dryRun) opt.click();
+      setTimeout(() => opt.classList.remove('bf-run-outline'), 700);
+      return { ok: true, value: optionText, dryRun };
     }
     if (block.type === 'extract') {
       const requireVisible = (block.searchScope || 'dom') === 'visible' || block.allowHidden === false;
       const target = targetForBlock(block, vars);
-      const el = await waitForElement(target, Number(block.timeoutMs || 5000), { requireVisible });
+      const el = await waitForElement(target, Number(block.timeoutMs || 5000), { requireVisible, shadowSearch: block.shadowSearch !== false });
       if (!el) throw new Error(`Nem található kinyerendő elem: ${target?.label || block.target?.label || 'nincs megadva'}`);
       const val = getElementValue(el, block.extractMode || 'auto', block.attributeName || 'title');
       vars[block.varName || 'adat'] = val;
@@ -1103,7 +1278,7 @@
     if (block.type === 'tableExtract') {
       const el = await waitForElement(block.target, Number(block.timeoutMs || 5000), { requireVisible: false });
       if (!el) throw new Error(`Nem található táblázat/lista: ${block.target?.label || ''}`);
-      const value = tableCellValue(el, block);
+      const value = await tableCellValueWithVirtualScroll(el, block, vars);
       vars[block.resultName || 'tabla_adat'] = value;
       return { ok: true, value };
     }
@@ -1112,9 +1287,9 @@
       const timeout = Number(block.timeoutMs || 10000);
       let ok = false;
       while (Date.now() - start < timeout) {
-        if (block.conditionMode === 'elementExists') ok = Boolean(findElement(block.target, { requireVisible: false }));
+        if (block.conditionMode === 'elementExists') ok = Boolean(findElement(block.target, { requireVisible: false, shadowSearch: block.shadowSearch !== false }));
         else if (block.conditionMode === 'valueContains') {
-          const el = findElement(block.target, { requireVisible: false });
+          const el = findElement(block.target, { requireVisible: false, shadowSearch: block.shadowSearch !== false });
           ok = el ? compareTextValue(getElementValue(el, 'auto'), block.operator || 'contains', interpolate(block.value || block.text || '', vars), false) : false;
         } else if (block.conditionMode === 'urlContains') ok = location.href.includes(interpolate(block.value || block.text || '', vars));
         else ok = (document.body.innerText || '').toLowerCase().includes(interpolate(block.text || block.value || '', vars).toLowerCase());
@@ -1880,6 +2055,7 @@
       const scoped = watchers.filter(w => w.enabled !== false && watcherScopeMatches(w));
       minInterval = Math.max(1, Math.min(30, ...scoped.map(w => Number(w.intervalSec || 2)).filter(Boolean), 2));
     } catch {}
+    if (!window.__blockFlowSpaWatcherHook) { window.__blockFlowSpaWatcherHook = true; window.addEventListener('BF_SPA_NAVIGATION', () => { setTimeout(() => checkWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }), 100); }, true); }
     watcherInterval = setInterval(() => { checkWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }); }, minInterval * 1000);
     setTimeout(() => { checkWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }); }, 800);
   }
