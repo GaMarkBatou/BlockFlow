@@ -1,4 +1,4 @@
-# BlockFlow Automation MVP 0.32
+# BlockFlow Automation MVP 0.34
 
 BlockFlow egy lokális Chrome extension, amellyel általános weboldalakon lehet böngészőautomatizmusokat összeállítani vizuális, blokkos felületen. A cél az, hogy a gyakori adminisztrációs, adatgyűjtési, email-előkészítési, figyelési és riportkészítési folyamatokat programozás nélkül lehessen felépíteni.
 
@@ -263,6 +263,20 @@ Módok:
 - vágólapra másolás
 - csak változóba mentés
 
+
+## Record mód
+
+A Builder középső munkaterületének tetején, az automatizáció neve mellett található a **Record** gomb. Record indításakor a céloldalon végzett alapműveletek workflow-vázzá alakulnak.
+
+Rögzített műveletek:
+
+- kattintás
+- mezőkitöltés / select / checkbox változás
+- Enter, Tab, Escape billentyű
+- hosszabb szünetekből egyszerű Várakozás blokk
+
+Record közben csak a **Pause** és **Stop** gombok jelennek meg. Stop után a rögzített műveletekből szerkeszthető blokkok készülnek. Jelszó vagy érzékenynek tűnő mezők értékét a recorder nem menti el konkrét szövegként.
+
 ## Futtatásbiztonság és hibakezelés
 
 A workflow-k validálhatók futtatás előtt. A napló jelzi, melyik blokk futott, és hiba esetén hol akadt el.
@@ -332,3 +346,10 @@ A projekt fejlesztése több lépésben épült fel:
 - Hangjelzés blokk saját feltöltött hanggal, hangerővel és ismétléssel.
 - Táblázatból kinyerés blokk N. sor opcióval.
 - Maszkolás blokk Clear / trim móddal, amikor a maszkolandó rész törlődik.
+
+
+## v0.34 kiegészítés
+
+A Mini extension export most már kezeli a **Másik automatizmus futtatása** blokkokat. Exportáláskor az aktuális automatizmus mellé bekerülnek a meghívott automatizmusok is, rekurzívan. Így ha egy workflow egy másik workflow-t alfolyamatként hív meg, a generált mini extension önállóan is megtalálja és le tudja futtatni a meghívott automatizmust.
+
+A mini extension továbbra sem tartalmaz Buildert, Sidebar-t vagy szerkesztőfelületet; csak a beégetett automatizmusokat és a futtatáshoz szükséges runtime-ot. A fő automatizmus figyelői és időzítői regisztrálódnak automatikusan, a meghívott workflow-k alfolyamatként kerülnek a csomagba.

@@ -9,6 +9,7 @@ let currentTargetPath = '/';
 let isDirty = false;
 let paletteCollapsed = {};
 try { paletteCollapsed = JSON.parse(localStorage.getItem('bf_palette_collapsed') || '{}') || {}; } catch { paletteCollapsed = {}; }
+let recorderState = { active: false, paused: false, startedAt: 0, count: 0 };
 
 const $ = sel => document.querySelector(sel);
 const CONTAINERS = new Set(['ifBlock', 'repeatBlock', 'rowLoop', 'triggerGroup', 'conditionGroup', 'tryBlock', 'retryBlock', 'elementLoop', 'iframeBlock', 'groupBlock']);
@@ -113,6 +114,7 @@ function renderAll() {
     }
   };
   renderSaveState();
+  renderRecordControls();
   safe('workflowList', renderWorkflowList);
   safe('palette', renderPalette);
   safe('blocks', renderBlocks);
@@ -147,6 +149,91 @@ function renderImportWarning() {
     warn.textContent = 'Importált vagy még nem ellenőrzött automatizmus. Futtatás előtt használd a Dry-run módot és ellenőrizd az elemeket.';
   } else {
     warn.classList.add('hidden');
+  }
+}
+
+
+function renderRecordControls() {
+  const start = $('#recordStart'), pause = $('#recordPause'), stop = $('#recordStop'), status = $('#recordStatus');
+  if (!start || !pause || !stop || !status) return;
+  start.classList.toggle('hidden', recorderState.active);
+  start.classList.toggle('recording', recorderState.active);
+  pause.classList.toggle('hidden', !recorderState.active);
+  stop.classList.toggle('hidden', !recorderState.active);
+  status.classList.toggle('hidden', !recorderState.active);
+  pause.textContent = recorderState.paused ? '▶ Folytatás' : '⏸ Pause';
+  status.textContent = recorderState.active ? `Record ${recorderState.paused ? 'szünetel' : 'fut'} · ${recorderState.count || 0} lépés` : '';
+}
+
+function recordedEventToBlock(ev) {
+  const target = ev.target || null;
+  const id = crypto.randomUUID();
+  if (ev.type === 'click') return { id, type:'click', target, targetMode:'manual', targetVar:'', timeoutMs:5000, confirmRisky:false, recorded:true };
+  if (ev.type === 'fill') return { id, type:'fill', target, value: ev.sensitive ? '' : String(ev.value ?? ''), timeoutMs:5000, recorded:true };
+  if (ev.type === 'keyPress') return { id, type:'keyPress', target: null, key: ev.key || 'Enter', ctrl:Boolean(ev.ctrl), alt:Boolean(ev.alt), shift:Boolean(ev.shift), meta:Boolean(ev.meta), recorded:true };
+  if (ev.type === 'wait') return { id, type:'wait', waitMode:'time', ms:Number(ev.ms || 1000), text:'', target:null, timeoutMs:5000, recorded:true };
+  return null;
+}
+
+function normalizeRecordedEvents(events) {
+  const out = [];
+  let lastTs = 0;
+  for (const ev of events || []) {
+    if (lastTs && ev.ts && ev.ts - lastTs > 1500) out.push({ type:'wait', ms: Math.min(5000, Math.round((ev.ts - lastTs) / 500) * 500) });
+    const b = recordedEventToBlock(ev);
+    if (b) out.push(b);
+    if (ev.ts) lastTs = ev.ts;
+  }
+  return out;
+}
+
+function appendRecordedBlocks(events) {
+  const blocks = normalizeRecordedEvents(events);
+  if (!blocks.length) return 0;
+  if (!hasAnyStarter()) activeWorkflow.blocks.push(BF.newBlock('trigger'));
+  activeWorkflow.blocks.push(...blocks);
+  selectedBlockId = blocks[blocks.length - 1].id;
+  markDirty();
+  renderAll();
+  return blocks.length;
+}
+
+async function startRecording() {
+  try {
+    await saveCurrent();
+    const res = await BF.sendToTarget({ type:'BF_START_RECORDING' }, targetTabId);
+    if (!res.ok || res.response?.ok === false) throw new Error(res.response?.error || res.error || 'Record indítása sikertelen.');
+    recorderState = { active:true, paused:false, startedAt:Date.now(), count:0 };
+    renderRecordControls();
+    $('#log').textContent = 'Record elindult. A céloldalon végzett kattintások, mezőkitöltések és fő billentyűk rögzülnek.';
+  } catch (err) { alert(err.message || String(err)); }
+}
+
+async function toggleRecordingPause() {
+  if (!recorderState.active) return;
+  try {
+    const paused = !recorderState.paused;
+    const res = await BF.sendToTarget({ type:'BF_PAUSE_RECORDING', paused }, targetTabId);
+    if (!res.ok || res.response?.ok === false) throw new Error(res.response?.error || res.error || 'Record szüneteltetés sikertelen.');
+    recorderState.paused = paused;
+    renderRecordControls();
+  } catch (err) { alert(err.message || String(err)); }
+}
+
+async function stopRecording() {
+  if (!recorderState.active) return;
+  try {
+    const res = await BF.sendToTarget({ type:'BF_STOP_RECORDING' }, targetTabId);
+    if (!res.ok || res.response?.ok === false) throw new Error(res.response?.error || res.error || 'Record leállítása sikertelen.');
+    const events = res.response?.events || [];
+    const added = appendRecordedBlocks(events);
+    recorderState = { active:false, paused:false, startedAt:0, count:0 };
+    renderRecordControls();
+    $('#log').textContent = `Record leállt. ${events.length} műveletből ${added} blokk készült.`;
+  } catch (err) {
+    recorderState = { active:false, paused:false, startedAt:0, count:0 };
+    renderRecordControls();
+    alert(err.message || String(err));
   }
 }
 
@@ -396,7 +483,7 @@ function renderBlockList(blocks, level, parentId) {
       }
     }
     return `<div class="block-wrap" data-wrap="${b.id}" style="--level:${level}">
-      <div class="block block-${b.type} ${b.id===selectedBlockId?'selected':''}" draggable="true" data-block="${b.id}" data-parent="${parentId || 'root'}">
+      <div class="block block-${b.type} ${b.recorded?'block-recorded':''} ${b.id===selectedBlockId?'selected':''}" draggable="true" data-block="${b.id}" data-parent="${parentId || 'root'}">
         <div class="block-actions">
           ${blockActionButtons(b, idx, blocks.length, parentId)}
         </div>
@@ -1373,11 +1460,77 @@ function buildSchedulesForExport(workflow) {
   return schedules;
 }
 
-function makeStandaloneBackground(workflow, watchers, schedules, baseBackground) {
-  const workflowJson = JSON.stringify(workflow);
+function resolveWorkflowReference(ref, allWorkflows) {
+  const key = String(ref || '').trim();
+  if (!key) return null;
+  return (allWorkflows || []).find(w => w.id === key || w.name === key) || null;
+}
+
+function collectWorkflowDependencyGraph(rootWorkflow, allWorkflows) {
+  const collected = [];
+  const missing = [];
+  const cycles = [];
+  const visited = new Set();
+  const stack = [];
+
+  function addWorkflow(workflow) {
+    if (!workflow?.id) return;
+    if (stack.includes(workflow.id)) {
+      cycles.push([...stack, workflow.id]);
+      return;
+    }
+    if (visited.has(workflow.id)) return;
+    visited.add(workflow.id);
+    stack.push(workflow.id);
+    collected.push(JSON.parse(JSON.stringify(workflow)));
+    BF.walkBlocks(workflow.blocks || [], b => {
+      if (b.type !== 'callWorkflow') return;
+      const target = resolveWorkflowReference(b.workflowId, allWorkflows);
+      if (!target) {
+        missing.push({ fromId: workflow.id, fromName: workflow.name || workflow.id, ref: b.workflowId || '' });
+        return;
+      }
+      addWorkflow(target);
+    });
+    stack.pop();
+  }
+
+  addWorkflow(rootWorkflow);
+  return { workflows: collected, missing, cycles };
+}
+
+function makeStandaloneBackground(mainWorkflow, allExportedWorkflows, watchers, schedules, baseBackground) {
+  const mainWorkflowJson = JSON.stringify(mainWorkflow);
+  const workflowsJson = JSON.stringify(allExportedWorkflows);
   const watchersJson = JSON.stringify(watchers);
   const schedulesJson = JSON.stringify(schedules);
-  return `// Generated by BlockFlow Mini extension export.\nconst GENERATED_WORKFLOW = ${workflowJson};\nconst GENERATED_WATCHERS = ${watchersJson};\nconst GENERATED_SCHEDULES = ${schedulesJson};\n\n${baseBackground}\n\nasync function bfInstallGeneratedAutomation(){\n  try {\n    await chrome.storage.local.set({ workflows:[GENERATED_WORKFLOW], activeWorkflowId:GENERATED_WORKFLOW.id, watchers:GENERATED_WATCHERS, schedules:GENERATED_SCHEDULES });\n    if (typeof refreshSchedules === 'function') await refreshSchedules();\n  } catch(e) { console.warn('BlockFlow generated install hiba', e); }\n}\nchrome.runtime.onInstalled.addListener(bfInstallGeneratedAutomation);\nchrome.runtime.onStartup.addListener(bfInstallGeneratedAutomation);\nchrome.action.onClicked.addListener(async (tab) => {\n  try {\n    await bfInstallGeneratedAutomation();\n    const target = await getUsableTargetTab(tab?.id);\n    if (!target?.id) return;\n    await ensureContentScript(target.id);\n    await chrome.tabs.sendMessage(target.id, { type:'BF_RUN_WORKFLOW', workflow:GENERATED_WORKFLOW, options:{ forceRun:false } });\n  } catch(e) { console.error('Generated BlockFlow futtatási hiba', e); try { chrome.notifications?.create({type:'basic', iconUrl:'icons/icon128.png', title:GENERATED_WORKFLOW.name || 'Automatizmus', message:String(e.message || e).slice(0,500)}); } catch(_) {} }\n});\n`;
+  return `// Generated by BlockFlow Mini extension export.
+const GENERATED_MAIN_WORKFLOW = ${mainWorkflowJson};
+const GENERATED_WORKFLOWS = ${workflowsJson};
+const GENERATED_WATCHERS = ${watchersJson};
+const GENERATED_SCHEDULES = ${schedulesJson};
+
+${baseBackground}
+
+async function bfInstallGeneratedAutomation(){
+  try {
+    await chrome.storage.local.set({ workflows:GENERATED_WORKFLOWS, activeWorkflowId:GENERATED_MAIN_WORKFLOW.id, watchers:GENERATED_WATCHERS, schedules:GENERATED_SCHEDULES });
+    if (typeof refreshSchedules === 'function') await refreshSchedules();
+  } catch(e) { console.warn('BlockFlow generated install hiba', e); }
+}
+chrome.runtime.onInstalled.addListener(bfInstallGeneratedAutomation);
+chrome.runtime.onStartup.addListener(bfInstallGeneratedAutomation);
+chrome.action.onClicked.addListener(async (tab) => {
+  try {
+    await bfInstallGeneratedAutomation();
+    const target = await getUsableTargetTab(tab?.id);
+    if (!target?.id) return;
+    await ensureContentScript(target.id);
+    const workflow = GENERATED_WORKFLOWS.find(w => w.id === GENERATED_MAIN_WORKFLOW.id) || GENERATED_MAIN_WORKFLOW;
+    await chrome.tabs.sendMessage(target.id, { type:'BF_RUN_WORKFLOW', workflow, options:{ forceRun:false } });
+  } catch(e) { console.error('Generated BlockFlow futtatási hiba', e); try { chrome.notifications?.create({type:'basic', iconUrl:'icons/icon128.png', title:GENERATED_MAIN_WORKFLOW.name || 'Automatizmus', message:String(e.message || e).slice(0,500)}); } catch(_) {} }
+});
+`;
 }
 
 function crc32(str) {
@@ -1417,6 +1570,13 @@ async function exportMiniExtension() {
   const version = prompt('Verzió', '1.0.0');
   if (version === null) return;
   const desc = prompt('Leírás', 'BlockFlow-ból generált önálló automatizmus.') || 'BlockFlow-ból generált önálló automatizmus.';
+  const dependencyGraph = collectWorkflowDependencyGraph(wf, workflows);
+  if (dependencyGraph.missing.length) {
+    const details = dependencyGraph.missing.map(m => `${m.fromName}: ${m.ref || '(üres hivatkozás)'}`).join('\n');
+    alert('A mini extension export nem folytatható, mert hiányzó meghívott automatizmus van:\n' + details);
+    return;
+  }
+  const exportedWorkflows = dependencyGraph.workflows.length ? dependencyGraph.workflows : [wf];
   const watchers = buildWatchersForExport(wf);
   const schedules = buildSchedulesForExport(wf);
   const [bg, cs, css, fbHtml, fbCss, fbJs, icon16, icon48, icon128] = await Promise.all([
@@ -1446,7 +1606,7 @@ async function exportMiniExtension() {
   const readme = `# ${name || wf.name}\n\nBlockFlow-ból generált, Builder nélküli mini Chrome extension.\n\nTelepítés: chrome://extensions → Developer mode → Load unpacked → válaszd ki a kicsomagolt mappát.\n\nMűködés: ikonra kattintva futtat, a figyelők/időzítők pedig automatikusan regisztrálódnak.\n`;
   const files = [
     { name:'manifest.json', content: JSON.stringify(manifest, null, 2) },
-    { name:'background.js', content: makeStandaloneBackground(wf, watchers, schedules, bg) },
+    { name:'background.js', content: makeStandaloneBackground(wf, exportedWorkflows, watchers, schedules, bg) },
     { name:'contentScript.js', content: cs },
     { name:'contentScript.css', content: css },
     { name:'README_MINI.md', content: readme },
@@ -1464,6 +1624,12 @@ async function exportMiniExtension() {
   $('#log').textContent = `Mini extension ZIP elkészült: ${a.download}`;
 }
 
+$('#recordStart').onclick = startRecording;
+$('#recordPause').onclick = toggleRecordingPause;
+$('#recordStop').onclick = stopRecording;
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type === 'BF_RECORD_EVENT') { recorderState.count = Number(msg.count || recorderState.count || 0); renderRecordControls(); }
+});
 $('#workflowName').oninput = () => { activeWorkflow.name = $('#workflowName').value; markDirty(); renderWorkflowList(); };
 $('#saveWorkflow').onclick = async () => { await saveCurrent(); $('#log').textContent = 'Mentve.'; renderAll(); };
 $('#newWorkflow').onclick = async () => { await saveCurrent(); const w = BF.DEFAULT_WORKFLOW(); workflows.push(w); activeWorkflow = w; selectedBlockId = null; await BF.saveWorkflow(w); isDirty = false; renderAll(); };

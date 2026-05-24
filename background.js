@@ -159,7 +159,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (!target?.id) throw new Error('Nincs használható aktív weboldal tab. Nyiss meg egy http/https oldalt, majd próbáld újra.');
       await setLastActiveTab(target.id);
       await ensureContentScript(target.id);
-      if (msg.payload?.type === 'BF_START_PICKER') {
+      if (msg.payload?.type === 'BF_START_PICKER' || msg.payload?.type === 'BF_START_RECORDING') {
         try { await chrome.windows.update(target.windowId, { focused: true }); } catch (_) {}
         try { await chrome.tabs.update(target.id, { active: true }); } catch (_) {}
         await new Promise(resolve => setTimeout(resolve, 80));

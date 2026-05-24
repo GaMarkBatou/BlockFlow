@@ -4,6 +4,7 @@
 
   let picker = null;
   let stopRequested = false;
+  let recorder = null;
 
   function cssPath(el) {
     if (!el || el.nodeType !== 1) return '';
@@ -87,6 +88,7 @@
       text: text.slice(0, 220),
       href: el.getAttribute('href') || '',
       css: cssPath(el),
+      xpath: xpathFor(el),
       arid: el.getAttribute('arid') || container?.getAttribute('arid') || '',
       ardbn: el.getAttribute('ardbn') || container?.getAttribute('ardbn') || '',
       artype: el.getAttribute('artype') || container?.getAttribute('artype') || '',
@@ -1882,6 +1884,74 @@
     setTimeout(() => { checkWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }); }, 800);
   }
 
+
+  function recordableTarget(raw) {
+    const el = pickableElement(raw);
+    if (!el || el.dataset?.bfBadge || el.dataset?.bfOverlay || el.closest?.('[data-bf-badge="1"],[data-bf-overlay="1"]')) return null;
+    return el;
+  }
+
+  function recordEvent(ev) {
+    if (!recorder?.active || recorder.paused) return;
+    ev.ts = Date.now();
+    recorder.events.push(ev);
+    try { chrome.runtime.sendMessage({ type:'BF_RECORD_EVENT', count: recorder.events.length, eventType: ev.type }).catch?.(()=>{}); } catch (_) {}
+  }
+
+  function recorderClickHandler(e) {
+    if (!recorder?.active || recorder.paused) return;
+    const el = recordableTarget(e.target);
+    if (!el) return;
+    if (el.matches?.('input,textarea,select,[contenteditable="true"]')) return;
+    recordEvent({ type:'click', target: descriptor(el) });
+  }
+
+  function recorderChangeHandler(e) {
+    if (!recorder?.active || recorder.paused) return;
+    const el = recordableTarget(e.target);
+    if (!el || !el.matches?.('input,textarea,select,[contenteditable="true"]')) return;
+    const inputType = String(el.getAttribute('type') || '').toLowerCase();
+    const sensitive = inputType === 'password' || /password|jelsz|passwort|secret|token/i.test(labelFor(el) || el.name || el.id || '');
+    let value = '';
+    if (inputType === 'checkbox' || inputType === 'radio') value = el.checked ? 'true' : 'false';
+    else if (el.tagName?.toLowerCase() === 'select') value = el.value || el.options?.[el.selectedIndex]?.text || '';
+    else value = 'value' in el ? el.value : (el.innerText || el.textContent || '');
+    recordEvent({ type:'fill', target: descriptor(el), value: sensitive ? '' : value, sensitive });
+  }
+
+  function recorderKeyHandler(e) {
+    if (!recorder?.active || recorder.paused) return;
+    if (!['Enter','Tab','Escape'].includes(e.key)) return;
+    recordEvent({ type:'keyPress', key:e.key, ctrl:e.ctrlKey, alt:e.altKey, shift:e.shiftKey, meta:e.metaKey });
+  }
+
+  function startRecorder() {
+    stopRecorder(false);
+    recorder = { active:true, paused:false, events:[], startedAt:Date.now() };
+    document.addEventListener('click', recorderClickHandler, true);
+    document.addEventListener('change', recorderChangeHandler, true);
+    document.addEventListener('keydown', recorderKeyHandler, true);
+    showBadge('BlockFlow Record fut');
+    return { ok:true };
+  }
+
+  function pauseRecorder(paused) {
+    if (!recorder?.active) return { ok:false, error:'Nincs aktív record.' };
+    recorder.paused = Boolean(paused);
+    showBadge(recorder.paused ? 'BlockFlow Record szünetel' : 'BlockFlow Record fut');
+    return { ok:true, paused: recorder.paused };
+  }
+
+  function stopRecorder(returnEvents = true) {
+    const events = recorder?.events || [];
+    document.removeEventListener('click', recorderClickHandler, true);
+    document.removeEventListener('change', recorderChangeHandler, true);
+    document.removeEventListener('keydown', recorderKeyHandler, true);
+    recorder = null;
+    removeBadge();
+    return { ok:true, events: returnEvents ? events : [] };
+  }
+
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     (async () => {
       if (msg?.type === 'BF_PING') { sendResponse({ ok: true, loaded: true }); return; }
@@ -1898,6 +1968,9 @@
         sendResponse({ ok: true, value: getElementValue(el, msg.extractMode || 'auto', msg.attributeName || 'title') });
         return;
       }
+      if (msg?.type === 'BF_START_RECORDING') { sendResponse(startRecorder()); return; }
+      if (msg?.type === 'BF_PAUSE_RECORDING') { sendResponse(pauseRecorder(Boolean(msg.paused))); return; }
+      if (msg?.type === 'BF_STOP_RECORDING') { sendResponse(stopRecorder(true)); return; }
       if (msg?.type === 'BF_REFRESH_WATCHERS') { startWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }); sendResponse({ ok: true }); return; }
     })().catch(err => {
       if (isContextInvalidatedError(err)) { stopWatchers('extension context invalidated'); return; }
