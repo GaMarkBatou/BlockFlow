@@ -1361,18 +1361,34 @@
   function saveOrPreviewPdfBlob(blob, fileName, action) {
     const cleanName = makeDownloadName(fileName);
     const url = URL.createObjectURL(blob);
-    if (action === 'preview' || action === 'downloadPreview') {
-      const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(cleanName)}</title><style>body{margin:0;font-family:system-ui;background:#f6f7fb}.bar{height:48px;display:flex;align-items:center;gap:12px;padding:0 14px;background:#fff;border-bottom:1px solid #ddd}.btn{border:0;border-radius:8px;padding:9px 12px;background:#2563eb;color:#fff;text-decoration:none;font-weight:600}.name{font-weight:700;color:#111;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}iframe{width:100vw;height:calc(100vh - 49px);border:0;background:#fff}</style></head><body><div class="bar"><span class="name">${escapeHtml(cleanName)}</span><a class="btn" download="${escapeHtml(cleanName)}" href="${url}">Letöltés</a></div><iframe src="${url}"></iframe></body></html>`;
-      const previewUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-      window.open(previewUrl, '_blank');
-      setTimeout(() => URL.revokeObjectURL(previewUrl), 60000);
-    }
-    if (action === 'download' || action === 'downloadPreview') {
+
+    const download = () => {
       const a = document.createElement('a');
-      a.href = url; a.download = cleanName;
-      document.documentElement.appendChild(a); a.click(); a.remove();
+      a.href = url;
+      a.download = cleanName;
+      document.documentElement.appendChild(a);
+      a.click();
+      a.remove();
+    };
+
+    // v0.42: Do not embed PDF blobs into a custom preview iframe/object.
+    // Chrome may block extension-hosted iframe PDF previews with
+    // "This content is blocked". Preview now opens the PDF blob directly in
+    // the browser PDF viewer. Filename-safe saving is handled by the separate
+    // download action below.
+    if (action === 'download' || action === 'downloadPreview') {
+      download();
     }
-    setTimeout(() => URL.revokeObjectURL(url), 120000);
+    if (action === 'preview' || action === 'downloadPreview') {
+      try {
+        window.open(url, '_blank', 'noopener');
+      } catch (_) {
+        // If preview is blocked by the browser/popup policy, fall back to a
+        // real download using the configured filename.
+        if (action === 'preview') download();
+      }
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 300000);
   }
 
 
