@@ -264,23 +264,25 @@ function renderWorkflowList() {
 }
 
 function renderPalette() {
-  const selected = findBlock(selectedBlockId)?.block;
+  const selectedInfo = findBlock(selectedBlockId);
+  const selected = selectedInfo?.block;
   const grouped = {};
   BF.PALETTE.forEach(p => (grouped[p.cat] ||= []).push(p));
   const needsStarter = !hasAnyStarter();
   const hint = needsStarter
     ? `<div class="status warning-soft"><b>Válassz indítást.</b><br>Új automatizmusnál először kötelező egy indító blokk: Indítás vagy Figyelő trigger. Addig más blokk nem adható hozzá.</div>`
-    : (selected && CONTAINERS.has(selected.type)
-      ? `<div class="status">Kiválasztott konténer: <b>${escapeHtml(BF.BLOCKS[selected.type].name)}</b>. Az új blokkok ide, behúzva kerülnek.</div>`
-      : `<div class="status muted">Konténer kijelölésekor az új blokkok automatikusan alá kerülnek behúzva.</div>`);
+    : (selected
+      ? `<div class="status">Új blokk kattintásra a kijelölt blokk után kerül: <b>${escapeHtml(BF.BLOCKS[selected.type]?.name || selected.type)}</b>. Konténer belsejébe továbbra is húzással teheted.</div>`
+      : `<div class="status muted">Nincs kijelölt blokk: az új blokk a workflow végére kerül. Jelölj ki egy blokkot, ha utána szeretnél beszúrni.</div>`);
   const controls = `<div class="palette-tools"><button class="small" id="paletteOpenAll">Mind nyitása</button><button class="small" id="paletteCloseAll">Mind zárása</button></div>`;
   $('#palette').innerHTML = hint + controls + Object.entries(grouped).map(([cat, items]) => {
     const collapsed = Boolean(paletteCollapsed[cat]);
     return `<div class="palette-category ${collapsed ? 'collapsed' : ''}" data-palette-cat="${escapeAttr(cat)}">
       <button class="section-title palette-category-title" data-toggle-palette="${escapeAttr(cat)}" title="Kategória nyitása/zárása"><span>${collapsed ? '▸' : '▾'}</span><b>${escapeHtml(cat)}</b><small>${items.length}</small></button>
       <div class="palette-category-body" ${collapsed ? 'hidden' : ''}>${items.map(item => {
-        const disabled = (needsStarter && !['trigger','triggerGroup','scheduledTrigger'].includes(item.type)) || (item.type.startsWith('condition') && !['triggerGroup','conditionGroup'].includes(selected?.type));
-        return `<button class="palette-btn ${disabled?'disabled':''}" data-add="${item.type}" draggable="${disabled ? 'false' : 'true'}" ${disabled?'disabled title="Először válassz indító blokkot, figyelő feltételnél pedig jelölj ki egy Figyelő triggert."':'title="Kattints a hozzáadáshoz, vagy húzd be a megfelelő helyre."'}><span>${BF.BLOCKS[item.type].name}</span><span>+</span></button>`;
+        const canAddConditionByClick = item.type.startsWith('condition') && (['triggerGroup','conditionGroup'].includes(selected?.type) || ['triggerGroup','conditionGroup'].includes(selectedInfo?.parent?.type) || Boolean(findSingleTriggerGroup()));
+        const disabled = (needsStarter && !['trigger','triggerGroup','scheduledTrigger'].includes(item.type)) || (item.type.startsWith('condition') && !canAddConditionByClick);
+        return `<button class="palette-btn ${disabled?'disabled':''}" data-add="${item.type}" draggable="${disabled ? 'false' : 'true'}" ${disabled?'disabled title="Először válassz indító blokkot, figyelő feltételnél pedig jelölj ki egy Figyelő triggert vagy feltételt."':'title="Kattints a kijelölt blokk után beszúráshoz, vagy húzd be a megfelelő helyre."'}><span>${BF.BLOCKS[item.type].name}</span><span>+</span></button>`;
       }).join('')}</div>
     </div>`;
   }).join('');
@@ -306,31 +308,41 @@ function addBlock(type) {
   const isStarter = ['trigger','triggerGroup','scheduledTrigger'].includes(type);
   if (!hasAnyStarter() && !isStarter) return alert('Először válassz indító blokkot: Indítás, Figyelő trigger vagy Időzített indítás.');
   if (type === 'trigger' && containsType(activeWorkflow.blocks, 'trigger')) return alert('Egy manuális indító blokk már van a workflow-ban.');
-  const selected = findBlock(selectedBlockId)?.block;
+
+  const selectedInfo = findBlock(selectedBlockId);
+  const selected = selectedInfo?.block;
   const block = BF.newBlock(type);
-  let list = activeWorkflow.blocks;
-  let previous = null;
+
+  const insertAt = (list, index, previous) => {
+    autoPrefillBlock(block, previous || null);
+    list.splice(index, 0, block);
+  };
 
   if (type.startsWith('condition')) {
-    const targetTrigger = selected?.type === 'triggerGroup' || selected?.type === 'conditionGroup' ? selected : findSingleTriggerGroup();
-    if (!targetTrigger) return alert('Figyelő feltételt csak Figyelő trigger alá lehet tenni. Jelöld ki a Figyelő triggert, vagy húzd a feltételt a trigger behúzott területére.');
-    targetTrigger.children ||= [];
-    list = targetTrigger.children;
-    previous = list[list.length - 1] || null;
-    autoPrefillBlock(block, previous);
-    list.push(block);
-  } else if (!isStarter && selected && CONTAINERS.has(selected.type) && selected.type !== 'triggerGroup' && selected.type !== 'conditionGroup') {
-    selected.children ||= [];
-    list = selected.children;
-    previous = list[list.length - 1] || selected;
-    autoPrefillBlock(block, previous);
-    list.push(block);
+    if (selectedInfo?.parent && ['triggerGroup','conditionGroup'].includes(selectedInfo.parent.type)) {
+      insertAt(selectedInfo.list, selectedInfo.index + 1, selectedInfo.block);
+    } else if (selected && ['triggerGroup','conditionGroup'].includes(selected.type)) {
+      selected.children ||= [];
+      insertAt(selected.children, selected.children.length, selected.children[selected.children.length - 1] || selected);
+    } else {
+      const targetTrigger = findSingleTriggerGroup();
+      if (!targetTrigger) return alert('Figyelő feltételt csak Figyelő trigger alá lehet tenni. Jelöld ki a Figyelő triggert, feltételcsoportot vagy egy meglévő feltételt, esetleg húzd be a feltételt a trigger alá.');
+      targetTrigger.children ||= [];
+      insertAt(targetTrigger.children, targetTrigger.children.length, targetTrigger.children[targetTrigger.children.length - 1] || targetTrigger);
+    }
+  } else if (selectedInfo) {
+    const containerId = selectedInfo.parent ? (selectedInfo.parent.elseChildren === selectedInfo.list ? `else:${selectedInfo.parent.id}` : selectedInfo.parent.id) : 'root';
+    if (canPlaceBlockInContainer(block, containerId, true)) {
+      insertAt(selectedInfo.list, selectedInfo.index + 1, selectedInfo.block);
+    } else {
+      const top = topLevelAncestorInfo(selectedBlockId);
+      if (top) insertAt(activeWorkflow.blocks, top.index + 1, top.block);
+      else insertAt(activeWorkflow.blocks, activeWorkflow.blocks.length, activeWorkflow.blocks[activeWorkflow.blocks.length - 1] || null);
+    }
   } else {
-    list = activeWorkflow.blocks;
-    previous = list[list.length - 1] || null;
-    autoPrefillBlock(block, previous);
-    list.push(block);
+    insertAt(activeWorkflow.blocks, activeWorkflow.blocks.length, activeWorkflow.blocks[activeWorkflow.blocks.length - 1] || null);
   }
+
   selectedBlockId = block.id;
   markDirty();
   renderAll();
@@ -405,6 +417,17 @@ function createBlockInContainer(type, containerId) {
   selectedBlockId = block.id;
   markDirty();
   renderAll();
+}
+
+function topLevelAncestorInfo(id) {
+  let current = findBlock(id);
+  if (!current) return null;
+  while (current.parent) {
+    const parentInfo = findBlock(current.parent.id);
+    if (!parentInfo) break;
+    current = parentInfo;
+  }
+  return current;
 }
 
 function containsType(blocks, type) {
