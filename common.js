@@ -1,5 +1,5 @@
 const BF = (() => {
-  const SCHEMA_VERSION = 15;
+  const SCHEMA_VERSION = 16;
 
   const DEFAULT_WORKFLOW = () => ({
     id: crypto.randomUUID(),
@@ -40,6 +40,8 @@ const BF = (() => {
     textSlice: { name: 'Szövegrész kinyerése', desc: 'Szöveget vág ki kezdő/záró minta, sor vagy karakter alapján.' },
     regex: { name: 'Regex keresés', desc: 'Reguláris kifejezés alapján találatot ment változóba.' },
     textSearch: { name: 'Szöveg keresése az oldalon', desc: 'Egyszerű szöveget keres az oldalon, és visszaadja a találat helyét is.' },
+    errorSearch: { name: 'Hibaüzenet keresése', desc: 'Alert, validációs és hibaüzenet jellegű elemeket keres az oldalon.' },
+    fieldByLabel: { name: 'Mező keresése címke alapján', desc: 'Enterprise/SNOW jellegű felületeken label vagy aria alapján mezőt keres.' },
     setVar: { name: 'Változó beállítása', desc: 'Fix vagy interpolált értéket ment változóba.' },
     userInput: { name: 'Adat bekérése', desc: 'Extension ablakban adatot kér a felhasználótól.' },
     userChoice: { name: 'Választás kérése', desc: 'Opciók közül választást kér, majd változóba menti.' },
@@ -112,6 +114,8 @@ const BF = (() => {
     { cat: 'Adatkinyerés', type: 'pageInfo' },
     { cat: 'Adatkinyerés', type: 'screenshot' },
     { cat: 'Adatkinyerés', type: 'textSearch' },
+    { cat: 'Adatkinyerés', type: 'errorSearch' },
+    { cat: 'Adatkinyerés', type: 'fieldByLabel' },
     { cat: 'Adat', type: 'setVar' },
     { cat: 'Adat', type: 'transform' },
     { cat: 'Adat', type: 'textSlice' },
@@ -157,9 +161,9 @@ const BF = (() => {
 
   function newBlock(type) {
     const id = crypto.randomUUID();
-    if (type === 'click') return { id, type, target: null, targetMode: 'manual', targetVar: '', timeoutMs: 5000, confirmRisky: true };
+    if (type === 'click') return { id, type, target: null, targetMode: 'manual', targetVar: '', timeoutMs: 5000, confirmRisky: true, autoScroll: true, clickMode: 'normal', clickableFallback: true, matchIndex: 1 };
     if (type === 'fill') return { id, type, target: null, value: '', timeoutMs: 5000, fillMode: 'framework', blurAfter: true, typeDelayMs: 25, shadowSearch: true };
-    if (type === 'selectOption') return { id, type, target: null, targetMode: 'manual', targetVar: '', optionText: '', matchMode: 'contains', timeoutMs: 5000, openDelayMs: 250, shadowSearch: true };
+    if (type === 'selectOption') return { id, type, target: null, targetMode: 'manual', targetVar: '', optionText: '', matchMode: 'contains', caseSensitive: false, timeoutMs: 5000, openDelayMs: 250, shadowSearch: true, scrollOptions: true, maxOptionScrolls: 10 };
     if (type === 'extract') return { id, type, target: null, extractMode: 'auto', searchScope: 'dom', allowHidden: true, varName: 'adat', timeoutMs: 5000 };
     if (type === 'wait') return { id, type, waitMode: 'time', ms: 1000, text: '', target: null, timeoutMs: 5000 };
     if (type === 'triggerGroup') return { id, type, triggerEnabled: true, logic: 'all', scope: 'domain', domain: '', path: '/', url: '', urlContains: '', intervalSec: 2, throttleSec: 15, runOnce: false, children: [] };
@@ -182,14 +186,16 @@ const BF = (() => {
     if (type === 'transform') return { id, type, source: '{{adat}}', operation: 'trim', resultName: 'atalakitott_adat' };
     if (type === 'textSlice') return { id, type, source: '{{adat}}', mode: 'between', startText: '', endText: '', lineNumber: 1, charStart: 0, charEnd: 100, resultName: 'szovegresz' };
     if (type === 'regex') return { id, type, source: '{{adat}}', pattern: '', flags: 'i', group: 0, allMatches: false, resultName: 'regex_talalat' };
-    if (type === 'textSearch') return { id, type, query: '', operator: 'contains', searchScope: 'all', caseSensitive: false, includeValues: true, includeAttributes: true, resultName: 'szoveg_talalat', countName: 'szoveg_talalat_db', contextName: 'szoveg_talalat_szoveg', placeName: 'szoveg_talalat_hely', selectorName: 'szoveg_talalat_selector', xpathName: 'szoveg_talalat_xpath', elementName: 'szoveg_talalat_elem' };
+    if (type === 'textSearch') return { id, type, query: '', operator: 'contains', searchScope: 'all', caseSensitive: false, includeValues: true, includeAttributes: true, resultName: 'szoveg_talalat', countName: 'szoveg_talalat_db', contextName: 'szoveg_talalat_szoveg', placeName: 'szoveg_talalat_hely', selectorName: 'szoveg_talalat_selector', xpathName: 'szoveg_talalat_xpath', elementName: 'szoveg_talalat_elem', rowSelectorName: 'szoveg_talalat_sor_selector', clickableSelectorName: 'szoveg_talalat_click_selector', parentSelectorName: 'szoveg_talalat_panel_selector', nearButtonSelectorName: 'szoveg_talalat_gomb_selector' };
+    if (type === 'errorSearch') return { id, type, includeAlerts: true, includeAriaLive: true, includeErrorClasses: true, includeInvalidFields: true, resultName: 'hiba_van', textName: 'hiba_szoveg', selectorName: 'hiba_selector', countName: 'hiba_db' };
+    if (type === 'fieldByLabel') return { id, type, labelText: '', matchMode: 'contains', caseSensitive: false, shadowSearch: true, resultName: 'mezo_ertek', selectorName: 'mezo_selector', xpathName: 'mezo_xpath', elementName: 'mezo_elem' };
     if (type === 'setVar') return { id, type, varName: 'valtozo', value: '' };
     if (type === 'userInput') return { id, type, title: 'Adat bekérése', message: 'Adj meg egy értéket:', inputType: 'text', placeholder: '', defaultValue: '', resultName: 'user_input' };
     if (type === 'userChoice') return { id, type, title: 'Választás', message: 'Válassz egy opciót:', options: 'Igen\nNem', resultName: 'valasztas' };
-    if (type === 'tableExtract') return { id, type, target: null, rowMode: 'first', rowIndex: 1, rowContains: '', columnIndex: 1, includeHeader: false, skipEmptyRows: true, missingRowMode: 'empty', virtualSearch: false, maxScrolls: 10, scrollAmount: 600, resultName: 'tabla_adat', timeoutMs: 5000 };
+    if (type === 'tableExtract') return { id, type, target: null, rowMode: 'first', rowIndex: 1, rowContains: '', rowColumnIndex: 0, columnMode: 'index', columnIndex: 1, columnHeader: '', includeHeader: false, skipEmptyRows: true, missingRowMode: 'empty', virtualSearch: false, maxScrolls: 10, scrollAmount: 600, resultName: 'tabla_adat', timeoutMs: 5000 };
     if (type === 'elementLoop') return { id, type, target: null, selector: '', itemVar: 'elem_szoveg', indexVar: 'elem_index', maxItems: 20, children: [] };
-    if (type === 'waitUntil') return { id, type, conditionMode: 'textExists', text: '', target: null, operator: 'contains', value: '', timeoutMs: 10000 };
-    if (type === 'scroll') return { id, type, mode: 'element', target: null, targetMode: 'manual', targetVar: '', direction: 'down', amount: 500 };
+    if (type === 'waitUntil') return { id, type, conditionMode: 'textExists', text: '', target: null, operator: 'contains', value: '', timeoutMs: 10000, stableMs: 800, spinnerSelector: '' };
+    if (type === 'scroll') return { id, type, mode: 'element', target: null, targetMode: 'manual', targetVar: '', scrollTarget: 'auto', scrollContainer: null, direction: 'down', amount: 500, align: 'center' };
     if (type === 'keyPress') return { id, type, target: null, key: 'Enter', ctrl: false, alt: false, shift: false, meta: false };
     if (type === 'clipboardRead') return { id, type, resultName: 'clipboard' };
     if (type === 'openUrl') return { id, type, url: '', mode: 'newTab' };
@@ -205,7 +211,7 @@ const BF = (() => {
     if (type === 'popupWindowWait') return { id, type, matchMode: 'urlContains', value: '', timeoutMs: 15000, resultName: 'popup_tab_id' };
     if (type === 'popupWindowExtract') return { id, type, tabVar: 'popup_tab_id', target: null, extractMode: 'auto', varName: 'popup_adat', timeoutMs: 5000 };
     if (type === 'popupWindowClose') return { id, type, tabVar: 'popup_tab_id' };
-    if (type === 'iframeBlock') return { id, type, target: null, children: [] };
+    if (type === 'iframeBlock') return { id, type, target: null, iframeMode: 'manual', urlContains: '', iframeIndex: 1, children: [] };
     if (type === 'findElements') return { id, type, target: null, selector: '', resultName: 'talalatok', countName: 'talalat_db', maxItems: 50 };
     if (type === 'emailTemplate') return { id, type, templateId: '', to: '{{email}}', resultName: 'email_draft' };
     if (type === 'emailPreview') return { id, type, draftName: 'email_draft', resultName: 'email_preview_action' };
@@ -254,7 +260,9 @@ const BF = (() => {
     if (block.type === 'transform') return `Adat átalakítása → {{${block.resultName || 'atalakitott_adat'}}}`;
     if (block.type === 'textSlice') return `Szövegrész kinyerése → {{${block.resultName || 'szovegresz'}}}`;
     if (block.type === 'regex') return `Regex keresés → {{${block.resultName || 'regex_talalat'}}}`;
-    if (block.type === 'textSearch') return `Szöveg keresése: ${short(block.query || '')} → {{${block.resultName || 'szoveg_talalat'}}}`;
+    if (block.type === 'textSearch') return `Szöveg keresése: ${short(block.query || '')} → {{${block.selectorName || 'szoveg_talalat_selector'}}}`;
+    if (block.type === 'errorSearch') return `Hibaüzenet keresése → {{${block.resultName || 'hiba_van'}}}`;
+    if (block.type === 'fieldByLabel') return `Mező címke alapján: ${short(block.labelText || '')} → {{${block.resultName || 'mezo_ertek'}}}`;
     if (block.type === 'setVar') return `Változó: {{${block.varName || 'valtozo'}}}`;
     if (block.type === 'userInput') return `Adat bekérése → {{${block.resultName || 'user_input'}}}`;
     if (block.type === 'userChoice') return `Választás → {{${block.resultName || 'valasztas'}}}`;
@@ -359,7 +367,9 @@ const BF = (() => {
     if (block.type === 'email') return `Címzett: ${block.to || ''} | Tárgy: ${short(block.subject || '')}`;
     if (block.type === 'copy') return short(block.value || '');
     if (block.type === 'mask') return `${block.maskMode === 'lines' ? 'Soralapú' : 'Karakteralapú'}${block.invertMask ? ' · invert' : ''}${block.clearTrim ? ' · clear/trim' : ''} · Forrás: ${short(block.source || '')}`;
-    if (block.type === 'textSearch') return `${block.searchScope === 'visible' ? 'látható szöveg' : block.searchScope === 'dom' ? 'teljes DOM' : 'teljes oldal'} · ${block.caseSensitive ? 'kis/nagybetű számít' : 'kis/nagybetű nem számít'} · hely mentése: {{${block.placeName || 'szoveg_talalat_hely'}}} · elem: {{${block.elementName || 'szoveg_talalat_elem'}}}`;
+    if (block.type === 'textSearch') return `${block.searchScope === 'visible' ? 'látható szöveg' : block.searchScope === 'dom' ? 'teljes DOM' : 'teljes oldal'} · selector: {{${block.selectorName || 'szoveg_talalat_selector'}}} · sor: {{${block.rowSelectorName || 'szoveg_talalat_sor_selector'}}}`;
+    if (block.type === 'errorSearch') return `alert/error/invalid keresés · szöveg: {{${block.textName || 'hiba_szoveg'}}}`;
+    if (block.type === 'fieldByLabel') return `${block.matchMode === 'equals' ? 'pontos címke' : 'címke tartalmazza'} · selector: {{${block.selectorName || 'mezo_selector'}}}`;
     if (['transform','textSlice','regex','setVar','compare','math','validateData'].includes(block.type)) return `Forrás: ${short(block.source || block.left || block.value || '')}`;
     if (['comment','groupBlock'].includes(block.type)) return short(block.note || block.title || '');
     if (block.type === 'scheduledTrigger') return block.triggerEnabled === false ? 'inaktív' : 'mentés után automatikus időzítőként aktív';
@@ -494,9 +504,11 @@ const BF = (() => {
       if (b.type === 'email' && b.resultName) vars.add(b.resultName);
       if (b.type === 'rowLoop' && b.rowVar) vars.add(b.rowVar);
       if (b.type === 'elementLoop') { if (b.itemVar) vars.add(b.itemVar); if (b.indexVar) vars.add(b.indexVar); }
-      ['transform','textSlice','regex','textSearch','setVar','userInput','userChoice','tableExtract','clipboardRead','screenshot','localGet','compare','math','returnResult','findElements','emailTemplate','emailPreview'].forEach(t => { if (b.type === t && (b.resultName || b.varName || b.countName)) { if (b.resultName) vars.add(b.resultName); if (b.varName) vars.add(b.varName); if (b.countName) vars.add(b.countName); } });
+      ['transform','textSlice','regex','textSearch','errorSearch','fieldByLabel','setVar','userInput','userChoice','tableExtract','clipboardRead','screenshot','localGet','compare','math','returnResult','findElements','emailTemplate','emailPreview'].forEach(t => { if (b.type === t && (b.resultName || b.varName || b.countName)) { if (b.resultName) vars.add(b.resultName); if (b.varName) vars.add(b.varName); if (b.countName) vars.add(b.countName); } });
       if (b.type === 'pageInfo') { const p = b.prefix || 'page'; vars.add(`${p}_url`); vars.add(`${p}_title`); vars.add(`${p}_domain`); vars.add(`${p}_path`); }
-      if (b.type === 'textSearch') { ['resultName','countName','contextName','placeName','selectorName','xpathName','elementName'].forEach(k => { if (b[k]) vars.add(b[k]); }); vars.add('szoveg_talalat_lista'); }
+      if (b.type === 'textSearch') { ['resultName','countName','contextName','placeName','selectorName','xpathName','elementName','rowSelectorName','clickableSelectorName','parentSelectorName','nearButtonSelectorName'].forEach(k => { if (b[k]) vars.add(b[k]); }); vars.add('szoveg_talalat_lista'); }
+      if (b.type === 'errorSearch') { ['resultName','textName','selectorName','countName'].forEach(k => { if (b[k]) vars.add(b[k]); }); }
+      if (b.type === 'fieldByLabel') { ['resultName','selectorName','xpathName','elementName'].forEach(k => { if (b[k]) vars.add(b[k]); }); }
       if (b.type === 'popupWindowWait' && b.resultName) vars.add(b.resultName);
     });
     return [...vars];
@@ -523,9 +535,11 @@ const BF = (() => {
       if (b.type === 'rowLoop' && b.rowVar) defined.add(b.rowVar);
       if (b.type === 'mask' && b.resultName) defined.add(b.resultName);
       if (b.type === 'elementLoop') { if (b.itemVar) defined.add(b.itemVar); if (b.indexVar) defined.add(b.indexVar); }
-      ['transform','textSlice','regex','textSearch','setVar','userInput','userChoice','tableExtract','clipboardRead','screenshot','localGet','compare','math','returnResult','findElements','emailTemplate','emailPreview'].forEach(t => { if (b.type === t && (b.resultName || b.varName || b.countName)) { if (b.resultName) defined.add(b.resultName); if (b.varName) defined.add(b.varName); if (b.countName) defined.add(b.countName); } });
+      ['transform','textSlice','regex','textSearch','errorSearch','fieldByLabel','setVar','userInput','userChoice','tableExtract','clipboardRead','screenshot','localGet','compare','math','returnResult','findElements','emailTemplate','emailPreview'].forEach(t => { if (b.type === t && (b.resultName || b.varName || b.countName)) { if (b.resultName) defined.add(b.resultName); if (b.varName) defined.add(b.varName); if (b.countName) defined.add(b.countName); } });
       if (b.type === 'pageInfo') { const p = b.prefix || 'page'; defined.add(`${p}_url`); defined.add(`${p}_title`); defined.add(`${p}_domain`); defined.add(`${p}_path`); }
-      if (b.type === 'textSearch') { ['resultName','countName','contextName','placeName','selectorName','xpathName','elementName'].forEach(k => { if (b[k]) defined.add(b[k]); }); defined.add('szoveg_talalat_lista'); }
+      if (b.type === 'textSearch') { ['resultName','countName','contextName','placeName','selectorName','xpathName','elementName','rowSelectorName','clickableSelectorName','parentSelectorName','nearButtonSelectorName'].forEach(k => { if (b[k]) defined.add(b[k]); }); defined.add('szoveg_talalat_lista'); }
+      if (b.type === 'errorSearch') { ['resultName','textName','selectorName','countName'].forEach(k => { if (b[k]) defined.add(b[k]); }); }
+      if (b.type === 'fieldByLabel') { ['resultName','selectorName','xpathName','elementName'].forEach(k => { if (b[k]) defined.add(b[k]); }); }
     });
     let starterCount = 0;
     walkBlocks(workflow.blocks || [], b => {
@@ -553,6 +567,7 @@ const BF = (() => {
       }
       if (b.type === 'email' && !String(b.to||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Email blokk: hiányzik a címzett.' });
       if (b.type === 'textSearch' && !String(b.query||'').trim()) issues.push({ level:'warning', blockId:b.id, text:'Szöveg keresése: üres keresett szöveg.' });
+      if (b.type === 'fieldByLabel' && !String(b.labelText||'').trim()) issues.push({ level:'warning', blockId:b.id, text:'Mező keresése címke alapján: üres címke.' });
       if (b.type === 'mask' && !String(b.source||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Maszkolás blokk: hiányzik a forrás szöveg vagy változó.' });
       if (b.type === 'mask' && !String(b.resultName||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Maszkolás blokk: hiányzik az eredmény változó neve.' });
       if (b.type === 'openEmail' && !String(b.draftName||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Email megnyitása: hiányzik a draft változó neve.' });

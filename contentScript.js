@@ -5,6 +5,9 @@
   let picker = null;
   let stopRequested = false;
   let recorder = null;
+  let bfRootStack = [];
+  function getSearchRoot() { return bfRootStack.length ? bfRootStack[bfRootStack.length - 1] : document; }
+  function rootDocument(root = getSearchRoot()) { return root && root.nodeType === 9 ? root : document; }
 
   function cssPath(el) {
     if (!el || el.nodeType !== 1) return '';
@@ -29,13 +32,13 @@
   function elementByXPath(xpath) {
     if (!xpath) return null;
     try {
-      const res = document.evaluate(String(xpath), document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+      const doc = rootDocument(); const res = doc.evaluate(String(xpath), doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
       return res.singleNodeValue && res.singleNodeValue.nodeType === 1 ? res.singleNodeValue : null;
     } catch (_) { return null; }
   }
 
 
-  function allElementsDeep(root = document, includeShadow = true, limit = 20000) {
+  function allElementsDeep(root = getSearchRoot(), includeShadow = true, limit = 20000) {
     const out = [];
     const seen = new Set();
     function add(el) {
@@ -63,7 +66,7 @@
     return out;
   }
 
-  function querySelectorAllDeep(selector, includeShadow = true, root = document, limit = 5000) {
+  function querySelectorAllDeep(selector, includeShadow = true, root = getSearchRoot(), limit = 5000) {
     const out = [];
     const seen = new Set();
     function addMany(scope) {
@@ -122,7 +125,7 @@
   function labelFor(el) {
     if (!el) return '';
     if (el.id) {
-      const label = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+      const label = rootDocument().querySelector(`label[for="${CSS.escape(el.id)}"]`);
       if (label) return (label.innerText || label.textContent || '').trim();
     }
     const wrapping = el.closest('label');
@@ -176,7 +179,7 @@
       containerId: container?.id || '',
       containerArid: container?.getAttribute('arid') || '',
       containerArdbn: container?.getAttribute('ardbn') || '',
-      labelFor: el.id && document.querySelector(`label[for="${CSS.escape(el.id)}"]`) ? el.id : '',
+      labelFor: el.id && rootDocument().querySelector(`label[for="${CSS.escape(el.id)}"]`) ? el.id : '',
       rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) }
     };
   }
@@ -406,6 +409,99 @@
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+
+  function isScrollable(el) {
+    if (!el || el === document || el === document.documentElement || el === document.body) return false;
+    try {
+      const st = getComputedStyle(el);
+      const oy = st.overflowY || st.overflow;
+      const ox = st.overflowX || st.overflow;
+      return /(auto|scroll|overlay)/.test(`${oy} ${ox}`) && (el.scrollHeight > el.clientHeight + 2 || el.scrollWidth > el.clientWidth + 2);
+    } catch (_) { return false; }
+  }
+
+  function scrollableParent(el) {
+    let n = el?.parentElement;
+    while (n && n !== document.body && n !== document.documentElement) {
+      if (isScrollable(n)) return n;
+      n = n.parentElement;
+    }
+    return document.scrollingElement || document.documentElement;
+  }
+
+  function resolveScrollContainer(block, targetEl) {
+    const mode = block?.scrollTarget || 'auto';
+    if (mode === 'page') return document.scrollingElement || document.documentElement;
+    if (mode === 'container' && block.scrollContainer) return findElement(block.scrollContainer, { requireVisible: false, shadowSearch: block.shadowSearch !== false }) || scrollableParent(targetEl);
+    if (mode === 'nearest' || mode === 'auto') return scrollableParent(targetEl);
+    return document.scrollingElement || document.documentElement;
+  }
+
+  async function scrollElementIntoViewSmart(el, opts = {}) {
+    if (!el) return false;
+    const container = resolveScrollContainer(opts.block || {}, el);
+    const align = opts.align || opts.block?.align || 'center';
+    try {
+      if (!container || container === document.scrollingElement || container === document.documentElement || container === document.body) {
+        el.scrollIntoView({ block: align === 'top' ? 'start' : align === 'bottom' ? 'end' : 'center', inline: 'nearest', behavior: opts.behavior || 'smooth' });
+      } else {
+        const cr = container.getBoundingClientRect();
+        const er = el.getBoundingClientRect();
+        let delta = er.top - cr.top;
+        if (align === 'center') delta -= (cr.height / 2) - (er.height / 2);
+        if (align === 'bottom') delta -= cr.height - er.height;
+        container.scrollTop += delta;
+      }
+      await sleep(Number(opts.delayMs || 120));
+      return true;
+    } catch (_) {
+      try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {}
+      return false;
+    }
+  }
+
+  function closestClickable(el) {
+    return el?.closest?.('button,a,[role="button"],[role="link"],input[type="button"],input[type="submit"],summary,label,[tabindex]') || el;
+  }
+
+  function closestRow(el) {
+    return el?.closest?.('tr,[role="row"],li,.row,[class*="row"],[data-row-id],[data-list-item]') || null;
+  }
+
+  function closestPanel(el) {
+    return el?.closest?.('[role="dialog"],[role="tabpanel"],[role="region"],section,article,.card,.panel,.modal,.workspace,[class*="panel"],[class*="card"]') || null;
+  }
+
+  function firstNearbyButton(el) {
+    const row = closestRow(el);
+    const base = row || closestPanel(el) || el?.parentElement;
+    if (!base) return null;
+    return base.querySelector('button,a,[role="button"],[role="link"],input[type="button"],input[type="submit"]');
+  }
+
+  function spinnerCandidates(selector = '') {
+    const custom = selector ? querySelectorAllDeep(selector, true, getSearchRoot(), 200) : [];
+    const generic = querySelectorAllDeep('[role="progressbar"],[aria-busy="true"],.spinner,.loading,.loader,.progress,.skeleton,[class*="spinner"],[class*="loading"],[class*="loader"],[class*="skeleton"]', true, getSearchRoot(), 1000);
+    return [...new Set([...custom, ...generic])].filter(isVisible);
+  }
+
+  async function waitDomStable(stableMs = 800, timeoutMs = 10000) {
+    return await new Promise(resolve => {
+      let timer = null;
+      const doneAt = Date.now() + Number(timeoutMs || 10000);
+      const obs = new MutationObserver(() => reset());
+      function finish(ok) { try { obs.disconnect(); } catch (_) {} clearTimeout(timer); resolve(ok); }
+      function reset() {
+        clearTimeout(timer);
+        if (Date.now() > doneAt) return finish(false);
+        timer = setTimeout(() => finish(true), Number(stableMs || 800));
+      }
+      try { obs.observe(document.documentElement, { childList: true, subtree: true, attributes: true, characterData: true }); } catch (_) { return resolve(true); }
+      reset();
+      setTimeout(() => finish(false), Number(timeoutMs || 10000));
+    });
+  }
+
   async function waitForElement(target, timeoutMs = 5000, options = {}) {
     const start = Date.now();
     const minWait = Math.max(150, Number(timeoutMs || 0));
@@ -546,6 +642,8 @@
     }
     if (block.type === 'screenshot') { const name = block.resultName || 'screenshot_data_url'; vars.last_screenshot = vars[name] || vars.last_screenshot || ''; vars.last_result = vars.last_screenshot; }
     if (block.type === 'findElements') { vars.last_result = vars[block.countName || 'talalat_db'] || ''; }
+    if (block.type === 'errorSearch') { vars.last_result = vars[block.resultName || 'hiba_van'] || ''; vars.last_text = vars[block.textName || 'hiba_szoveg'] || ''; vars.last_selector = vars[block.selectorName || 'hiba_selector'] || ''; }
+    if (block.type === 'fieldByLabel') { vars.last_result = vars[block.resultName || 'mezo_ertek'] || ''; vars.last_value = vars.last_result; vars.last_text = vars.last_result; vars.last_selector = vars[block.selectorName || 'mezo_selector'] || ''; vars.last_xpath = vars[block.xpathName || 'mezo_xpath'] || ''; vars.last_element = vars[block.elementName || 'mezo_elem'] || ''; }
   }
 
   async function copyText(text) {
@@ -767,7 +865,11 @@
         place,
         selector,
         xpath: el ? xpathFor(el) : '/html/body',
-        context: shortContext(value, needle, caseSensitive)
+        context: shortContext(value, needle, caseSensitive),
+        rowSelector: closestRow(el)?.getAttribute('id') ? '#' + CSS.escape(closestRow(el).id) : (closestRow(el) ? cssPath(closestRow(el)) : ''),
+        clickableSelector: closestClickable(el)?.getAttribute('id') ? '#' + CSS.escape(closestClickable(el).id) : (closestClickable(el) ? cssPath(closestClickable(el)) : ''),
+        parentSelector: closestPanel(el)?.getAttribute('id') ? '#' + CSS.escape(closestPanel(el).id) : (closestPanel(el) ? cssPath(closestPanel(el)) : ''),
+        nearButtonSelector: firstNearbyButton(el)?.getAttribute('id') ? '#' + CSS.escape(firstNearbyButton(el).id) : (firstNearbyButton(el) ? cssPath(firstNearbyButton(el)) : '')
       });
     }
 
@@ -800,11 +902,53 @@
     return hits;
   }
 
+  function findErrorMessages(block = {}) {
+    const selectors = [];
+    if (block.includeAlerts !== false) selectors.push('[role="alert"],.alert,.notification,.toast');
+    if (block.includeAriaLive !== false) selectors.push('[aria-live]');
+    if (block.includeErrorClasses !== false) selectors.push('.error,.invalid,.validation,.field-error,.form-error,[class*="error"],[class*="invalid"]');
+    if (block.includeInvalidFields !== false) selectors.push('[aria-invalid="true"],input:invalid,textarea:invalid,select:invalid');
+    const els = selectors.length ? querySelectorAllDeep(selectors.join(','), true, getSearchRoot(), 2000) : [];
+    const hits = [];
+    const seen = new Set();
+    for (const el of els) {
+      if (!isVisible(el)) continue;
+      const text = (el.innerText || el.textContent || el.getAttribute('aria-label') || el.validationMessage || '').trim();
+      const key = cssPath(el) + '|' + text;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      hits.push({ el, text, selector: cssPath(el), xpath: xpathFor(el) });
+    }
+    return hits;
+  }
+
+  function findFieldByLabelText(labelText, block = {}) {
+    const needleRaw = String(labelText || '').trim();
+    if (!needleRaw) return null;
+    const needle = block.caseSensitive ? needleRaw : needleRaw.toLowerCase();
+    const mode = block.matchMode || 'contains';
+    const candidates = querySelectorAllDeep('label,[aria-label],[title],[placeholder],[data-field],[data-name],[data-testid],[data-test-id],[role="textbox"],[role="combobox"],span,div', block.shadowSearch !== false, getSearchRoot(), 6000);
+    function ok(text) {
+      let t = String(text || '').trim();
+      if (!block.caseSensitive) t = t.toLowerCase();
+      if (!needle) return false;
+      return mode === 'equals' ? t === needle : t.includes(needle);
+    }
+    for (const lab of candidates) {
+      const txt = lab.innerText || lab.textContent || lab.getAttribute('aria-label') || lab.getAttribute('title') || lab.getAttribute('placeholder') || lab.getAttribute('data-field') || lab.getAttribute('data-name') || '';
+      if (!ok(txt)) continue;
+      const controls = controlsNearLabel(lab);
+      const found = controls.find(Boolean) || fieldControlIn(lab) || lab;
+      if (found) return found;
+    }
+    return null;
+  }
+
   async function tableCellValueWithVirtualScroll(container, block, vars = {}) {
     let value = tableCellValue(container, block);
     if (value || block.virtualSearch !== true || block.rowMode !== 'contains') return value;
     const maxScrolls = Math.max(1, Math.min(50, Number(block.maxScrolls || 10)));
-    const scroller = container.scrollHeight > container.clientHeight ? container : (container.closest('[style*="overflow"],.table,.list,[role="grid"]') || document.scrollingElement || document.documentElement);
+    const scroller = isScrollable(container) ? container : (container.closest('[style*="overflow"],.table,.list,[role="grid"]') || scrollableParent(container));
     for (let i = 0; i < maxScrolls; i++) {
       const before = scroller.scrollTop || window.scrollY || 0;
       if (scroller === document.scrollingElement || scroller === document.documentElement) window.scrollBy(0, Number(block.scrollAmount || 600));
@@ -838,8 +982,15 @@
       if (block.missingRowMode === 'error') throw new Error('Táblázatból kinyerés: nincs ilyen sor.');
       return '';
     }
-    const cells = [...row.querySelectorAll('td,th,[role="cell"],input,textarea,select')];
-    const idx = Math.max(0, Number(block.columnIndex || 1) - 1);
+    const cells = [...row.querySelectorAll('td,th,[role="cell"],[role="gridcell"],input,textarea,select')];
+    let idx = Math.max(0, Number(block.columnIndex || 1) - 1);
+    if ((block.columnMode || 'index') === 'header' && block.columnHeader) {
+      const headerRows = rowsFromContainer(container, 5).filter(r => r.querySelector('th,[role="columnheader"]'));
+      const headers = headerRows.length ? [...headerRows[0].querySelectorAll('th,[role="columnheader"],td')] : [...container.querySelectorAll('th,[role="columnheader"]')];
+      const n = normalizeText(block.columnHeader);
+      const foundIdx = headers.findIndex(h => normalizeText(h.innerText || h.textContent || h.getAttribute('aria-label') || '').includes(n));
+      if (foundIdx >= 0) idx = foundIdx;
+    }
     const cell = cells[idx] || row;
     return getElementValue(cell, 'auto') || (cell.innerText || cell.textContent || '').trim();
   }
@@ -1156,12 +1307,15 @@
       const target = targetForBlock(block, vars);
       const el = await waitForElement(target, Number(block.timeoutMs || 5000), { shadowSearch: block.shadowSearch !== false });
       if (!el) throw new Error(`Nem található kattintási cél: ${target?.label || block.target?.label || 'nincs megadva'}`);
-      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      if (block.autoScroll !== false) await scrollElementIntoViewSmart(el, { block, align: 'center' });
       el.classList.add('bf-run-outline');
       await sleep(100);
       if (!dryRun) {
-        if (block.confirmRisky && shouldConfirmClick(el) && !confirm(`BlockFlow: kockázatosnak tűnő kattintás: "${(el.innerText || el.value || '').trim()}". Folytatod?`)) throw new Error('Felhasználó megszakította a kockázatos kattintást.');
-        el.click();
+        const clickEl = block.clickableFallback === false ? el : (closestClickable(el) || el);
+        if (block.confirmRisky && shouldConfirmClick(clickEl) && !confirm(`BlockFlow: kockázatosnak tűnő kattintás: "${(clickEl.innerText || clickEl.value || '').trim()}". Folytatod?`)) throw new Error('Felhasználó megszakította a kockázatos kattintást.');
+        if (block.clickMode === 'dblclick') clickEl.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, composed: true }));
+        else if (block.clickMode === 'events') ['mousedown','mouseup','click'].forEach(t => clickEl.dispatchEvent(new MouseEvent(t, { bubbles: true, composed: true, view: window })));
+        else clickEl.click();
       }
       setTimeout(() => el.classList.remove('bf-run-outline'), 700);
       return { ok: true, dryRun };
@@ -1171,7 +1325,7 @@
       const el = await waitForElement(target, Number(block.timeoutMs || 5000), { shadowSearch: block.shadowSearch !== false });
       if (!el) throw new Error(`Nem található mező: ${target?.label || block.target?.label || 'nincs megadva'}`);
       const value = interpolate(block.value || '', vars);
-      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      await scrollElementIntoViewSmart(el, { block, align: 'center' });
       el.classList.add('bf-run-outline');
       if (!dryRun) await setElementValueCompat(el, value, block);
       setTimeout(() => el.classList.remove('bf-run-outline'), 700);
@@ -1184,11 +1338,33 @@
       const optionText = interpolate(block.optionText || '', vars);
       if (!dryRun) root.click();
       await sleep(Number(block.openDelayMs || 250));
-      const options = querySelectorAllDeep('option,[role="option"],li,button,div,span', block.shadowSearch !== false, document, 8000).filter(isVisible);
-      const needle = normalizeText(optionText);
-      const opt = options.find(o => { const t = normalizeText(o.innerText || o.textContent || o.getAttribute('aria-label') || o.getAttribute('title') || o.value || ''); return needle && (block.matchMode === 'equals' ? t === needle : t.includes(needle)); });
+      let options = querySelectorAllDeep('option,[role="option"],li,button,div,span', block.shadowSearch !== false, getSearchRoot(), 8000).filter(isVisible);
+      const scroller = options.length ? scrollableParent(options[0]) : scrollableParent(root);
+      const matchOpt = () => {
+        options = querySelectorAllDeep('option,[role="option"],li,button,div,span', block.shadowSearch !== false, getSearchRoot(), 8000).filter(isVisible);
+        const needle = block.caseSensitive ? String(optionText || '') : normalizeText(optionText);
+        return options.find(o => {
+          let t = o.innerText || o.textContent || o.getAttribute('aria-label') || o.getAttribute('title') || o.value || '';
+          t = block.caseSensitive ? String(t).trim() : normalizeText(t);
+          if (!needle) return false;
+          if (block.matchMode === 'equals') return t === needle;
+          if (block.matchMode === 'starts') return t.startsWith(needle);
+          return t.includes(needle);
+        });
+      };
+      let opt = matchOpt();
+      if (!opt && block.scrollOptions !== false && scroller) {
+        for (let i = 0; i < Number(block.maxOptionScrolls || 10) && !opt; i++) {
+          const before = scroller.scrollTop || window.scrollY || 0;
+          if (scroller === document.scrollingElement || scroller === document.documentElement) window.scrollBy(0, 350); else scroller.scrollTop = before + 350;
+          await sleep(150);
+          opt = matchOpt();
+          const after = scroller.scrollTop || window.scrollY || 0;
+          if (after === before) break;
+        }
+      }
       if (!opt) throw new Error(`Nem található legördülő opció: ${optionText}`);
-      opt.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      await scrollElementIntoViewSmart(opt, { block, align: 'center' });
       opt.classList.add('bf-run-outline');
       if (!dryRun) opt.click();
       setTimeout(() => opt.classList.remove('bf-run-outline'), 700);
@@ -1261,8 +1437,32 @@
       vars[block.selectorName || 'szoveg_talalat_selector'] = first?.selector || '';
       vars[block.xpathName || 'szoveg_talalat_xpath'] = first?.xpath || '';
       vars[block.elementName || 'szoveg_talalat_elem'] = first?.element ? descriptor(first.element) : '';
+      vars[block.rowSelectorName || 'szoveg_talalat_sor_selector'] = first?.rowSelector || '';
+      vars[block.clickableSelectorName || 'szoveg_talalat_click_selector'] = first?.clickableSelector || '';
+      vars[block.parentSelectorName || 'szoveg_talalat_panel_selector'] = first?.parentSelector || '';
+      vars[block.nearButtonSelectorName || 'szoveg_talalat_gomb_selector'] = first?.nearButtonSelector || '';
       vars.szoveg_talalat_lista = hits.slice(0, 25).map(h => `${h.place} | ${h.selector} | ${h.context}`).join('\n');
       return { ok: true, found: hits.length > 0, count: hits.length, first: first ? { place: first.place, selector: first.selector, context: first.context } : null };
+    }
+
+    if (block.type === 'errorSearch') {
+      const hits = findErrorMessages(block);
+      const first = hits[0];
+      vars[block.resultName || 'hiba_van'] = hits.length ? 'true' : 'false';
+      vars[block.countName || 'hiba_db'] = String(hits.length);
+      vars[block.textName || 'hiba_szoveg'] = first?.text || '';
+      vars[block.selectorName || 'hiba_selector'] = first?.selector || '';
+      return { ok: true, found: hits.length > 0, value: first?.text || '' };
+    }
+    if (block.type === 'fieldByLabel') {
+      const el = findFieldByLabelText(interpolate(block.labelText || '', vars), block);
+      if (!el) throw new Error(`Nem található mező címke alapján: ${block.labelText || ''}`);
+      const val = getElementValue(el, 'auto');
+      vars[block.resultName || 'mezo_ertek'] = val;
+      vars[block.selectorName || 'mezo_selector'] = cssPath(el);
+      vars[block.xpathName || 'mezo_xpath'] = xpathFor(el);
+      vars[block.elementName || 'mezo_elem'] = descriptor(el);
+      return { ok: true, value: val };
     }
 
     if (block.type === 'userInput') {
@@ -1286,12 +1486,25 @@
       const start = Date.now();
       const timeout = Number(block.timeoutMs || 10000);
       let ok = false;
-      while (Date.now() - start < timeout) {
+      let prevValue = null;
+      let prevUrl = location.href;
+      if (block.conditionMode === 'domStable') ok = await waitDomStable(Number(block.stableMs || 800), timeout);
+      while (!ok && Date.now() - start < timeout) {
         if (block.conditionMode === 'elementExists') ok = Boolean(findElement(block.target, { requireVisible: false, shadowSearch: block.shadowSearch !== false }));
+        else if (block.conditionMode === 'elementVisible') ok = Boolean(findElement(block.target, { requireVisible: true, shadowSearch: block.shadowSearch !== false }));
+        else if (block.conditionMode === 'elementHidden') ok = !Boolean(findElement(block.target, { requireVisible: true, shadowSearch: block.shadowSearch !== false }));
+        else if (block.conditionMode === 'elementClickable') { const e = findElement(block.target, { requireVisible: true, shadowSearch: block.shadowSearch !== false }); ok = Boolean(e && closestClickable(e)); }
         else if (block.conditionMode === 'valueContains') {
           const el = findElement(block.target, { requireVisible: false, shadowSearch: block.shadowSearch !== false });
           ok = el ? compareTextValue(getElementValue(el, 'auto'), block.operator || 'contains', interpolate(block.value || block.text || '', vars), false) : false;
-        } else if (block.conditionMode === 'urlContains') ok = location.href.includes(interpolate(block.value || block.text || '', vars));
+        } else if (block.conditionMode === 'valueChanges') {
+          const el = findElement(block.target, { requireVisible: false, shadowSearch: block.shadowSearch !== false });
+          const now = el ? getElementValue(el, 'auto') : '';
+          if (prevValue != null && now !== prevValue) ok = true;
+          prevValue = now;
+        } else if (block.conditionMode === 'urlChanges') { ok = location.href !== prevUrl; }
+        else if (block.conditionMode === 'urlContains') ok = location.href.includes(interpolate(block.value || block.text || '', vars));
+        else if (block.conditionMode === 'spinnerGone') ok = spinnerCandidates(block.spinnerSelector || '').length === 0;
         else ok = (document.body.innerText || '').toLowerCase().includes(interpolate(block.text || block.value || '', vars).toLowerCase());
         if (ok) break;
         await sleep(200);
@@ -1301,16 +1514,23 @@
     }
     if (block.type === 'scroll') {
       if (block.mode === 'page') {
+        const container = block.scrollTarget === 'container' && block.scrollContainer ? (findElement(block.scrollContainer, { requireVisible: false, shadowSearch: block.shadowSearch !== false }) || document.scrollingElement) : (document.scrollingElement || document.documentElement);
         if (!dryRun) {
-          if (block.direction === 'top') window.scrollTo({ top: 0, behavior: 'smooth' });
-          else if (block.direction === 'bottom') window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
-          else window.scrollBy({ top: (block.direction === 'up' ? -1 : 1) * Number(block.amount || 500), behavior: 'smooth' });
+          if (container === document.scrollingElement || container === document.documentElement || container === document.body) {
+            if (block.direction === 'top') window.scrollTo({ top: 0, behavior: 'smooth' });
+            else if (block.direction === 'bottom') window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+            else window.scrollBy({ top: (block.direction === 'up' ? -1 : 1) * Number(block.amount || 500), behavior: 'smooth' });
+          } else {
+            if (block.direction === 'top') container.scrollTop = 0;
+            else if (block.direction === 'bottom') container.scrollTop = container.scrollHeight;
+            else container.scrollTop += (block.direction === 'up' ? -1 : 1) * Number(block.amount || 500);
+          }
         }
       } else {
         const target = targetForBlock(block, vars);
-        const el = await waitForElement(target, 5000, { requireVisible: false });
+        const el = await waitForElement(target, 5000, { requireVisible: false, shadowSearch: block.shadowSearch !== false });
         if (!el) throw new Error('Nem található görgetési cél.');
-        if (!dryRun) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        if (!dryRun) await scrollElementIntoViewSmart(el, { block, align: block.align || 'center' });
       }
       return { ok: true, dryRun };
     }
@@ -1713,8 +1933,22 @@
           continue;
         }
 
-        if (b.type === 'groupBlock' || b.type === 'iframeBlock') {
-          await runList(Array.isArray(b.children) ? b.children : [], b.type === 'iframeBlock' ? 'iframe' : 'group');
+        if (b.type === 'groupBlock') {
+          await runList(Array.isArray(b.children) ? b.children : [], 'group');
+          i++;
+          continue;
+        }
+        if (b.type === 'iframeBlock') {
+          let frame = null;
+          if (b.iframeMode === 'urlContains') frame = [...document.querySelectorAll('iframe,frame')].find(f => String(f.src || '').includes(interpolate(b.urlContains || '', vars)));
+          else if (b.iframeMode === 'index') frame = [...document.querySelectorAll('iframe,frame')][Math.max(0, Number(b.iframeIndex || 1) - 1)];
+          else frame = b.target ? await waitForElement(b.target, Number(b.timeoutMs || 5000), { requireVisible: false }) : null;
+          let doc = null;
+          try { doc = frame?.contentDocument; } catch (_) { doc = null; }
+          if (!doc) throw new Error('Iframe nem hozzáférhető vagy cross-origin.');
+          bfRootStack.push(doc);
+          try { await runList(Array.isArray(b.children) ? b.children : [], 'iframe'); }
+          finally { bfRootStack.pop(); }
           i++;
           continue;
         }
