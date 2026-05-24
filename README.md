@@ -1,4 +1,4 @@
-# BlockFlow Automation MVP 0.42
+# BlockFlow Automation MVP 0.43
 
 BlockFlow egy lokális Chrome extension, amellyel általános weboldalakon lehet böngészőautomatizmusokat összeállítani vizuális, blokkos felületen. A cél az, hogy a gyakori adminisztrációs, adatgyűjtési, email-előkészítési, figyelési és riportkészítési folyamatokat programozás nélkül lehessen felépíteni.
 
@@ -434,9 +434,18 @@ Figyelő feltételeknél a beszúrás a Figyelő trigger vagy Feltételcsoport k
 - Bekerült az egyszerű DOCX riportkészítés külön DOCX blokk-kategóriával.
 - A Mini extension export ZIP generátora javítva lett, hogy a letöltött csomag szabványos ZIP-ként kibontható legyen.
 
-## v0.42 javítások
+## v0.43 javítások
 
 - PDF előnézet: megszűnt a saját előnézeti oldalba ágyazott iframe/object megjelenítés.
 - Az előnézet most közvetlen PDF blob URL-t nyit meg új tabon, így nem jelenik meg a Chrome "This content is blocked" hibája.
 - Letöltés és Letöltés + előnézet módban a saját letöltési logika továbbra is a PDF blokkban megadott fájlnevet használja.
 - Ha az előnézetet a böngésző blokkolja, a rendszer letöltésre esik vissza.
+
+### v0.43 csoportblokk fejlesztés
+
+A Csoport blokk most két új funkciót kapott:
+
+- csoportszintű ki/bekapcsolás: ha a csoport inaktív, a benne lévő blokkok futáskor kimaradnak
+- összecsukás: a Builderben a csoport alatti rész kompakt nézetre vált, és csak a benne lévő blokkok ikonjai látszanak
+
+Ez hosszabb workflow-k esetén segít az áttekinthetőségben, illetve ideiglenesen ki lehet kapcsolni egy teljes blokkcsoportot anélkül, hogy törölni kellene.

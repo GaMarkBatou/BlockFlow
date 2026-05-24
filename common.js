@@ -229,7 +229,7 @@ const BF = (() => {
     if (type === 'emailPreview') return { id, type, draftName: 'email_draft', resultName: 'email_preview_action' };
     if (type === 'validateData') return { id, type, source: '{{adat}}', validation: 'notEmpty', pattern: '', onFail: 'stop' };
     if (type === 'comment') return { id, type, note: 'Megjegyzés...' };
-    if (type === 'groupBlock') return { id, type, title: 'Csoport', children: [] };
+    if (type === 'groupBlock') return { id, type, title: 'Csoport', groupEnabled: true, collapsed: false, children: [] };
     if (type === 'callWorkflow') return { id, type, workflowId: '', resultPrefix: 'called' };
     if (type === 'returnResult') return { id, type, value: '{{adat}}', resultName: 'result' };
     if (type === 'stopRun') return { id, type, message: 'Futás leállítva.' };
@@ -310,7 +310,7 @@ const BF = (() => {
     if (block.type === 'emailPreview') return `Email előnézet: {{${block.draftName || 'email_draft'}}}`;
     if (block.type === 'validateData') return `Validálás: ${block.validation || 'notEmpty'}`;
     if (block.type === 'comment') return `Megjegyzés`;
-    if (block.type === 'groupBlock') return `Csoport: ${short(block.title || '')}`;
+    if (block.type === 'groupBlock') return `Csoport: ${short(block.title || '')}${block.groupEnabled === false ? ' (kikapcsolva)' : ''}`;
     if (block.type === 'callWorkflow') return `Másik automatizmus futtatása`;
     if (block.type === 'returnResult') return `Eredmény visszaadása → {{${block.resultName || 'result'}}}`;
     if (block.type === 'stopRun') return `Leállítás`;

@@ -37,6 +37,10 @@ function normalizeWorkflow(workflow) {
       ['recorded','locked','readOnly','readonly','recordOnly','recordedBlock'].forEach(k => { if (Object.prototype.hasOwnProperty.call(b, k)) delete b[k]; });
       if (b.source === 'record') delete b.source;
       if (CONTAINERS.has(b.type) && !Array.isArray(b.children)) b.children = [];
+      if (b.type === 'groupBlock') {
+        if (typeof b.groupEnabled !== 'boolean') b.groupEnabled = true;
+        if (typeof b.collapsed !== 'boolean') b.collapsed = false;
+      }
       if (b.type === 'ifBlock' && !Array.isArray(b.elseChildren)) b.elseChildren = [];
       if (b.type === 'tryBlock' && !Array.isArray(b.elseChildren)) b.elseChildren = [];
       if (b.type === 'triggerGroup' && !Array.isArray(b.children)) b.children = [];
@@ -530,13 +534,29 @@ function blockActionButtons(b, idx, total, parentId) {
   if (canDeleteBlock(b)) parts.push(`<button class="small danger" title="Törlés" data-del="${b.id}">×</button>`);
   return parts.join('');
 }
+
+function groupChildIconSummary(b) {
+  const children = Array.isArray(b.children) ? b.children : [];
+  if (!children.length) return '<span class="group-mini muted">üres</span>';
+  const max = 14;
+  const icons = children.slice(0, max).map(child => `<span class="group-mini-icon" title="${escapeAttr(BF.blockTitle(child))}">${escapeHtml(blockIcon(child))}</span>`).join('');
+  const more = children.length > max ? `<span class="group-mini more">+${children.length - max}</span>` : '';
+  return `<div class="group-collapsed-icons" title="A csoportban lévő blokkok ikonjai">${icons}${more}</div>`;
+}
+
 function renderBlockList(blocks, level, parentId) {
   if (!blocks || !blocks.length) return level ? '<div class="empty nested-empty">Húzz ide blokkokat, vagy jelöld ki a konténert és adj hozzá blokkot a bal oldalon.</div>' : '<div class="empty starter-empty"><b>Válassz indítást a bal oldalon.</b><br>Indítás vagy Figyelő trigger szükséges az automatizmushoz.</div>';
   return blocks.map((b, idx) => {
     let childHtml = '';
     if (CONTAINERS.has(b.type)) {
-      childHtml = `<div class="container-body" data-drop-container="${b.id}">
-        <div class="container-label">${b.type === 'triggerGroup' ? 'FIGYELŐ FELTÉTELEK - ezek döntik el, indul-e az automatizmus' : (b.type === 'conditionGroup' ? 'FELTÉTELCSOPORT - ide további figyelő feltételek kerülnek' : (b.type === 'ifBlock' ? 'HA IGAZ - behúzott blokkok' : (b.type === 'tryBlock' ? 'PRÓBÁLD MEG - behúzott blokkok' : 'A blokk hatása alá tartozó behúzott blokkok')))}</div>
+      const isCollapsedGroup = b.type === 'groupBlock' && b.collapsed === true;
+      childHtml = isCollapsedGroup
+        ? `<div class="container-body group-collapsed" data-drop-container="${b.id}">
+            <div class="container-label">CSOPORT ÖSSZECSUKVA - a benne lévő blokkok ikonként látszanak</div>
+            ${groupChildIconSummary(b)}
+          </div>`
+        : `<div class="container-body" data-drop-container="${b.id}">
+        <div class="container-label">${b.type === 'triggerGroup' ? 'FIGYELŐ FELTÉTELEK - ezek döntik el, indul-e az automatizmus' : (b.type === 'conditionGroup' ? 'FELTÉTELCSOPORT - ide további figyelő feltételek kerülnek' : (b.type === 'ifBlock' ? 'HA IGAZ - behúzott blokkok' : (b.type === 'tryBlock' ? 'PRÓBÁLD MEG - behúzott blokkok' : (b.type === 'groupBlock' ? 'CSOPORT BLOKKJAI' : 'A blokk hatása alá tartozó behúzott blokkok'))))}</div>
         ${renderBlockList(b.children || [], level + 1, b.id)}
       </div>`;
       if (b.type === 'ifBlock' || b.type === 'tryBlock') {
@@ -547,7 +567,7 @@ function renderBlockList(blocks, level, parentId) {
       }
     }
     return `<div class="block-wrap" data-wrap="${b.id}" style="--level:${level}">
-      <div class="block block-${b.type} ${b.id===selectedBlockId?'selected':''}" draggable="true" data-block="${b.id}" data-parent="${parentId || 'root'}">
+      <div class="block block-${b.type} ${b.id===selectedBlockId?'selected':''} ${b.type === 'groupBlock' && b.groupEnabled === false ? 'group-disabled' : ''} ${b.type === 'groupBlock' && b.collapsed === true ? 'group-is-collapsed' : ''}" draggable="true" data-block="${b.id}" data-parent="${parentId || 'root'}">
         <div class="block-actions">
           ${blockActionButtons(b, idx, blocks.length, parentId)}
         </div>
@@ -681,7 +701,7 @@ function blockInline(b) {
   if (b.type === 'emailPreview') return `${inlineInput('draftName', b.draftName || 'email_draft', 'draft')} ${inlineInput('resultName', b.resultName || 'email_preview_action', 'eredmény')}`;
   if (b.type === 'validateData') return `${inlineInput('source', b.source || '{{adat}}', 'forrás')} ${inlineSelect('validation', b.validation || 'notEmpty', [['notEmpty','nem üres'],['email','email'],['contains','tartalmazza'],['regex','regex']])} ${inlineInput('pattern', b.pattern || '', 'minta')}`;
   if (b.type === 'comment') return inlineInput('note', b.note || '', 'megjegyzés', 'wide');
-  if (b.type === 'groupBlock') return `${inlineInput('title', b.title || 'Csoport', 'cím')} ${inlineChip('blokkok', `${(b.children || []).length}`)}`;
+  if (b.type === 'groupBlock') return `${inlineInput('title', b.title || 'Csoport', 'cím')} ${inlineCheck('groupEnabled', b.groupEnabled !== false, 'aktív')} ${inlineCheck('collapsed', Boolean(b.collapsed), 'összecsukva')} ${inlineChip('blokkok', `${(b.children || []).length}`)}`;
   if (b.type === 'callWorkflow') return `${inlineInput('workflowId', b.workflowId || '', 'workflow ID vagy név')} ${inlineInput('resultPrefix', b.resultPrefix || 'called', 'eredmény prefix')}`;
   if (b.type === 'returnResult') return `${inlineInput('value', b.value || '{{adat}}', 'érték')} ${inlineInput('resultName', b.resultName || 'result', 'név')}`;
   if (b.type === 'stopRun') return inlineInput('message', b.message || 'Futás leállítva.', 'üzenet', 'wide');
@@ -1056,6 +1076,7 @@ function renderInspector() {
   if (b.type === 'compare') html += textField('left','Bal oldal', b.left || '') + selectField('operator','Operátor', b.operator || 'equals', [['equals','Egyenlő'],['notEquals','Nem egyenlő'],['contains','Tartalmazza'],['greater','Nagyobb'],['less','Kisebb']]) + textField('right','Jobb oldal', b.right || '') + textField('resultName','Eredmény változó', b.resultName || 'osszehasonlitas');
   if (b.type === 'math') html += textField('left','A', b.left || '0') + selectField('operator','Művelet', b.operator || 'add', [['add','Összeadás'],['subtract','Kivonás'],['multiply','Szorzás'],['divide','Osztás']]) + textField('right','B', b.right || '1') + textField('resultName','Eredmény változó', b.resultName || 'szamitas');
   if (b.type === 'validateData') html += textField('source','Forrás', b.source || '{{adat}}') + selectField('validation','Validáció', b.validation || 'notEmpty', [['notEmpty','Nem üres'],['email','Email formátum'],['contains','Tartalmazza'],['regex','Regex']]) + textField('pattern','Minta', b.pattern || '') + selectField('onFail','Hiba esetén', b.onFail || 'stop', [['stop','Leállítás'],['warn','Csak napló']]);
+  if (b.type === 'groupBlock') html += checkboxField('groupEnabled','A csoport blokkjai aktívak', b.groupEnabled !== false) + checkboxField('collapsed','Csoport összecsukása a munkaterületen', Boolean(b.collapsed)) + `<div class="status">Ha a csoport inaktív, a benne lévő blokkok futáskor kimaradnak. Összecsukva a gyermekblokkok helyett csak az ikonjaik látszanak, a workflow áttekinthetőbb marad.</div>`;
 
   if (CONTAINERS.has(b.type)) html += `<div class="hr"></div><div class="status">Tipp: ${b.type === 'triggerGroup' ? 'húzz ide Figyelő feltétel blokkokat. Ezek nem futási lépések, csak eldöntik, induljon-e az automatizmus.' : 'húzz blokkokat a blokk alatti behúzott területre, vagy hagyd kijelölve ezt a blokkot és adj hozzá új blokkot a bal oldali palettából.'}</div>`;
   html += `<div class="hr"></div><button id="testBlock" class="ghost">Blokk tesztelése</button>`;
