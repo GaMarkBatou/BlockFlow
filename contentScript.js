@@ -460,6 +460,84 @@
     }
   }
 
+
+  function allScrollableContainers(root = document) {
+    const list = [];
+    try {
+      const docScroller = document.scrollingElement || document.documentElement;
+      if (docScroller) list.push(docScroller);
+      const els = allElementsDeep(root, true, 16000);
+      for (const el of els) {
+        if (isScrollable(el)) list.push(el);
+      }
+    } catch (_) {}
+    return Array.from(new Set(list)).sort((a, b) => {
+      const ar = a === document.scrollingElement || a === document.documentElement ? { width: innerWidth, height: innerHeight } : a.getBoundingClientRect();
+      const br = b === document.scrollingElement || b === document.documentElement ? { width: innerWidth, height: innerHeight } : b.getBoundingClientRect();
+      return (br.width * br.height) - (ar.width * ar.height);
+    });
+  }
+
+  function resolveSearchScrollContainers(block = {}) {
+    const mode = block.scrollTarget || 'auto';
+    if (mode === 'container' && block.scrollContainer) {
+      const el = findElement(block.scrollContainer, { requireVisible: false, shadowSearch: block.shadowSearch !== false });
+      if (el) return [el];
+    }
+    if (mode === 'page') return [document.scrollingElement || document.documentElement];
+    const all = allScrollableContainers(document);
+    if (mode === 'nearest') return all.filter(el => el !== document.scrollingElement && el !== document.documentElement).concat(all.filter(el => el === document.scrollingElement || el === document.documentElement)).slice(0, 8);
+    return all.slice(0, 10);
+  }
+
+  function getScrollPos(scroller) {
+    if (!scroller || scroller === document.scrollingElement || scroller === document.documentElement || scroller === document.body) return window.scrollY || document.documentElement.scrollTop || 0;
+    return scroller.scrollTop || 0;
+  }
+
+  function getMaxScroll(scroller) {
+    if (!scroller || scroller === document.scrollingElement || scroller === document.documentElement || scroller === document.body) return Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) - innerHeight;
+    return Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+  }
+
+  function scrollContainerBy(scroller, amount) {
+    if (!scroller || scroller === document.scrollingElement || scroller === document.documentElement || scroller === document.body) {
+      window.scrollBy(0, amount);
+      return;
+    }
+    scroller.scrollTop += amount;
+  }
+
+  async function scanWithScrolling(findFn, block = {}) {
+    let hits = findFn();
+    if (hits && hits.length) return hits;
+    if (!block.scrollSearch && !block.virtualSearch && block.direction !== 'untilText') return hits || [];
+    const containers = resolveSearchScrollContainers(block);
+    const maxScrolls = Math.max(1, Number(block.maxScrolls || 25));
+    const amount = Math.max(80, Number(block.scrollAmount || block.amount || 700));
+    const delay = Math.max(50, Number(block.scrollDelayMs || 250));
+    const visited = new Set();
+    for (const scroller of containers) {
+      let noMoveCount = 0;
+      for (let i = 0; i < maxScrolls; i++) {
+        const before = getScrollPos(scroller);
+        const max = getMaxScroll(scroller);
+        const key = `${containers.indexOf(scroller)}:${Math.round(before)}:${Math.round(max)}`;
+        if (visited.has(key)) break;
+        visited.add(key);
+        if (max <= 0 || before >= max - 2) break;
+        scrollContainerBy(scroller, amount);
+        await sleep(delay);
+        hits = findFn();
+        if (hits && hits.length) return hits;
+        const after = getScrollPos(scroller);
+        if (Math.abs(after - before) < 2) noMoveCount++; else noMoveCount = 0;
+        if (noMoveCount >= 2) break;
+      }
+    }
+    return hits || [];
+  }
+
   function closestClickable(el) {
     return el?.closest?.('button,a,[role="button"],[role="link"],input[type="button"],input[type="submit"],summary,label,[tabindex]') || el;
   }
@@ -1428,7 +1506,7 @@
     }
 
     if (block.type === 'textSearch') {
-      const hits = findTextOccurrences(block, vars);
+      const hits = await scanWithScrolling(() => findTextOccurrences(block, vars), block);
       const first = hits[0] || null;
       vars[block.resultName || 'szoveg_talalat'] = hits.length ? 'true' : 'false';
       vars[block.countName || 'szoveg_talalat_db'] = String(hits.length);
@@ -1514,16 +1592,35 @@
     }
     if (block.type === 'scroll') {
       if (block.mode === 'page') {
-        const container = block.scrollTarget === 'container' && block.scrollContainer ? (findElement(block.scrollContainer, { requireVisible: false, shadowSearch: block.shadowSearch !== false }) || document.scrollingElement) : (document.scrollingElement || document.documentElement);
-        if (!dryRun) {
-          if (container === document.scrollingElement || container === document.documentElement || container === document.body) {
-            if (block.direction === 'top') window.scrollTo({ top: 0, behavior: 'smooth' });
-            else if (block.direction === 'bottom') window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
-            else window.scrollBy({ top: (block.direction === 'up' ? -1 : 1) * Number(block.amount || 500), behavior: 'smooth' });
-          } else {
-            if (block.direction === 'top') container.scrollTop = 0;
-            else if (block.direction === 'bottom') container.scrollTop = container.scrollHeight;
-            else container.scrollTop += (block.direction === 'up' ? -1 : 1) * Number(block.amount || 500);
+        if (!dryRun && block.direction === 'untilText') {
+          const searchBlock = {
+            ...block,
+            query: interpolate(block.searchText || block.query || '', vars),
+            operator: block.operator || 'contains',
+            searchScope: block.searchScope || 'all',
+            includeValues: block.includeValues !== false,
+            includeAttributes: block.includeAttributes !== false,
+            scrollSearch: true
+          };
+          const hits = await scanWithScrolling(() => findTextOccurrences(searchBlock, vars), searchBlock);
+          const first = hits[0];
+          if (first?.element) await scrollElementIntoViewSmart(first.element, { block, align: block.align || 'center' });
+          if (!first) throw new Error(`Görgetés szövegig: nem található: ${block.searchText || ''}`);
+        } else {
+          let container = null;
+          if (block.scrollTarget === 'container' && block.scrollContainer) container = findElement(block.scrollContainer, { requireVisible: false, shadowSearch: block.shadowSearch !== false });
+          if (!container && (block.scrollTarget === 'nearest' || block.scrollTarget === 'auto')) container = resolveSearchScrollContainers(block)[0];
+          if (!container) container = document.scrollingElement || document.documentElement;
+          if (!dryRun) {
+            if (container === document.scrollingElement || container === document.documentElement || container === document.body) {
+              if (block.direction === 'top') window.scrollTo({ top: 0, behavior: 'smooth' });
+              else if (block.direction === 'bottom') window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+              else window.scrollBy({ top: (block.direction === 'up' ? -1 : 1) * Number(block.amount || 500), behavior: 'smooth' });
+            } else {
+              if (block.direction === 'top') container.scrollTop = 0;
+              else if (block.direction === 'bottom') container.scrollTop = container.scrollHeight;
+              else container.scrollTop += (block.direction === 'up' ? -1 : 1) * Number(block.amount || 500);
+            }
           }
         }
       } else {
