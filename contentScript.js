@@ -1868,7 +1868,13 @@
     if (block.type === 'docxSave') {
       const docx = ensureDocx(vars, {});
       if (!docx.items.length) throw new Error('DOCX mentés: nincs DOCX tartalom.' );
-      const fileName = interpolate(block.fileName || docx.options.fileName || 'blockflow-riport.docx', vars);
+      // If the save block still has its factory/default filename, prefer the
+      // filename configured on DOCX indítása. This makes the document start
+      // block the primary place for naming, matching the PDF/DOCX flow UX.
+      const rawSaveName = String(block.fileName || '').trim();
+      const defaultSaveNames = new Set(['', '{{today}}_blockflow-riport.docx', '{{today}}_riport.docx', 'blockflow-riport.docx', 'riport.docx']);
+      const chosenName = defaultSaveNames.has(rawSaveName) && docx.options?.fileName ? docx.options.fileName : rawSaveName;
+      const fileName = makeDocxName(interpolate(chosenName || docx.options.fileName || 'blockflow-riport.docx', vars));
       if (!dryRun) {
         const blob = await buildDocxBlob(docx, vars);
         downloadDocxBlob(blob, fileName);
@@ -2184,6 +2190,11 @@
         }
 
         if (b.type === 'groupBlock') {
+          if (b.groupEnabled === false) {
+            log.push(`Csoport kihagyva: ${b.title || 'Csoport'} kikapcsolva.`);
+            i++;
+            continue;
+          }
           await runList(Array.isArray(b.children) ? b.children : [], 'group');
           i++;
           continue;

@@ -316,7 +316,7 @@ Támogatott:
 Importált workflow futtatása előtt javasolt ellenőrzést és dry-runt használni.
 
 
-## v0.44 újdonságok
+## v0.45 újdonságok
 
 - A **Próbáld meg / hiba esetén** blokkba most már húzhatók blokkok mind a próbálkozási, mind a hibaágba.
 - A **Szöveg keresése az oldalon** blokk opcionálisan görgetéssel is keres dinamikus vagy virtualizált oldalakon. Több körben görgeti az oldalt vagy a kiválasztott/belső görgethető konténert, majd minden kör után újraolvassa a DOM-ot.
@@ -402,7 +402,7 @@ A v0.35 fő célja a modern webappok és a ServiceNow / SNOW jellegű jegykezel�
 Ezek a fejlesztések különösen hasznosak ServiceNow klasszikus és modern felületein, Agent/Workspace jellegű nézetekben, valamint React, Vue, Angular vagy web component alapú belső rendszereken.
 
 
-## v0.44 javítások
+## v0.45 javítások
 
 A blokkpalettából kattintással hozzáadott új blokk most már nem automatikusan a workflow végére kerül. Ha van kijelölt blokk, az új blokk közvetlenül a kijelölt blokk után lesz beszúrva ugyanazon a szinten. Ha nincs kijelölt blokk, a korábbi működés marad: az új blokk a workflow végére kerül.
 
@@ -428,20 +428,20 @@ Figyelő feltételeknél a beszúrás a Figyelő trigger vagy Feltételcsoport k
 - Új Mező keresése címke alapján blokk enterprise/SNOW jellegű label, aria és data attribútum alapú mezőfelismeréshez.
 - Iframe blokk same-origin iframe-ben is képes futtatási kontextust váltani.
 
-## v0.44 újdonságok
+## v0.45 újdonságok
 
 - PDF előnézet saját BlockFlow előnézeti oldalt kapott, helyes fájlnévvel és saját Letöltés gombbal.
 - Bekerült az egyszerű DOCX riportkészítés külön DOCX blokk-kategóriával.
 - A Mini extension export ZIP generátora javítva lett, hogy a letöltött csomag szabványos ZIP-ként kibontható legyen.
 
-## v0.44 javítások
+## v0.45 javítások
 
 - PDF előnézet: megszűnt a saját előnézeti oldalba ágyazott iframe/object megjelenítés.
 - Az előnézet most közvetlen PDF blob URL-t nyit meg új tabon, így nem jelenik meg a Chrome "This content is blocked" hibája.
 - Letöltés és Letöltés + előnézet módban a saját letöltési logika továbbra is a PDF blokkban megadott fájlnevet használja.
 - Ha az előnézetet a böngésző blokkolja, a rendszer letöltésre esik vissza.
 
-### v0.44 csoportblokk fejlesztés
+### v0.45 csoportblokk fejlesztés
 
 A Csoport blokk most két új funkciót kapott:
 
@@ -451,9 +451,15 @@ A Csoport blokk most két új funkciót kapott:
 Ez hosszabb workflow-k esetén segít az áttekinthetőségben, illetve ideiglenesen ki lehet kapcsolni egy teljes blokkcsoportot anélkül, hogy törölni kellene.
 
 
-### v0.44 javítás
+### v0.45 javítás
 
 - A Vágólapról beolvasás blokk robusztusabb lett.
 - A blokk először a tartalmi oldalon próbál olvasni, majd szükség esetén egy rövid, extension tulajdonú segédablakot használ a vágólap beolvasásához.
 - A beolvasott érték bekerül a megadott változóba, valamint a `{{last_result}}`, `{{last_text}}` és `{{last_value}}` változókba is.
 - A mini extension export is tartalmazza a vágólap-beolvasó segédfájlokat.
+
+
+## v0.45 javítások
+
+- DOCX mentésnél a DOCX indítása blokkban megadott fájlnév elsőbbséget kap, ha a DOCX mentése blokk alapértelmezett/üres fájlnévvel fut.
+- Csoport blokk kikapcsolt állapotban futáskor kihagyja a benne lévő blokkokat.

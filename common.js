@@ -248,7 +248,7 @@ const BF = (() => {
     if (type === 'docxTable') return { id, type, title: 'Adatok', rows: 'Ticket | {{ticket_id}}\nStátusz | {{status}}', border: true, emptyValue: '-' };
     if (type === 'docxScreenshot') return { id, type, source: 'current', dataVar: 'screenshot_data_url', caption: 'Képernyőkép', width: 600, pageBreakBefore: false };
     if (type === 'docxPageBreak') return { id, type };
-    if (type === 'docxSave') return { id, type, fileName: '{{today}}_blockflow-riport.docx' };
+    if (type === 'docxSave') return { id, type, fileName: '' };
     return { id, type };
   }
 

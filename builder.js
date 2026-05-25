@@ -991,7 +991,7 @@ const BLOCK_HELP = {
   popupWindowClose: { purpose:'Bezárja a korábban megtalált popup/tab ablakot.', params:['Tab változó: a bezárandó ablak azonosítója.'] },
   preflight: { purpose:'Futás előtt ellenőrzi, hogy egy elem elérhető-e.', params:['Ha nincs meg: leállhat vagy csak figyelmeztethet.','Hasznos kritikus lépések előtt.'] },
   iframeBlock: { purpose:'A behúzott blokkokat iframe kontextusban próbálja futtatni.', params:['Cél iframe kiválasztása.','Cross-origin iframe-eket a böngésző korlátozhat.'] },
-  groupBlock: { purpose:'Vizuális csoportosítás hosszabb workflow-k rendszerezéséhez.', params:['Cím: a csoport neve.','Nem változtat a futási logikán, csak átláthatóbbá tesz.'] },
+  groupBlock: { purpose:'Blokkok vizuális és futási csoportosítása hosszabb workflow-k rendszerezéséhez.', params:['Cím: a csoport neve.','Aktív: ha ki van kapcsolva, a benne lévő blokkok futáskor kimaradnak.','Összecsukva: a belső blokkok helyett csak ikonösszefoglaló látszik.'] },
   comment: { purpose:'Megjegyzés a workflow-ban. Nem fut le.', params:['Használható dokumentálásra vagy emlékeztetőként.'] },
   callWorkflow: { purpose:'Másik automatizmust hív meg alfolyamatként.', params:['Workflow: melyik automatizmust futtassa.','Eredmény prefix: a meghívott folyamat eredményeinek előtagja.'] },
   returnResult: { purpose:'Eredményt ad vissza egy workflow-ból.', params:['Érték: amit vissza szeretnél adni.','Eredmény neve: milyen változóként legyen elérhető.'] },
