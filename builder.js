@@ -1698,13 +1698,16 @@ async function exportMiniExtension() {
   const exportedWorkflows = dependencyGraph.workflows.length ? dependencyGraph.workflows : [wf];
   const watchers = buildWatchersForExport(wf);
   const schedules = buildSchedulesForExport(wf);
-  const [bg, cs, css, fbHtml, fbCss, fbJs, icon16, icon48, icon128] = await Promise.all([
+  const [bg, cs, css, fbHtml, fbCss, fbJs, clipHtml, clipCss, clipJs, icon16, icon48, icon128] = await Promise.all([
     fetch(chrome.runtime.getURL('background.js')).then(r=>r.text()),
     fetch(chrome.runtime.getURL('contentScript.js')).then(r=>r.text()),
     fetch(chrome.runtime.getURL('contentScript.css')).then(r=>r.text()),
     fetch(chrome.runtime.getURL('feedback.html')).then(r=>r.text()),
     fetch(chrome.runtime.getURL('feedback.css')).then(r=>r.text()),
     fetch(chrome.runtime.getURL('feedback.js')).then(r=>r.text()),
+    fetch(chrome.runtime.getURL('clipboard.html')).then(r=>r.text()),
+    fetch(chrome.runtime.getURL('clipboard.css')).then(r=>r.text()),
+    fetch(chrome.runtime.getURL('clipboard.js')).then(r=>r.text()),
     fetch(chrome.runtime.getURL('icons/icon16.png')).then(r=>r.arrayBuffer()).catch(()=>new ArrayBuffer(0)),
     fetch(chrome.runtime.getURL('icons/icon48.png')).then(r=>r.arrayBuffer()).catch(()=>new ArrayBuffer(0)),
     fetch(chrome.runtime.getURL('icons/icon128.png')).then(r=>r.arrayBuffer()).catch(()=>new ArrayBuffer(0))
@@ -1732,6 +1735,9 @@ async function exportMiniExtension() {
     { name:'feedback.html', content: fbHtml },
     { name:'feedback.css', content: fbCss },
     { name:'feedback.js', content: fbJs },
+    { name:'clipboard.html', content: clipHtml },
+    { name:'clipboard.css', content: clipCss },
+    { name:'clipboard.js', content: clipJs },
     { name:'icons/icon16.png', content: new Uint8Array(icon16) },
     { name:'icons/icon48.png', content: new Uint8Array(icon48) },
     { name:'icons/icon128.png', content: new Uint8Array(icon128) }

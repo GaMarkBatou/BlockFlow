@@ -742,6 +742,37 @@
     }
   }
 
+
+  async function readClipboardTextSafe() {
+    // Clipboard reading is stricter than writing on many pages. Try the modern
+    // Clipboard API first, then the legacy paste command, then fall back to an
+    // extension-owned focused helper window. The helper avoids page-level
+    // restrictions that can affect content scripts even with clipboardRead.
+    try {
+      if (navigator.clipboard?.readText) {
+        const text = await navigator.clipboard.readText();
+        if (typeof text === 'string') return text;
+      }
+    } catch (_) {}
+
+    try {
+      const ta = document.createElement('textarea');
+      ta.setAttribute('aria-hidden', 'true');
+      ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;';
+      document.documentElement.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('paste');
+      const text = ta.value || '';
+      ta.remove();
+      if (ok || text) return text;
+    } catch (_) {}
+
+    const response = await safeRuntimeSend({ type: 'BF_CLIPBOARD_READ' });
+    if (response?.ok) return String(response.text || '');
+    throw new Error(response?.error || 'Vágólap beolvasása sikertelen.');
+  }
+
   function findPopup() {
     const explicit = [...document.querySelectorAll('[role="dialog"],[aria-modal="true"],dialog,.modal,.popup,[class*="modal"],[class*="popup"]')].filter(isVisible);
     if (explicit.length) return explicit.sort((a, b) => area(b) - area(a))[0];
@@ -1727,8 +1758,11 @@
     }
     if (block.type === 'clipboardRead') {
       let value = '';
-      if (!dryRun) value = await navigator.clipboard.readText().catch(() => '');
+      if (!dryRun) value = await readClipboardTextSafe();
       vars[block.resultName || 'clipboard'] = value;
+      vars.last_result = value;
+      vars.last_text = value;
+      vars.last_value = value;
       return { ok: true, value, dryRun };
     }
     if (block.type === 'openUrl') {

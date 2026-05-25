@@ -1,6 +1,7 @@
 const EXT_PREFIX = chrome.runtime.getURL('');
 const INJECTABLE_URL_RE = /^(https?:|file:)/;
 const pendingFeedback = new Map();
+const pendingClipboardReads = new Map();
 
 async function setLastActiveTab(tabId) {
   try {
@@ -70,6 +71,13 @@ chrome.windows.onRemoved.addListener(windowId => {
       pendingFeedback.delete(id);
       try { item.sendResponse({ ok: true, action: 'closed' }); } catch (_) {}
       chrome.storage.local.remove(`feedback_${id}`).catch(() => {});
+    }
+  }
+  for (const [id, item] of [...pendingClipboardReads.entries()]) {
+    if (item.windowId === windowId) {
+      pendingClipboardReads.delete(id);
+      try { item.sendResponse({ ok: false, error: 'A vágólap beolvasó ablak bezáródott.' }); } catch (_) {}
+      chrome.storage.local.remove(`clipboard_${id}`).catch(() => {});
     }
   }
 });
@@ -206,6 +214,41 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         setTimeout(() => { chrome.tabs.update(refocusId, { active: true }).catch(() => {}); }, 150);
       }
       sendResponse({ ok: true, tabId: created?.id || null });
+      return;
+    }
+
+    if (msg?.type === 'BF_CLIPBOARD_READ') {
+      const id = `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      await chrome.storage.local.set({ [`clipboard_${id}`]: { id, createdAt: Date.now() } });
+      const win = await chrome.windows.create({
+        url: chrome.runtime.getURL('clipboard.html') + `?id=${encodeURIComponent(id)}`,
+        type: 'popup',
+        width: 420,
+        height: 210,
+        focused: true
+      });
+      pendingClipboardReads.set(id, { sendResponse, windowId: win.id });
+      setTimeout(() => {
+        const item = pendingClipboardReads.get(id);
+        if (!item) return;
+        pendingClipboardReads.delete(id);
+        try { item.sendResponse({ ok: false, error: 'Vágólap beolvasása timeout.' }); } catch (_) {}
+        try { chrome.storage.local.remove(`clipboard_${id}`); } catch (_) {}
+        try { if (win?.id) chrome.windows.remove(win.id); } catch (_) {}
+      }, 15000);
+      return;
+    }
+
+    if (msg?.type === 'BF_CLIPBOARD_READ_RESULT') {
+      const id = String(msg.id || '');
+      const item = pendingClipboardReads.get(id);
+      if (item) {
+        pendingClipboardReads.delete(id);
+        try { item.sendResponse({ ok: Boolean(msg.ok), text: String(msg.text || ''), error: msg.error || '' }); } catch (_) {}
+        try { await chrome.storage.local.remove(`clipboard_${id}`); } catch (_) {}
+        if (item.windowId) { try { await chrome.windows.remove(item.windowId); } catch (_) {} }
+      }
+      sendResponse({ ok: true });
       return;
     }
 
