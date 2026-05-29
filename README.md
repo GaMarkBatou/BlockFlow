@@ -1,4 +1,4 @@
-# BlockFlow Automation MVP 0.46
+# BlockFlow Automation MVP 0.48
 
 BlockFlow egy lokális Chrome extension, amellyel általános weboldalakon lehet böngészőautomatizmusokat összeállítani vizuális, blokkos felületen. A cél az, hogy a gyakori adminisztrációs, adatgyűjtési, email-előkészítési, figyelési és riportkészítési folyamatokat programozás nélkül lehessen felépíteni.
 
@@ -26,7 +26,7 @@ Az extension nem használ AI-t, és nem küld adatot külső szolgáltatásnak. 
 2. Nyisd meg: `chrome://extensions`.
 3. Kapcsold be a **Developer mode / Fejlesztői mód** kapcsolót.
 4. Kattints a **Load unpacked** gombra.
-5. Válaszd ki a kicsomagolt `blockflow-extension-v0.46` mappát.
+5. Válaszd ki a kicsomagolt `blockflow-extension-v0.48` mappát.
 6. Frissítsd újra a már nyitott céloldalakat, hogy az új content script biztosan betöltődjön.
 
 ## Fő felületek
@@ -413,6 +413,18 @@ Az extension reload/frissítés utáni régi content script példányok csendese
 
 ## Változásnapló
 
+### v0.48
+
+- Edge kompatibilitási javítás a Builder workflow-váltásához.
+  - Az automatizmus kiválasztása most lokális Builder state-ből azonnal történik.
+  - A workflow-kártya és a Megnyitás gomb ugyanazt a stabil kiválasztási útvonalat használja.
+  - A storage mentés nem blokkolja a UI-váltást, így Edge alatt is stabilabb az automatizmusok közötti váltás.
+- Importált / nem ellenőrzött állapot kezelése javítva.
+  - Sikeres Ellenőrzés után az automatizmus ellenőrzött lesz.
+  - Sikeres Dry-run, normál futás vagy kényszerített futás után szintén eltűnik a nem ellenőrzött jelzés.
+  - Módosítás után az automatizmus újra nem ellenőrzött állapotba kerül, amíg nincs új sikeres ellenőrzés vagy futás.
+
+
 ### v0.46
 
 - README rendezése és verzióhelyes változásnapló kialakítása.
@@ -646,3 +658,7 @@ Az extension reload/frissítés utáni régi content script példányok csendese
 - Kattintás, adatkinyerés, beillesztés, várakozás, ismétlés és email alapfunkciók.
 - Builder külön ablakos működése.
 - Import/export alapok.
+
+### v0.47
+
+- Új blokk: **CSS injektálása**. Egyedi CSS szabályokat tud beszúrni az aktuális oldalba, azonosító alapján frissíthető vagy eltávolítható style tagként. Hasznos ideiglenes kiemeléshez, elrejtéshez, vizuális segédjelölésekhez vagy riport/screenshot előkészítéshez.

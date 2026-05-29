@@ -1512,6 +1512,29 @@
       setTimeout(() => el.classList.remove('bf-run-outline'), 700);
       return { ok: true, dryRun };
     }
+
+    if (block.type === 'injectCss') {
+      const styleId = String(interpolate(block.styleId || 'blockflow-custom-style', vars) || 'blockflow-custom-style').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const domId = `bf-injected-css-${styleId}`;
+      const mode = block.mode || 'add';
+      if (!dryRun) {
+        const existing = document.getElementById(domId);
+        if (mode === 'remove') {
+          if (existing) existing.remove();
+          vars[block.resultName || 'css_injektalva'] = 'removed';
+          return { ok: true, action: 'removed', styleId };
+        }
+        if (existing && block.replaceExisting !== false) existing.remove();
+        const style = existing && block.replaceExisting === false ? existing : document.createElement('style');
+        style.id = domId;
+        style.setAttribute('data-blockflow-css', 'true');
+        style.setAttribute('data-style-id', styleId);
+        style.textContent = interpolate(block.cssText || '', vars);
+        if (!style.parentNode) (document.head || document.documentElement).appendChild(style);
+        vars[block.resultName || 'css_injektalva'] = 'true';
+      }
+      return { ok: true, action: mode, styleId, value: block.cssText || '' };
+    }
     if (block.type === 'fill') {
       const target = targetForBlock(block, vars);
       const el = await waitForElement(target, Number(block.timeoutMs || 5000), { shadowSearch: block.shadowSearch !== false });

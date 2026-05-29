@@ -1,5 +1,5 @@
 const BF = (() => {
-  const SCHEMA_VERSION = 17;
+  const SCHEMA_VERSION = 18;
 
   const DEFAULT_WORKFLOW = () => ({
     id: crypto.randomUUID(),
@@ -22,6 +22,7 @@ const BF = (() => {
     click: { name: 'Kattintás', desc: 'Kattint egy kiválasztott oldalelemre.' },
     fill: { name: 'Beillesztés / kitöltés', desc: 'Szöveget ír egy mezőbe framework-kompatibilis eseményekkel is.' },
     selectOption: { name: 'Legördülő opció kiválasztása', desc: 'Custom/modern dropdown megnyitása és opció kiválasztása szöveg alapján.' },
+    injectCss: { name: 'CSS injektálása', desc: 'Egyedi CSS szabályokat szúr be az aktuális oldalba vagy eltávolítja a korábbi injektált stílust.' },
     extract: { name: 'Adat kinyerése', desc: 'Szöveget vagy mezőértéket változóba ment.' },
     wait: { name: 'Várakozás', desc: 'Időre, szövegre vagy elemre vár.' },
     ifBlock: { name: 'Ha...', desc: 'Feltételt ellenőriz, és hamis esetben átugorhat blokkokat.' },
@@ -104,6 +105,7 @@ const BF = (() => {
     { cat: 'Műveletek', type: 'click' },
     { cat: 'Műveletek', type: 'fill' },
     { cat: 'Műveletek', type: 'selectOption' },
+    { cat: 'Műveletek', type: 'injectCss' },
     { cat: 'Műveletek', type: 'wait' },
     { cat: 'Műveletek', type: 'copy' },
     { cat: 'Műveletek', type: 'scroll' },
@@ -176,6 +178,7 @@ const BF = (() => {
     if (type === 'click') return { id, type, target: null, targetMode: 'manual', targetVar: '', timeoutMs: 5000, confirmRisky: true, autoScroll: true, clickMode: 'normal', clickableFallback: true, matchIndex: 1 };
     if (type === 'fill') return { id, type, target: null, value: '', timeoutMs: 5000, fillMode: 'framework', blurAfter: true, typeDelayMs: 25, shadowSearch: true };
     if (type === 'selectOption') return { id, type, target: null, targetMode: 'manual', targetVar: '', optionText: '', matchMode: 'contains', caseSensitive: false, timeoutMs: 5000, openDelayMs: 250, shadowSearch: true, scrollOptions: true, maxOptionScrolls: 10 };
+    if (type === 'injectCss') return { id, type, mode: 'add', styleId: 'blockflow-custom-style', cssText: '', replaceExisting: true, resultName: 'css_injektalva' };
     if (type === 'extract') return { id, type, target: null, extractMode: 'auto', searchScope: 'dom', allowHidden: true, varName: 'adat', timeoutMs: 5000 };
     if (type === 'wait') return { id, type, waitMode: 'time', ms: 1000, text: '', target: null, timeoutMs: 5000 };
     if (type === 'triggerGroup') return { id, type, triggerEnabled: true, logic: 'all', scope: 'domain', domain: '', path: '/', url: '', urlContains: '', intervalSec: 2, throttleSec: 15, runOnce: false, children: [] };
