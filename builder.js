@@ -362,7 +362,7 @@ function renderPalette() {
   BF.PALETTE.forEach(p => (grouped[p.cat] ||= []).push(p));
   const needsStarter = !hasAnyStarter();
   const hint = needsStarter
-    ? `<div class="status warning-soft"><b>Válassz indítást.</b><br>Új automatizmusnál először kötelező egy indító blokk: Indítás vagy Figyelő trigger. Addig más blokk nem adható hozzá.</div>`
+    ? `<div class="status warning-soft"><b>Válassz indítást.</b><br>Új automatizmusnál először kötelező egy indító blokk: Indítás, Figyelő trigger, Kattintás trigger vagy Időzített indítás. Addig más blokk nem adható hozzá.</div>`
     : (selected
       ? `<div class="status">Új blokk kattintásra a kijelölt blokk után kerül: <b>${escapeHtml(BF.BLOCKS[selected.type]?.name || selected.type)}</b>. Konténer belsejébe továbbra is húzással teheted.</div>`
       : `<div class="status muted">Nincs kijelölt blokk: az új blokk a workflow végére kerül. Jelölj ki egy blokkot, ha utána szeretnél beszúrni.</div>`);
@@ -373,7 +373,7 @@ function renderPalette() {
       <button class="section-title palette-category-title" data-toggle-palette="${escapeAttr(cat)}" title="Kategória nyitása/zárása"><span>${collapsed ? '▸' : '▾'}</span><b>${escapeHtml(cat)}</b><small>${items.length}</small></button>
       <div class="palette-category-body" ${collapsed ? 'hidden' : ''}>${items.map(item => {
         const canAddConditionByClick = item.type.startsWith('condition') && (['triggerGroup','conditionGroup'].includes(selected?.type) || ['triggerGroup','conditionGroup'].includes(selectedInfo?.parent?.type) || Boolean(findSingleTriggerGroup()));
-        const disabled = (needsStarter && !['trigger','triggerGroup','scheduledTrigger'].includes(item.type)) || (item.type.startsWith('condition') && !canAddConditionByClick);
+        const disabled = (needsStarter && !['trigger','triggerGroup','clickTrigger','scheduledTrigger'].includes(item.type)) || (item.type.startsWith('condition') && !canAddConditionByClick);
         return `<button class="palette-btn ${disabled?'disabled':''}" data-add="${item.type}" draggable="${disabled ? 'false' : 'true'}" ${disabled?'disabled title="Először válassz indító blokkot, figyelő feltételnél pedig jelölj ki egy Figyelő triggert vagy feltételt."':'title="Kattints a kijelölt blokk után beszúráshoz, vagy húzd be a megfelelő helyre."'}><span>${BF.BLOCKS[item.type].name}</span><span>+</span></button>`;
       }).join('')}</div>
     </div>`;
@@ -397,8 +397,8 @@ function renderPalette() {
 }
 
 function addBlock(type) {
-  const isStarter = ['trigger','triggerGroup','scheduledTrigger'].includes(type);
-  if (!hasAnyStarter() && !isStarter) return alert('Először válassz indító blokkot: Indítás, Figyelő trigger vagy Időzített indítás.');
+  const isStarter = ['trigger','triggerGroup','clickTrigger','scheduledTrigger'].includes(type);
+  if (!hasAnyStarter() && !isStarter) return alert('Először válassz indító blokkot: Indítás, Figyelő trigger, Kattintás trigger vagy Időzített indítás.');
   if (type === 'trigger' && containsType(activeWorkflow.blocks, 'trigger')) return alert('Egy manuális indító blokk már van a workflow-ban.');
 
   const selectedInfo = findBlock(selectedBlockId);
@@ -529,7 +529,7 @@ function containsType(blocks, type) {
 }
 
 function isStarterBlock(b) {
-  return b && (b.type === 'trigger' || (b.type === 'triggerGroup' && b.triggerEnabled !== false) || (b.type === 'scheduledTrigger' && b.triggerEnabled !== false));
+  return b && (b.type === 'trigger' || (b.type === 'triggerGroup' && b.triggerEnabled !== false) || (b.type === 'clickTrigger' && b.triggerEnabled !== false) || (b.type === 'scheduledTrigger' && b.triggerEnabled !== false));
 }
 
 function starterCount(blocks = activeWorkflow.blocks) {
@@ -640,7 +640,7 @@ function blockOutputHtml(b) {
 }
 
 function blockIcon(b) {
-  const map = { trigger:'▶', triggerGroup:'◎', scheduledTrigger:'⏲', conditionText:'T', conditionElement:'◇', conditionField:'▣', conditionUrl:'URL', conditionChange:'Δ', conditionGroup:'∧∨', click:'⌁', fill:'✎', selectOption:'▾', injectCss:'CSS', extract:'⇣', wait:'⏱', waitUntil:'⏳', ifBlock:'?', repeatBlock:'↻', retryBlock:'⟳', tryBlock:'⚑', popupWait:'▣', popupExtract:'▣', popupClick:'▣', popupWindowWait:'◱', popupWindowExtract:'⇣', popupWindowClose:'×', copy:'⧉', clipboardRead:'⧉', email:'✉', emailTemplate:'✉', emailPreview:'✉', openEmail:'↗', rowLoop:'≡', elementLoop:'⋮', tableExtract:'▦', mask:'◩', transform:'A', textSlice:'✂', regex:'.*', textSearch:'⌕', errorSearch:'⚠', fieldByLabel:'🏷', setVar:'=', userPrompt:'💬', userInput:'⌨', userChoice:'☑', systemNotify:'🔔', scroll:'↕', keyPress:'⌨', openUrl:'↗', pageInfo:'ⓘ', screenshot:'▣', pdfStart:'PDF', pdfText:'¶', pdfTable:'▦', pdfScreenshot:'▣', pdfPageBreak:'↡', pdfSave:'⬇', docxStart:'DOCX', docxText:'¶', docxTable:'▦', docxScreenshot:'▣', docxPageBreak:'↡', docxSave:'⬇', preflight:'✓', localSet:'⬇', localGet:'⬆', compare:'=', math:'#', iframeBlock:'▤', findElements:'◇', validateData:'✓', comment:'//', groupBlock:'▣', callWorkflow:'↪', returnResult:'↩', stopRun:'■', sound:'♪' };
+  const map = { trigger:'▶', triggerGroup:'◎', clickTrigger:'☝', scheduledTrigger:'⏲', conditionText:'T', conditionElement:'◇', conditionField:'▣', conditionUrl:'URL', conditionChange:'Δ', conditionGroup:'∧∨', click:'⌁', fill:'✎', selectOption:'▾', injectCss:'CSS', extract:'⇣', wait:'⏱', waitUntil:'⏳', ifBlock:'?', repeatBlock:'↻', retryBlock:'⟳', tryBlock:'⚑', popupWait:'▣', popupExtract:'▣', popupClick:'▣', popupWindowWait:'◱', popupWindowExtract:'⇣', popupWindowClose:'×', copy:'⧉', clipboardRead:'⧉', email:'✉', emailTemplate:'✉', emailPreview:'✉', openEmail:'↗', rowLoop:'≡', elementLoop:'⋮', tableExtract:'▦', mask:'◩', transform:'A', textSlice:'✂', regex:'.*', textSearch:'⌕', errorSearch:'⚠', fieldByLabel:'🏷', setVar:'=', userPrompt:'💬', userInput:'⌨', userChoice:'☑', systemNotify:'🔔', scroll:'↕', keyPress:'⌨', openUrl:'↗', pageInfo:'ⓘ', screenshot:'▣', pdfStart:'PDF', pdfText:'¶', pdfTable:'▦', pdfScreenshot:'▣', pdfPageBreak:'↡', pdfSave:'⬇', docxStart:'DOCX', docxText:'¶', docxTable:'▦', docxScreenshot:'▣', docxPageBreak:'↡', docxSave:'⬇', preflight:'✓', localSet:'⬇', localGet:'⬆', compare:'=', math:'#', iframeBlock:'▤', findElements:'◇', validateData:'✓', comment:'//', groupBlock:'▣', callWorkflow:'↪', returnResult:'↩', stopRun:'■', sound:'♪' };
   return map[b.type] || '•';
 }
 function inlineChip(label, value) { return `<span class="inline-chip"><span>${escapeHtml(label)}</span><b>${escapeHtml(value || '—')}</b></span>`; }
@@ -677,6 +677,7 @@ function watchScopeInline(b) {
 }
 function blockInline(b) {
   if (b.type === 'triggerGroup') return `${inlineCheck('triggerEnabled', b.triggerEnabled !== false, 'aktív')} ${inlineSelect('logic', b.logic || 'all', [['all','minden feltétel'],['any','bármelyik feltétel'],['none','egyik sem']])} ${watchScopeInline(b)} ${inlineNumber('intervalSec', b.intervalSec || 2, 'ellenőrzés mp')} ${inlineNumber('throttleSec', b.throttleSec || 15, 'szünet mp')}`;
+  if (b.type === 'clickTrigger') return `${inlineCheck('triggerEnabled', b.triggerEnabled !== false, 'aktív')} ${inlinePick(b)} ${watchScopeInline(b)} ${inlineNumber('throttleSec', b.throttleSec || 15, 'szünet mp')}`;
   if (b.type === 'conditionText') return `${inlineInput('text', b.text || '', 'figyelt szöveg/karakter', 'wide')} ${inlineCheck('caseSensitive', Boolean(b.caseSensitive), 'kis/nagybetű')}`;
   if (b.type === 'conditionElement') return `${inlinePick(b)} ${inlineCheck('requireVisible', b.requireVisible !== false, 'látható')}`;
   if (b.type === 'conditionField') return `${inlinePick(b, 'Mező')} ${inlineSelect('operator', b.operator || 'contains', [['contains','tartalmazza'],['notContains','nem tartalmazza'],['equals','pontosan'],['notEquals','nem pontosan'],['empty','üres'],['notEmpty','nem üres'],['startsWith','ezzel kezdődik'],['endsWith','ezzel végződik']])} ${['empty','notEmpty'].includes(b.operator || 'contains') ? '' : inlineInput('value', b.value || '', 'érték')}`;
@@ -983,6 +984,7 @@ const BLOCK_HELP = {
   trigger: { purpose:'Manuális indítópont. Akkor hasznos, ha az automatizmust kézzel szeretnéd futtatni.', params:['Nem igényel külön beállítást.','Ha csak Figyelő trigger van a workflow-ban, a sima Futtatás a feltételeket is ellenőrzi.'] },
   scheduledTrigger: { purpose:'Időzített indítás: megadott időközönként vagy napi időpontban futtatja az automatizmust.', params:['Intervallum percben: milyen gyakran induljon.','Napi időpont: HH:MM formátum.','Napok: vesszővel elválasztva, például mon,tue,wed.'] },
   triggerGroup: { purpose:'Automatikus figyelő indító. A benne lévő feltételek döntik el, elinduljon-e az automatizmus.', params:['Hol figyelje: domain, path, pontos URL, URL-részlet vagy bármely oldal.','Indítás, ha: minden/bármelyik/egyik sem feltétel igaz.','Ellenőrzés gyakorisága: milyen sűrűn nézze az oldalt.','Újraindítási szünet: ennyi ideig ne induljon újra sikeres indítás után.'] },
+  clickTrigger: { purpose:'Automatikus indító: akkor indítja a workflow-t, amikor a felhasználó a kiválasztott oldalelemen kattint.', params:['Cél elem: az elem, amelyre kattintva induljon az automatizmus.','Hol figyelje: domain, path, pontos URL, URL-részlet vagy bármely oldal.','Újraindítási szünet: ennyi ideig ne induljon újra újabb kattintásra.'] },
   conditionText: { purpose:'Figyelőfeltétel: akkor igaz, ha a megadott szöveg megtalálható az oldalon.', params:['Figyelt szöveg: amit keresni kell.','Kis/nagybetű: bekapcsolva pontosan számít a betűméret.'] },
   conditionElement: { purpose:'Figyelőfeltétel: akkor igaz, ha a kiválasztott elem létezik vagy látható.', params:['Cél elem: az oldalon kiválasztott mező/gomb/szöveg.','Csak látható elem: rejtett DOM elem ne számítson találatnak.'] },
   conditionField: { purpose:'Figyelőfeltétel: egy mező vagy elem aktuális értékét ellenőrzi.', params:['Cél elem: a figyelt mező.','Feltétel: tartalmazza, pontosan ez, üres, nem üres stb.','Érték: ehhez hasonlítja a mező tartalmát.'] },
@@ -1072,13 +1074,14 @@ function renderInspector() {
   const changedBlock = b && b.id !== lastInspectorBlockId;
   if (!b) { $('#inspector').innerHTML = '<div class="empty">Válassz blokkot.</div>'; return; }
   let html = inspectorIntro(b);
-  if (['click','fill','selectOption','extract','conditionElement','conditionField','conditionChange','tableExtract','scroll','keyPress','preflight','popupWindowExtract','iframeBlock','findElements','waitUntil'].includes(b.type)) html += targetEditor(b);
+  if (['click','fill','selectOption','extract','conditionElement','conditionField','conditionChange','clickTrigger','tableExtract','scroll','keyPress','preflight','popupWindowExtract','iframeBlock','findElements','waitUntil'].includes(b.type)) html += targetEditor(b);
   if (b.type === 'click') html += checkboxField('confirmRisky','Kockázatos kattintásnál kérjen megerősítést', b.confirmRisky !== false) + numberField('timeoutMs','Max várakozás ms', b.timeoutMs || 5000);
   if (b.type === 'fill') html += valueSourceHelp() + textArea('value','Mit illesszen be?', b.value || '') + selectField('fillMode','Kitöltési mód', b.fillMode || 'framework', [['framework','Framework-kompatibilis értékadás'],['simple','Egyszerű értékadás'],['typing','Szimulált gépelés'],['paste','Vágólap/paste esemény jellegű mód']]) + checkboxField('blurAfter','Kitöltés után blur esemény', b.blurAfter !== false) + checkboxField('shadowSearch','Shadow DOM keresés', b.shadowSearch !== false) + numberField('typeDelayMs','Gépelési késleltetés ms', b.typeDelayMs || 25) + numberField('timeoutMs','Max várakozás ms', b.timeoutMs || 5000) + `<div class="status">Framework mód: React/Vue/Angular/SNOW mezőkhöz native value setter + input/change/blur eseményeket küld. Ha egy mező érzékeny, próbáld a szimulált gépelést.</div>`;
   if (b.type === 'injectCss') html += selectField('mode','Mód', b.mode || 'add', [['add','CSS hozzáadása / frissítése'],['remove','CSS eltávolítása']]) + textField('styleId','Stílus azonosító', b.styleId || 'blockflow-custom-style') + (b.mode === 'remove' ? '' : textArea('cssText','CSS szabályok', b.cssText || '')) + checkboxField('replaceExisting','Azonos ID-jú korábbi CSS felülírása', b.replaceExisting !== false) + textField('resultName','Eredmény változó', b.resultName || 'css_injektalva') + `<div class="status">A CSS az aktuális oldal DOM-jába kerül style tagként. Hasznos kiemeléshez, ideiglenes elrejtéshez, nagyobb betűmérethez vagy nyomtatási/riport előkészítéshez.</div>`;
   if (b.type === 'selectOption') html += textField('optionText','Kiválasztandó opció szövege', b.optionText || '') + selectField('matchMode','Egyezés', b.matchMode || 'contains', [['contains','Tartalmazza'],['equals','Pontosan egyezik'],['starts','Ezzel kezdődik']]) + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive)) + checkboxField('scrollOptions','Opciólista görgetése keresés közben', b.scrollOptions !== false) + numberField('maxOptionScrolls','Max opciólista görgetés', b.maxOptionScrolls || 10) + checkboxField('shadowSearch','Shadow DOM keresés', b.shadowSearch !== false) + numberField('openDelayMs','Nyitás utáni várakozás ms', b.openDelayMs || 250) + numberField('timeoutMs','Max várakozás ms', b.timeoutMs || 5000) + `<div class="status">A blokk először rákattint a dropdownra, majd a megjelenő opciók között szöveg alapján keres és kattint. Custom SNOW/React/Vue/Angular legördülőkhöz készült.</div>`;
   if (b.type === 'extract') html += selectField('extractMode','Mit nyerjen ki?', b.extractMode || 'auto', [['auto','Automatikus - legjobb érték'],['value','Mezőérték'],['text','Szöveg'],['html','HTML tartalom'],['attribute','Attribútum']]) + selectField('searchScope','Hol keressen?', b.searchScope || 'dom', [['dom','Teljes DOM-ban, rejtett mezőkben is'],['visible','Csak látható elemek között']]) + checkboxField('allowHidden','Rejtett / inaktív fülön lévő mezőt is elfogad', b.allowHidden !== false) + textField('attributeName','Attribútum neve attribute módnál', b.attributeName || 'title') + textField('varName','Változó neve', b.varName || 'adat') + numberField('timeoutMs','Max várakozás ms', b.timeoutMs || 5000);
   if (b.type === 'triggerGroup') html += watcherAdvanced(b) + selectField('logic','Indítás, ha', b.logic || 'all', [['all','Minden feltétel igaz'],['any','Bármelyik feltétel igaz'],['none','Egyik feltétel sem igaz']]) + numberField('intervalSec','Ellenőrzés gyakorisága mp-ben', b.intervalSec || 2) + `<div class="status">Feltételek száma: ${(b.children || []).length}. Húzz alá feltételblokkokat a Figyelő feltételek kategóriából.</div>`;
+  if (b.type === 'clickTrigger') html += watcherAdvanced(b) + checkboxField('triggerEnabled','Aktív', b.triggerEnabled !== false) + numberField('throttleSec','Újraindítási szünet mp-ben', b.throttleSec || 15);
   if (b.type === 'conditionText') html += textField('text','Figyelt szöveg vagy karakter', b.text || '') + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive));
   if (b.type === 'conditionElement') html += checkboxField('requireVisible','Csak látható elem számítson', b.requireVisible !== false);
   if (b.type === 'conditionField') html += selectField('operator','Feltétel', b.operator || 'contains', [['contains','Tartalmazza'],['notContains','Nem tartalmazza'],['equals','Pontosan ez'],['notEquals','Nem pontosan ez'],['empty','Üres'],['notEmpty','Nem üres'],['startsWith','Ezzel kezdődik'],['endsWith','Ezzel végződik']]) + textField('value','Érték', b.value || '') + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive));
@@ -1306,6 +1309,28 @@ async function syncTriggerWatchersFromBlocks(workflow) {
   const path = u?.pathname || '/';
   const blockWatchers = [];
   BF.walkBlocks(workflow.blocks || [], b => {
+    if (b.type === 'clickTrigger') {
+      if (b.triggerEnabled === false || !b.target) return;
+      blockWatchers.push({
+        id: `click:${workflow.id}:${b.id}`,
+        source: 'block',
+        sourceBlockId: b.id,
+        workflowId: workflow.id,
+        enabled: true,
+        mode: 'click',
+        target: b.target || null,
+        scope: b.scope || 'domain',
+        domain: b.domain || domain,
+        path: b.path || path,
+        url: b.url || currentUrl,
+        urlContains: b.urlContains || '',
+        intervalSec: 2,
+        throttleSec: Math.max(1, Number(b.throttleSec || 15)),
+        runOnce: Boolean(b.runOnce),
+        createdAt: b.createdAt || new Date().toISOString()
+      });
+      return;
+    }
     if (b.type !== 'triggerGroup') return;
     if (b.triggerEnabled === false) return;
     const cloneCondition = c => ({
@@ -1583,6 +1608,18 @@ async function renderVersions() {
 function buildWatchersForExport(workflow) {
   const blockWatchers = [];
   BF.walkBlocks(workflow.blocks || [], b => {
+    if (b.type === 'clickTrigger') {
+      if (b.triggerEnabled === false || !b.target) return;
+      blockWatchers.push({
+        id: `click:${workflow.id}:${b.id}`,
+        source: 'block', sourceBlockId: b.id, workflowId: workflow.id, enabled: true,
+        mode: 'click', target: b.target || null,
+        scope: b.scope || 'any', domain: b.domain || '', path: b.path || '/', url: b.url || '', urlContains: b.urlContains || '',
+        intervalSec: 2, throttleSec: Math.max(1, Number(b.throttleSec || 15)),
+        runOnce: Boolean(b.runOnce), createdAt: b.createdAt || new Date().toISOString()
+      });
+      return;
+    }
     if (b.type !== 'triggerGroup' || b.triggerEnabled === false) return;
     const cloneCondition = c => ({
       type: c.type,

@@ -1481,7 +1481,7 @@
 
   async function executeBlock(block, vars, options = {}) {
     const dryRun = Boolean(options.dryRun);
-    if (block.type === 'trigger' || block.type === 'triggerGroup' || String(block.type || '').startsWith('condition')) return { skipped: true };
+    if (block.type === 'trigger' || block.type === 'triggerGroup' || block.type === 'clickTrigger' || block.type === 'scheduledTrigger' || String(block.type || '').startsWith('condition')) return { skipped: true };
 
     if (block.type === 'wait') {
       if (block.waitMode === 'element' && block.target) {
@@ -2115,8 +2115,13 @@
         return true;
       }
       const triggerGroups = collectBlocks(rootBlocks, b => b.type === 'triggerGroup' && b.triggerEnabled !== false);
+      const clickTriggers = collectBlocks(rootBlocks, b => b.type === 'clickTrigger' && b.triggerEnabled !== false);
       if (!triggerGroups.length) {
-        log.push('Nincs aktív figyelő trigger. A workflow műveleti része elindul.');
+        if (clickTriggers.length) {
+          log.push(`Kattintás trigger található (${clickTriggers.length}). A normál Futtatás nem indít, mert ez az indító csak a kijelölt elemre kattintáskor aktiválódik. Használd a Kényszerített futtatást teszthez.`);
+          return false;
+        }
+        log.push('Nincs aktív figyelő/kattintás trigger. A workflow műveleti része elindul.');
         return true;
       }
       log.push(`Figyelő trigger ellenőrzése kézi futtatáshoz: ${triggerGroups.length} aktív trigger.`);
@@ -2148,7 +2153,7 @@
         const b = list[i];
         log.push(`${label} · ${i + 1}: ${b.type}${options.dryRun ? ' [dry-run]' : ''}`);
 
-        if (b.type === 'trigger' || b.type === 'triggerGroup' || String(b.type || '').startsWith('condition')) { i++; continue; }
+        if (b.type === 'trigger' || b.type === 'triggerGroup' || b.type === 'clickTrigger' || b.type === 'scheduledTrigger' || String(b.type || '').startsWith('condition')) { i++; continue; }
 
         if (b.type === 'ifBlock') {
           const ok = await conditionPass(b, vars);
@@ -2304,6 +2309,7 @@
   let watcherObserver = null;
   let watcherTimer = null;
   let watcherInterval = null;
+  let watcherClickHandler = null;
   const firedWatchers = new Map();
   // Session-alapú értékmemória változásfigyelő feltételekhez.
   // Kulcs: workflow + trigger + feltétel + oldal URL. Oldalfrissítés után újratanul.
@@ -2327,6 +2333,7 @@
     if (watcherObserver) { try { watcherObserver.disconnect(); } catch (_) {} watcherObserver = null; }
     if (watcherInterval) { clearInterval(watcherInterval); watcherInterval = null; }
     if (watcherTimer) { clearTimeout(watcherTimer); watcherTimer = null; }
+    if (watcherClickHandler) { try { document.removeEventListener('click', watcherClickHandler, true); } catch (_) {} watcherClickHandler = null; }
     if (reason) console.info('BlockFlow figyelők leállítva:', reason);
   }
 
@@ -2395,6 +2402,7 @@
     if (!w.sourceBlockId) return true;
     const block = findWorkflowBlock(workflow?.blocks || [], w.sourceBlockId);
     if (!block) return false;
+    if (block.type === 'clickTrigger') return block.triggerEnabled !== false && Boolean(block.target);
     if (block.type !== 'triggerGroup') return false;
     return block.triggerEnabled !== false && Array.isArray(block.children) && block.children.length > 0;
   }
@@ -2508,6 +2516,44 @@
     return results.every(Boolean);
   }
 
+  function eventMatchesWatcherTarget(event, w) {
+    if (!w || w.mode !== 'click' || !w.target) return false;
+    const configured = findElement(w.target, { requireVisible: false });
+    if (!configured) return false;
+    const rawTarget = event.target;
+    const clicked = rawTarget && rawTarget.nodeType === 1 ? rawTarget : rawTarget?.parentElement;
+    if (!clicked) return false;
+    return configured === clicked || configured.contains(clicked) || Boolean(clicked.closest && configured.contains(clicked.closest('button,a,[role="button"],input,textarea,select,[tabindex]')));
+  }
+
+  async function handleWatcherClick(event) {
+    if (!isExtensionContextAlive()) { stopWatchers('context not alive'); return; }
+    let watchers, workflows;
+    try { ({ watchers, workflows } = await loadWatchersAndWorkflows()); } catch (err) { if (isContextInvalidatedError(err)) return; return; }
+    const active = watchers.filter(w => w.enabled !== false && w.mode === 'click' && watcherScopeMatches(w));
+    for (const w of active) {
+      try {
+        if (!eventMatchesWatcherTarget(event, w)) continue;
+        const last = firedWatchers.get(w.id) || 0;
+        if (Date.now() - last < Math.max(1000, Number(w.throttleSec || 15) * 1000)) continue;
+        firedWatchers.set(w.id, Date.now());
+        const workflow = workflows.find(x => x.id === w.workflowId);
+        if (!workflow) continue;
+        if (!watcherBlockStillActive(w, workflow)) { firedWatchers.delete(w.id); continue; }
+        showBadge(`BlockFlow kattintás trigger indítja: ${workflow.name || 'workflow'}`);
+        setTimeout(removeBadge, 2000);
+        runWorkflow(workflow, { dryRun: false, triggeredByWatcher: true, triggeredByClick: true }).catch(err => console.warn('BlockFlow kattintás trigger hiba', err));
+        if (w.runOnce) {
+          const data = await safeStorageGet('watchers');
+          if (!data) continue;
+          const all = Array.isArray(data.watchers) ? data.watchers : [];
+          const ww = all.find(x => x.id === w.id);
+          if (ww) { ww.enabled = false; await safeStorageSet({ watchers: all }); }
+        }
+      } catch (err) { console.warn('BlockFlow kattintás trigger ellenőrzési hiba', err); }
+    }
+  }
+
   async function checkWatchers() {
     if (!isExtensionContextAlive()) { stopWatchers('context not alive'); return; }
     let watchers, workflows;
@@ -2558,6 +2604,7 @@
     if (!isExtensionContextAlive()) { stopWatchers('context not alive'); return; }
     if (watcherObserver) watcherObserver.disconnect();
     if (watcherInterval) clearInterval(watcherInterval);
+    if (watcherClickHandler) { try { document.removeEventListener('click', watcherClickHandler, true); } catch (_) {} watcherClickHandler = null; }
     watcherObserver = new MutationObserver(() => {
       clearTimeout(watcherTimer);
       watcherTimer = setTimeout(() => { checkWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }); }, 250);
@@ -2574,6 +2621,8 @@
       minInterval = Math.max(1, Math.min(30, ...scoped.map(w => Number(w.intervalSec || 2)).filter(Boolean), 2));
     } catch {}
     if (!window.__blockFlowSpaWatcherHook) { window.__blockFlowSpaWatcherHook = true; window.addEventListener('BF_SPA_NAVIGATION', () => { setTimeout(() => checkWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }), 100); }, true); }
+    watcherClickHandler = event => { handleWatcherClick(event).catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }); };
+    document.addEventListener('click', watcherClickHandler, true);
     watcherInterval = setInterval(() => { checkWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }); }, minInterval * 1000);
     setTimeout(() => { checkWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }); }, 800);
   }

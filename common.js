@@ -13,6 +13,7 @@ const BF = (() => {
   const BLOCKS = {
     trigger: { name: 'Indítás', desc: 'A workflow manuálisan indul.' },
     triggerGroup: { name: 'Figyelő trigger', desc: 'Indító-konténer: feltételek alapján automatikusan indítja a workflow-t.' },
+    clickTrigger: { name: 'Kattintás trigger', desc: 'Automatikus indító: akkor indul, amikor a felhasználó a kiválasztott elemre kattint.' },
     conditionText: { name: 'Feltétel: szöveg', desc: 'Igaz, ha a megadott szöveg vagy karakter megjelenik az oldalon.' },
     conditionElement: { name: 'Feltétel: elem', desc: 'Igaz, ha a kiválasztott elem megtalálható az oldalon.' },
     conditionField: { name: 'Feltétel: mezőérték', desc: 'Igaz, ha egy mező értéke megfelel a megadott feltételnek.' },
@@ -95,6 +96,7 @@ const BF = (() => {
   const PALETTE = [
     { cat: 'Indítás', type: 'trigger' },
     { cat: 'Indítás', type: 'triggerGroup' },
+    { cat: 'Indítás', type: 'clickTrigger' },
     { cat: 'Indítás', type: 'scheduledTrigger' },
     { cat: 'Figyelő feltételek', type: 'conditionText' },
     { cat: 'Figyelő feltételek', type: 'conditionElement' },
@@ -182,6 +184,7 @@ const BF = (() => {
     if (type === 'extract') return { id, type, target: null, extractMode: 'auto', searchScope: 'dom', allowHidden: true, varName: 'adat', timeoutMs: 5000 };
     if (type === 'wait') return { id, type, waitMode: 'time', ms: 1000, text: '', target: null, timeoutMs: 5000 };
     if (type === 'triggerGroup') return { id, type, triggerEnabled: true, logic: 'all', scope: 'domain', domain: '', path: '/', url: '', urlContains: '', intervalSec: 2, throttleSec: 15, runOnce: false, children: [] };
+    if (type === 'clickTrigger') return { id, type, triggerEnabled: true, target: null, scope: 'domain', domain: '', path: '/', url: '', urlContains: '', throttleSec: 15, runOnce: false };
     if (type === 'conditionText') return { id, type, text: '', caseSensitive: false };
     if (type === 'conditionElement') return { id, type, target: null, requireVisible: true };
     if (type === 'conditionField') return { id, type, target: null, operator: 'contains', value: '', caseSensitive: false };
@@ -262,6 +265,7 @@ const BF = (() => {
     if (block.type === 'extract') return `Nyerd ki: ${block.target?.label || 'nincs kiválasztva'} → {{${block.varName || 'adat'}}}`;
     if (block.type === 'wait') return block.waitMode === 'time' ? `Várj ${block.ms || 1000} ms` : `Várakozás: ${block.waitMode}`;
     if (block.type === 'triggerGroup') return `Figyelő trigger: ${triggerLogicLabel(block.logic || 'all')}`;
+    if (block.type === 'clickTrigger') return `Kattintás trigger: ${block.target?.label || 'nincs cél elem'}`;
     if (block.type === 'conditionText') return `Feltétel: szöveg megjelenik: ${short(block.text || 'szöveg/karakter')}`;
     if (block.type === 'conditionElement') return `Feltétel: elem megjelenik: ${block.target?.label || 'nincs kiválasztva'}`;
     if (block.type === 'conditionField') return `Feltétel: mezőérték ${operatorLabel(block.operator || 'contains')} ${short(block.value || '')}`;
@@ -384,6 +388,7 @@ const BF = (() => {
       return `${block.triggerEnabled === false ? 'inaktív' : 'aktív'} · ${triggerLogicLabel(block.logic || 'all')} · ${labels[scope] || scope}: ${detail} · ${block.throttleSec || 15} mp szünet`;
     }
     if (block.type === 'conditionText') return `${block.caseSensitive ? 'kis/nagybetű számít' : 'kis/nagybetű nem számít'} · ${short(block.text || '')}`;
+    if (block.type === 'clickTrigger') return block.target?.label || 'Nincs cél elem';
     if (block.type === 'conditionElement') return block.target?.label || 'Nincs cél elem';
     if (block.type === 'conditionField') return `${block.target?.label || 'nincs mező'} · ${operatorLabel(block.operator || 'contains')} · ${short(block.value || '')}`;
     if (block.type === 'conditionUrl') return `${operatorLabel(block.operator || 'contains')} · ${short(block.value || '')}`;
@@ -572,15 +577,17 @@ const BF = (() => {
     walkBlocks(workflow.blocks || [], b => {
       if (b.type === 'trigger') starterCount++;
       if (b.type === 'triggerGroup' && b.triggerEnabled !== false) starterCount++;
+      if (b.type === 'clickTrigger' && b.triggerEnabled !== false) starterCount++;
       if (b.type === 'scheduledTrigger' && b.triggerEnabled !== false) starterCount++;
     });
-    if (!starterCount) issues.push({ level:'error', blockId:null, text:'Hiányzik az aktív indító blokk. Legalább egy szükséges: Indítás vagy aktív Figyelő trigger.' });
+    if (!starterCount) issues.push({ level:'error', blockId:null, text:'Hiányzik az aktív indító blokk. Legalább egy szükséges: Indítás, aktív Figyelő trigger, Kattintás trigger vagy Időzített indítás.' });
 
     const needsTarget = ['click','fill','selectOption','extract','rowLoop'];
     function hasDynamicTarget(b) { return b && b.targetMode && b.targetMode !== 'manual' && String(b.targetVar || '').trim(); }
     walkBlocks(workflow.blocks || [], b => {
       if (needsTarget.includes(b.type) && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:`${BLOCKS[b.type]?.name || b.type}: hiányzik a cél elem.` });
       if (b.type === 'triggerGroup' && b.triggerEnabled !== false && !(b.children || []).length) issues.push({ level:'error', blockId:b.id, text:'Figyelő trigger: legalább egy feltétel szükséges.' });
+      if (b.type === 'clickTrigger' && b.triggerEnabled !== false && !b.target) issues.push({ level:'error', blockId:b.id, text:'Kattintás trigger: hiányzik a figyelt cél elem.' });
       if ((b.type === 'conditionElement' || b.type === 'conditionField' || b.type === 'conditionChange') && !b.target) issues.push({ level:'error', blockId:b.id, text:`${BLOCKS[b.type]?.name || b.type}: hiányzik a cél elem.` });
       if (b.type === 'wait' && b.waitMode === 'element' && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:'Várakozás elemre: hiányzik a cél elem.' });
       if (b.type === 'ifBlock' && ['elementExists','valueContains'].includes(b.conditionMode) && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:'Ha blokk: hiányzik a cél elem.' });
