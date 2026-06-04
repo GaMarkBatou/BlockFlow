@@ -410,17 +410,59 @@ const BF = (() => {
 
   function short(s, n=90){ s=String(s||''); return s.length>n?s.slice(0,n-1)+'…':s; }
 
+  function prepareDefaultWorkflows(payload) {
+    const incoming = Array.isArray(payload?.workflows) ? payload.workflows : (payload?.blocks ? [payload] : []);
+    const stamp = new Date().toISOString();
+    return incoming.filter(w => w && Array.isArray(w.blocks)).map(w => ({
+      ...w,
+      id: w.id || crypto.randomUUID(),
+      source: w.source || 'default',
+      defaultSource: true,
+      imported: w.imported === true,
+      verified: w.verified === true,
+      importedAt: w.importedAt || stamp,
+      updatedAt: w.updatedAt || stamp,
+      name: w.name || 'Alap automatizmus'
+    }));
+  }
+
+  async function loadDefaultWorkflowsIfAvailable() {
+    try {
+      const response = await fetch(chrome.runtime.getURL('default.json'), { cache: 'no-store' });
+      if (!response.ok) return [];
+      const payload = await response.json();
+      return prepareDefaultWorkflows(payload);
+    } catch (err) {
+      console.warn('Default automatizmusok betöltése sikertelen:', err);
+      return [];
+    }
+  }
+
   async function getStore() {
-    const data = await chrome.storage.local.get(['workflows', 'activeWorkflowId', 'templates']);
-    let workflows = data.workflows || [];
+    const data = await chrome.storage.local.get(['workflows', 'activeWorkflowId', 'templates', 'defaultsImported']);
+    let workflows = Array.isArray(data.workflows) ? data.workflows : [];
+    let templates = Array.isArray(data.templates) ? data.templates : defaultTemplates();
+
+    if (!workflows.length && data.defaultsImported !== true) {
+      const defaultWorkflows = await loadDefaultWorkflowsIfAvailable();
+      if (defaultWorkflows.length) {
+        workflows = defaultWorkflows;
+        const activeWorkflowId = workflows[0].id;
+        await chrome.storage.local.set({ workflows, activeWorkflowId, templates, defaultsImported: true });
+        return { workflows, activeWorkflowId, templates };
+      }
+      await chrome.storage.local.set({ defaultsImported: true });
+    }
+
     if (!workflows.length) {
       const w = DEFAULT_WORKFLOW();
       workflows = [w];
-      await chrome.storage.local.set({ workflows, activeWorkflowId: w.id, templates: defaultTemplates() });
-      return { workflows, activeWorkflowId: w.id, templates: defaultTemplates() };
+      await chrome.storage.local.set({ workflows, activeWorkflowId: w.id, templates });
+      return { workflows, activeWorkflowId: w.id, templates };
     }
-    if (!Array.isArray(data.templates)) await chrome.storage.local.set({ templates: defaultTemplates() });
-    return { workflows, activeWorkflowId: data.activeWorkflowId || workflows[0].id, templates: Array.isArray(data.templates) ? data.templates : defaultTemplates() };
+
+    if (!Array.isArray(data.templates)) await chrome.storage.local.set({ templates });
+    return { workflows, activeWorkflowId: data.activeWorkflowId || workflows[0].id, templates };
   }
 
   function defaultTemplates() {

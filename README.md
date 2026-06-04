@@ -1,4 +1,4 @@
-# BlockFlow Automation MVP 0.49
+# BlockFlow Automation MVP 0.50
 
 BlockFlow egy lokális Chrome extension, amellyel általános weboldalakon lehet böngészőautomatizmusokat összeállítani vizuális, blokkos felületen. A cél az, hogy a gyakori adminisztrációs, adatgyűjtési, email-előkészítési, figyelési és riportkészítési folyamatokat programozás nélkül lehessen felépíteni.
 
@@ -390,6 +390,12 @@ A figyelő storage szinkronizálása úgy működik, hogy mentéskor az adott wo
 
 Az extension reload/frissítés utáni régi content script példányok csendesen leállítják a figyelő loopot, így az `Extension context invalidated` hiba nem ismétlődik folyamatosan.
 
+
+
+## Default automatizmusok
+
+Az extension támogatja a gyökérkönyvtárban található `default.json` fájlt. Ez a meglévő import/export formátummal kompatibilis, ezért egy exportált BlockFlow JSON átnevezhető `default.json`-ra. Új, üres telepítésnél az extension első induláskor betölti a benne lévő workflow-kat. Ha már vannak workflow-k, nem importálja újra, így nem duplikál és nem ír felül meglévő automatizmusokat.
+
 ## Ismert korlátok
 
 - Chrome belső oldalakon, Chrome Web Store oldalon és tiltott oldalaknál content script nem fut.
@@ -413,7 +419,7 @@ Az extension reload/frissítés utáni régi content script példányok csendese
 
 ## Változásnapló
 
-### v0.49
+### v0.50
 
 - Új indító blokk: **Kattintás trigger**. A workflow automatikusan indul, amikor a felhasználó a kiválasztott oldalelemen kattint.
 - A Kattintás trigger támogatja a scope beállításokat: domain, path, pontos URL, URL tartalmazza, bármely oldal.
