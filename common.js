@@ -760,5 +760,104 @@ const BF = (() => {
     return n;
   }
 
-  return { SCHEMA_VERSION, DEFAULT_WORKFLOW, BLOCKS, PALETTE, newBlock, blockTitle, blockDesc, triggerLogicLabel, operatorLabel, changeModeLabel, blockOutputSpec, blockCapabilities, analyzeWorkflowCompatibility, getStore, saveWorkflow, setActiveWorkflow, downloadJson, exportPayload, analyzeImport, importPayload, sendToTarget, getTargetTab, collectVariables, collectVariableRefs, validateWorkflow, getTemplates, saveTemplates, getVersions, pushVersion, countBlocks, walkBlocks, short };
+
+
+  const I18N = {
+    selected: 'auto',
+    active: 'hu',
+    fallback: 'hu',
+    languages: [],
+    dict: {},
+    fallbackDict: {},
+    loaded: false
+  };
+
+  async function fetchJson(path, fallback = {}) {
+    try {
+      const url = chrome.runtime?.getURL ? chrome.runtime.getURL(path) : path;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(String(res.status));
+      return await res.json();
+    } catch (err) {
+      console.warn('BlockFlow i18n load failed:', path, err);
+      return fallback;
+    }
+  }
+
+  function normalizeLanguage(code) {
+    return String(code || 'hu').toLowerCase().split('-')[0];
+  }
+
+  function resolveLanguage(selected, languages) {
+    const list = (languages || []).filter(l => l.code && l.code !== 'auto');
+    const supported = new Set(list.map(l => l.code));
+    if (selected && selected !== 'auto' && supported.has(selected)) return selected;
+    const browser = normalizeLanguage(navigator.language || 'hu');
+    return supported.has(browser) ? browser : (I18N.fallback || 'hu');
+  }
+
+  async function initI18n() {
+    const meta = await fetchJson('locales/languages.json', { fallback: 'hu', languages: [{ code:'auto', nativeName:'Auto' }, { code:'hu', nativeName:'Magyar', file:'hu.json' }] });
+    I18N.languages = meta.languages || [];
+    I18N.fallback = meta.fallback || 'hu';
+    let selected = meta.default || 'auto';
+    try {
+      const store = await chrome.storage.local.get(['uiLanguage']);
+      selected = store.uiLanguage || selected;
+    } catch {}
+    I18N.selected = selected;
+    I18N.active = resolveLanguage(selected, I18N.languages);
+    const activeInfo = I18N.languages.find(l => l.code === I18N.active) || { file: I18N.active + '.json' };
+    const fallbackInfo = I18N.languages.find(l => l.code === I18N.fallback) || { file: I18N.fallback + '.json' };
+    I18N.fallbackDict = await fetchJson('locales/' + (fallbackInfo.file || (I18N.fallback + '.json')), {});
+    I18N.dict = I18N.active === I18N.fallback ? I18N.fallbackDict : await fetchJson('locales/' + (activeInfo.file || (I18N.active + '.json')), {});
+    I18N.loaded = true;
+    applyBlockTranslations();
+    applyI18nToDom(document);
+    return I18N;
+  }
+
+  async function setLanguage(code) {
+    try { await chrome.storage.local.set({ uiLanguage: code || 'auto' }); } catch {}
+    I18N.loaded = false;
+    await initI18n();
+    return I18N;
+  }
+
+  function t(key, vars) {
+    const str = Object.prototype.hasOwnProperty.call(I18N.dict, key) ? I18N.dict[key]
+      : (Object.prototype.hasOwnProperty.call(I18N.fallbackDict, key) ? I18N.fallbackDict[key] : key);
+    if (!vars) return str;
+    return String(str).replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : '');
+  }
+
+  function applyBlockTranslations() {
+    for (const [type, meta] of Object.entries(BLOCKS)) {
+      const name = t('block.' + type + '.name');
+      const desc = t('block.' + type + '.desc');
+      if (name && !name.startsWith('block.')) meta.name = name;
+      if (desc && !desc.startsWith('block.')) meta.desc = desc;
+    }
+    PALETTE.forEach(item => {
+      if (!item.__catKey) item.__catKey = item.cat;
+      const cat = t('category.' + item.__catKey);
+      if (cat && !cat.startsWith('category.')) item.cat = cat;
+    });
+  }
+
+  function applyI18nToDom(root = document) {
+    if (!root?.querySelectorAll) return;
+    root.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+    root.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = t(el.dataset.i18nTitle); });
+    root.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = t(el.dataset.i18nPlaceholder); });
+    const html = document.documentElement;
+    if (html) html.lang = I18N.active || 'hu';
+  }
+
+  function languageLabel(code) {
+    const item = I18N.languages.find(l => l.code === code) || I18N.languages.find(l => l.code === I18N.active);
+    return item?.nativeName || item?.label || String(code || '').toUpperCase();
+  }
+
+  return { SCHEMA_VERSION, DEFAULT_WORKFLOW, BLOCKS, PALETTE, newBlock, blockTitle, blockDesc, triggerLogicLabel, operatorLabel, changeModeLabel, blockOutputSpec, blockCapabilities, analyzeWorkflowCompatibility, getStore, saveWorkflow, setActiveWorkflow, downloadJson, exportPayload, analyzeImport, importPayload, sendToTarget, getTargetTab, collectVariables, collectVariableRefs, validateWorkflow, getTemplates, saveTemplates, getVersions, pushVersion, countBlocks, walkBlocks, short, initI18n, setLanguage, t, applyI18nToDom, get i18n(){ return I18N; }, languageLabel };
 })();

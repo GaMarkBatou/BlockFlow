@@ -9,6 +9,8 @@ let currentTargetPath = '/';
 let isDirty = false;
 let paletteCollapsed = {};
 try { paletteCollapsed = JSON.parse(localStorage.getItem('bf_palette_collapsed') || '{}') || {}; } catch { paletteCollapsed = {}; }
+let workflowListCollapsed = localStorage.getItem('bf_workflow_list_collapsed') === 'true';
+let workflowListQuery = localStorage.getItem('bf_workflow_list_query') || '';
 let recorderState = { active: false, paused: false, startedAt: 0, count: 0 };
 
 const $ = sel => document.querySelector(sel);
@@ -24,6 +26,7 @@ function normalizeFieldValue(field, value) {
 }
 
 async function init() {
+  await BF.initI18n();
   const store = await BF.getStore();
   workflows = store.workflows;
   workflows.forEach(w => normalizeWorkflow(w));
@@ -351,7 +354,54 @@ async function stopRecording() {
 }
 
 function renderWorkflowList() {
-  $('#workflowList').innerHTML = workflows.map(w => `<div class="list-item ${w.id===activeWorkflow.id?'selected':''}" data-workflow-row="${w.id}">
+  const toggle = $('#workflowListToggle');
+  const caret = $('#workflowListCaret');
+  const count = $('#workflowListCount');
+  const controls = $('#workflowListControls');
+  const search = $('#workflowSearch');
+  const listEl = $('#workflowList');
+  if (!listEl) return;
+
+  const query = String(workflowListQuery || '').trim().toLowerCase();
+  const filtered = query
+    ? workflows.filter(w => String(w.name || '').toLowerCase().includes(query) || String(w.id || '').toLowerCase().includes(query))
+    : workflows.slice();
+
+  if (count) count.textContent = workflowListCollapsed
+    ? `${workflows.length} db`
+    : (query ? `${filtered.length}/${workflows.length}` : `${workflows.length}`);
+  if (caret) caret.textContent = workflowListCollapsed ? '▸' : '▾';
+  if (toggle) {
+    toggle.title = workflowListCollapsed ? BF.t('workflowList.open') : BF.t('workflowList.close');
+    toggle.onclick = () => {
+      workflowListCollapsed = !workflowListCollapsed;
+      localStorage.setItem('bf_workflow_list_collapsed', String(workflowListCollapsed));
+      renderWorkflowList();
+    };
+  }
+  if (controls) controls.hidden = workflowListCollapsed;
+  if (search) {
+    if (search.value !== workflowListQuery) search.value = workflowListQuery;
+    search.placeholder = BF.t('workflowList.searchPlaceholder');
+    search.oninput = () => {
+      workflowListQuery = search.value || '';
+      localStorage.setItem('bf_workflow_list_query', workflowListQuery);
+      renderWorkflowList();
+    };
+  }
+
+  if (workflowListCollapsed) {
+    const name = escapeHtml(activeWorkflow?.name || '-');
+    listEl.innerHTML = `<div class="workflow-summary"><span>${BF.t('workflowList.active')}:</span><b>${name}</b></div>`;
+    return;
+  }
+
+  if (!filtered.length) {
+    listEl.innerHTML = `<div class="empty small-empty">${escapeHtml(BF.t('workflowList.empty'))}</div>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(w => `<div class="list-item ${w.id===activeWorkflow.id?'selected':''}" data-workflow-row="${w.id}">
     <div class="list-title">${escapeHtml(w.name)}</div>
     <div class="muted">${BF.countBlocks ? BF.countBlocks(w.blocks) : (w.blocks||[]).length} blokk ${w.imported?' · importált':''} ${w.verified===false?' · nem ellenőrzött':''}</div>
     <div class="split" style="margin-top:8px"><button class="small" data-open="${w.id}">Megnyitás</button><button class="small danger" data-delwf="${w.id}">Törlés</button></div>
@@ -380,7 +430,6 @@ function renderWorkflowList() {
     renderAll();
   });
 }
-
 function renderPalette() {
   const selectedInfo = findBlock(selectedBlockId);
   const selected = selectedInfo?.block;
@@ -388,11 +437,11 @@ function renderPalette() {
   BF.PALETTE.forEach(p => (grouped[p.cat] ||= []).push(p));
   const needsStarter = !hasAnyStarter();
   const hint = needsStarter
-    ? `<div class="status warning-soft"><b>Válassz indítást.</b><br>Új automatizmusnál először kötelező egy indító blokk: Indítás, Figyelő trigger, Kattintás trigger vagy Időzített indítás. Addig más blokk nem adható hozzá.</div>`
+    ? `<div class="status warning-soft"><b>${BF.t('palette.chooseStarter')}</b><br>${BF.t('palette.chooseStarterHelp')}</div>`
     : (selected
-      ? `<div class="status">Új blokk kattintásra a kijelölt blokk után kerül: <b>${escapeHtml(BF.BLOCKS[selected.type]?.name || selected.type)}</b>. Konténer belsejébe továbbra is húzással teheted.</div>`
-      : `<div class="status muted">Nincs kijelölt blokk: az új blokk a workflow végére kerül. Jelölj ki egy blokkot, ha utána szeretnél beszúrni.</div>`);
-  const controls = `<div class="palette-tools"><button class="small" id="paletteOpenAll">Mind nyitása</button><button class="small" id="paletteCloseAll">Mind zárása</button></div>`;
+      ? `<div class="status">${BF.t('palette.insertAfter')}: <b>${escapeHtml(BF.BLOCKS[selected.type]?.name || selected.type)}</b>.</div>`
+      : `<div class="status muted">${BF.t('palette.noSelection')}</div>`);
+  const controls = `<div class="palette-tools"><button class="small" id="paletteOpenAll">${BF.t('palette.openAll')}</button><button class="small" id="paletteCloseAll">${BF.t('palette.closeAll')}</button></div>`;
   $('#palette').innerHTML = hint + controls + Object.entries(grouped).map(([cat, items]) => {
     const collapsed = Boolean(paletteCollapsed[cat]);
     return `<div class="palette-category ${collapsed ? 'collapsed' : ''}" data-palette-cat="${escapeAttr(cat)}">
@@ -1096,13 +1145,13 @@ function inspectorIntro(b) {
   const meta = BF.BLOCKS[b.type] || { name: b.type, desc: '' };
   const help = BLOCK_HELP[b.type] || { purpose: meta.desc || 'Ez a blokk a workflow egyik lépése.', params: ['A fő mezők a középső blokkon, a részletes opciók itt módosíthatók.'] };
   const params = Array.isArray(help.params) ? help.params : [];
-  return `<div class="inspector-current"><div class="list-title">${escapeHtml(meta.name || b.type)}</div><div class="inspector-help"><div><b>Mire jó?</b> ${escapeHtml(help.purpose || meta.desc || '')}</div>${params.length ? `<div class="help-list"><b>Paraméterek:</b><ul>${params.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul></div>` : ''}</div></div>`;
+  return `<div class="inspector-current"><div class="list-title">${escapeHtml(meta.name || b.type)}</div><div class="inspector-help"><div><b>${BF.t('inspector.purpose')}</b> ${escapeHtml(help.purpose || meta.desc || '')}</div>${params.length ? `<div class="help-list"><b>${BF.t('inspector.params')}</b><ul>${params.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul></div>` : ''}</div></div>`;
 }
 
 function renderInspector() {
   const b = findBlock(selectedBlockId)?.block;
   const changedBlock = b && b.id !== lastInspectorBlockId;
-  if (!b) { $('#inspector').innerHTML = '<div class="empty">Válassz blokkot.</div>'; return; }
+  if (!b) { $('#inspector').innerHTML = `<div class="empty">${BF.t('inspector.chooseBlock')}</div>`; return; }
   let html = inspectorIntro(b);
   if (['click','fill','selectOption','extract','conditionElement','conditionField','conditionChange','clickTrigger','tableExtract','scroll','keyPress','preflight','popupWindowExtract','iframeBlock','findElements','waitUntil','waitLoad','pageButton'].includes(b.type)) html += targetEditor(b);
   if (b.type === 'click') html += checkboxField('confirmRisky','Kockázatos kattintásnál kérjen megerősítést', b.confirmRisky !== false) + numberField('timeoutMs','Max várakozás ms', b.timeoutMs || 5000);
@@ -1915,8 +1964,8 @@ chrome.runtime.onMessage.addListener((msg) => {
 $('#workflowName').oninput = () => { activeWorkflow.name = $('#workflowName').value; markDirty(); renderWorkflowList(); };
 $('#publicLogEnabled').onchange = () => { activeWorkflow.publicLogEnabled = $('#publicLogEnabled').checked; markDirty(); renderWorkflowOptions(); };
 $('#saveWorkflow').onclick = async () => { await saveCurrent(); $('#log').textContent = 'Mentve.'; renderAll(); };
-$('#newWorkflow').onclick = async () => { await saveCurrent(); const w = BF.DEFAULT_WORKFLOW(); workflows.push(w); activeWorkflow = w; selectedBlockId = null; await BF.saveWorkflow(w); isDirty = false; renderAll(); };
-$('#duplicateWorkflow').onclick = async () => { const w = JSON.parse(JSON.stringify(activeWorkflow)); w.id = crypto.randomUUID(); w.name += ' másolat'; w.imported = false; w.verified = true; reidBlocks(w.blocks); workflows.push(w); activeWorkflow = w; selectedBlockId = firstBlock(w.blocks)?.id; await BF.saveWorkflow(w); renderAll(); };
+$('#newWorkflow').onclick = async () => { await saveCurrent(); const w = BF.DEFAULT_WORKFLOW(); workflows.push(w); activeWorkflow = w; selectedBlockId = null; workflowListCollapsed = false; localStorage.setItem('bf_workflow_list_collapsed', 'false'); await BF.saveWorkflow(w); isDirty = false; renderAll(); };
+$('#duplicateWorkflow').onclick = async () => { const w = JSON.parse(JSON.stringify(activeWorkflow)); w.id = crypto.randomUUID(); w.name += ' másolat'; w.imported = false; w.verified = true; reidBlocks(w.blocks); workflows.push(w); activeWorkflow = w; selectedBlockId = firstBlock(w.blocks)?.id; workflowListCollapsed = false; localStorage.setItem('bf_workflow_list_collapsed', 'false'); await BF.saveWorkflow(w); renderAll(); };
 $('#markVerified').onclick = async () => { activeWorkflow.verified = true; activeWorkflow.imported = false; await saveCurrent(); renderAll(); $('#log').textContent = 'Automatizmus ellenőrzöttként jelölve.'; };
 $('#validateWorkflow').onclick = async () => {
   renderValidation();
@@ -1948,6 +1997,8 @@ $('#importFile').onchange = async e => {
     $('#importPreview').textContent = `Import előnézet:\nSéma: ${analysis.schemaVersion}\nWorkflow-k: ${analysis.rawCount}\n\n` + analysis.workflows.map((w, i) => `- ${w.name}: ${w.blockCount} blokk, ${w.riskyCount} kockázatos/módosító blokk\n  Típusok: ${w.blocks.join(', ')}${compatLines[i] || ''}`).join('\n');
     if (!confirm(`${analysis.rawCount} workflow importálható. Importálod?`)) return;
     const imported = await BF.importPayload(payload);
+    workflowListCollapsed = false;
+    localStorage.setItem('bf_workflow_list_collapsed', 'false');
     const store = await BF.getStore(); workflows = store.workflows; activeWorkflow = workflows.find(w => w.id === store.activeWorkflowId); normalizeWorkflow(activeWorkflow); selectedBlockId = firstBlock(activeWorkflow.blocks)?.id; renderAll(); $('#log').textContent = `${imported.length} workflow importálva. Első futtatás előtt Dry-run javasolt.`;
   } catch(err) { alert(err.message); } finally { e.target.value=''; }
 };

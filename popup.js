@@ -1,10 +1,35 @@
 let workflows = [];
 const $ = s => document.querySelector(s);
 
+function renderLanguageControl(){
+  const btn = $('#langButton');
+  const code = BF.i18n.selected === 'auto' ? 'AUTO' : (BF.i18n.active || 'hu').toUpperCase();
+  const label = $('#langCode');
+  if (label) label.textContent = code;
+  if (!btn) return;
+  btn.onclick = () => {
+    const old = document.querySelector('.lang-menu');
+    if (old) { old.remove(); return; }
+    const menu = document.createElement('div');
+    menu.className = 'lang-menu';
+    menu.innerHTML = (BF.i18n.languages || []).map(l => `<button data-lang="${l.code}">${l.nativeName || l.label || l.code}</button>`).join('');
+    document.body.appendChild(menu);
+    menu.querySelectorAll('[data-lang]').forEach(x => x.onclick = async () => {
+      await BF.setLanguage(x.dataset.lang);
+      menu.remove();
+      BF.applyI18nToDom(document);
+      renderLanguageControl();
+      await init();
+    });
+  };
+}
+
 async function init(){
+  await BF.initI18n();
+  renderLanguageControl();
   const store = await BF.getStore();
   workflows = store.workflows;
-  $('#workflowSelect').innerHTML = workflows.map(w=>`<option value="${w.id}" ${w.id===store.activeWorkflowId?'selected':''}>${w.name}${w.verified===false?' · nem ellenőrzött':''}</option>`).join('');
+  $('#workflowSelect').innerHTML = workflows.map(w=>`<option value="${w.id}" ${w.id===store.activeWorkflowId?'selected':''}>${w.name}${w.verified===false?' · '+BF.t('workflow.unverifiedSuffix'):''}</option>`).join('');
 }
 
 $('#openBuilder').onclick = async () => {
@@ -14,7 +39,7 @@ $('#openBuilder').onclick = async () => {
 };
 
 $('#openSide').onclick = async () => {
-  $('#status').textContent = 'Sidebar nyitása...';
+  $('#status').textContent = BF.t('status.openingSidebar');
   try {
     if (!chrome.sidePanel?.open) throw new Error('A Chrome sidePanel API nem elérhető ebben a böngészőben. Friss Chrome szükséges.');
 
@@ -30,7 +55,7 @@ $('#openSide').onclick = async () => {
     // This must be called directly from the popup button's user gesture.
     // Do not proxy it through the service worker, otherwise Chrome rejects it.
     await chrome.sidePanel.open({ tabId: tab.id });
-    $('#status').textContent = 'Sidebar megnyitva.';
+    $('#status').textContent = BF.t('status.sidebarOpened');
   } catch (err) {
     $('#status').textContent = `Sidebar hiba: ${err?.message || err || 'ismeretlen hiba'}`;
   }
@@ -41,11 +66,11 @@ $('#run').onclick = async () => {
   const workflow = workflows.find(w=>w.id===$('#workflowSelect').value);
   if (!workflow) return;
   const validation = BF.validateWorkflow(workflow);
-  if (!validation.ok) { $('#status').textContent = 'Ellenőrzési hiba: ' + validation.issues.filter(i=>i.level==='error').map(i=>i.text).join('; '); return; }
-  if (validation.issues.length && !confirm('Az ellenőrzés figyelmeztetéseket talált. Folytatod?')) return;
-  if (workflow.verified === false && !confirm('Ez importált vagy nem ellenőrzött automatizmus. Javasolt előbb Dry-run módban tesztelni. Mégis futtatod?')) return;
-  $('#status').textContent='Futtatás...';
+  if (!validation.ok) { $('#status').textContent = BF.t('status.checkError') + ': ' + validation.issues.filter(i=>i.level==='error').map(i=>i.text).join('; '); return; }
+  if (validation.issues.length && !confirm(BF.t('confirm.validationWarnings'))) return;
+  if (workflow.verified === false && !confirm(BF.t('confirm.unverifiedWorkflow'))) return;
+  $('#status').textContent=BF.t('status.running');
   const res = await BF.sendToTarget({ type:'BF_RUN_WORKFLOW', workflow, options: { dryRun: false } });
-  $('#status').textContent = res?.response?.ok ? (res.response.result?.skipped ? 'Nem indult el: a figyelőfeltétel nem igaz.' : 'Kész.') : `Hiba: ${res?.response?.error || res?.error || 'ismeretlen'}`;
+  $('#status').textContent = res?.response?.ok ? (res.response.result?.skipped ? BF.t('status.notStarted') : BF.t('status.done')) : `${BF.t('status.error')}: ${res?.response?.error || res?.error || 'ismeretlen'}`;
 };
 init();

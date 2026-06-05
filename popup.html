@@ -1,14 +1,14 @@
 <!doctype html><html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BlockFlow</title><link rel="stylesheet" href="app.css"><link rel="stylesheet" href="popup.css"></head><body class="popup-body">
-  <div class="brand">BlockFlow</div>
+  <div class="brand">BlockFlow <button id="langButton" class="lang-button" title="Language">🌐 <span id="langCode">HU</span></button></div>
   <div class="card">
-    <button id="openSide" class="primary" style="width:100%">Sidebar megnyitása</button>
-    <button id="openBuilder" style="width:100%;margin-top:8px">Builder megnyitása</button>
+    <button id="openSide" class="primary" style="width:100%"><span data-i18n="popup.openSide">Sidebar megnyitása</span></button>
+    <button id="openBuilder" style="width:100%;margin-top:8px"><span data-i18n="popup.openBuilder">Builder megnyitása</span></button>
   </div>
   <div class="card">
-    <div class="section-title">Aktív automatizmus</div>
+    <div class="section-title" data-i18n="popup.activeWorkflow">Aktív automatizmus</div>
     <select id="workflowSelect" style="width:100%;padding:9px;border-radius:12px;border:1px solid var(--line)"></select>
-    <button id="run" class="primary" style="width:100%;margin-top:8px">Futtatás az aktuális oldalon</button>
+    <button id="run" class="primary" style="width:100%;margin-top:8px"><span data-i18n="popup.runCurrent">Futtatás az aktuális oldalon</span></button>
   </div>
-  <div id="status" class="status">Kész.</div>
+  <div id="status" class="status" data-i18n="status.ready">Kész.</div>
 <script src="common.js"></script><script src="popup.js"></script>
 </body></html>

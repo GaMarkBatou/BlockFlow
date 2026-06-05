@@ -1,373 +1,563 @@
-# BlockFlow Automation
+# BlockFlow Automation MVP 0.57
 
-BlockFlow egy lokális, vizuális Chrome/Chromium böngészőautomatizáló extension. Általános weboldalakon használható kattintások, mezőkitöltések, adatkinyerések, figyelők, riportok, email-előkészítések és felhasználói visszajelzéses folyamatok összeállítására programozás nélkül.
+BlockFlow egy lokális Chrome extension, amellyel általános weboldalakon lehet böngészőautomatizmusokat összeállítani vizuális, blokkos felületen. A cél az, hogy a gyakori adminisztrációs, adatgyűjtési, email-előkészítési, figyelési és riportkészítési folyamatokat programozás nélkül lehessen felépíteni.
 
-A projekt célja, hogy ismétlődő adminisztrációs és ellenőrzési feladatokat blokkos felületen lehessen felépíteni, tesztelni, exportálni és szükség esetén önálló mini extensionként futtatni.
+Az extension nem használ AI-t, és nem küld adatot külső szolgáltatásnak. A workflow-k, sablonok, lokális adatok és beállítások a Chrome extension storage-ban maradnak.
 
-## Fő tulajdonságok
+## Mire hasznos?
 
-- Vizuális, blokkos workflow-szerkesztő.
-- Manuális, figyelő, időzített és kattintás-alapú indítás.
-- Oldalelem-kiválasztás hover kerettel.
-- Kattintás, kitöltés, görgetés, várakozás, URL megnyitás.
-- Adatkinyerés látható és rejtett DOM-elemekből.
-- Szövegkeresés oldalon, dinamikus/virtualizált listákban is.
-- Feltételcsoportok, értékváltozás-figyelés, try/catch jellegű hibakezelés.
-- Email összeállítás `mailto:` alapon, automatikus küldés nélkül.
-- PDF és DOCX riportkészítés begyűjtött adatokból és képernyőképekből.
-- Screenshot, hangjelzés, rendszerértesítés, oldalba illesztett gomb.
-- Record mód egyszerű workflow-váz rögzítéséhez.
-- Public log: oldalon látható, letölthető futási napló debughoz.
-- Import/export, default automatizmusok, mini extension export.
-- Modern webapp-kompatibilitási fejlesztések React/Vue/Angular/ServiceNow jellegű rendszerekhez.
-
-## Adatkezelés és működési elv
-
-A BlockFlow lokálisan működik. Nem használ AI-t, és nem küld workflow-adatokat külső szolgáltatásnak.
-
-Tárolt adatok:
-
-- workflow-k;
-- sablonok;
-- beállítások;
-- lokális változók;
-- feltöltött hangok;
-- default import állapota;
-- futási/ellenőrzési metaadatok.
-
-Ezek a böngésző extension storage-ában vagy nagyobb lokális adatok esetén böngészőoldali lokális tárolásban maradnak.
+- weboldali mezők adatainak kinyerése
+- űrlapmezők kitöltése, kattintások automatizálása
+- oldalak figyelése szöveg, elem, mezőérték, URL vagy értékváltozás alapján
+- feltételes automatizmusok építése
+- email sablon összeállítása és `mailto:` ablak megnyitása
+- hosszú email törzs vágólapra másolása
+- screenshot készítése
+- PDF riport készítése begyűjtött adatokból és képernyőképekből
+- DOCX / Word riport készítése begyűjtött adatokból és screenshotokból
+- felhasználói visszajelzés kérése futás közben
+- rendszerértesítés és hangjelzés küldése
+- lokális adatok mentése és visszaolvasása
+- kész workflow exportálása önálló mini extensionként
 
 ## Telepítés fejlesztői módban
 
-1. Csomagold ki az extension ZIP-fájlt.
-2. Nyisd meg a böngésző extension-kezelő oldalát.
-3. Kapcsold be a fejlesztői módot.
-4. Válaszd a kicsomagolt extension betöltését.
-5. Tallózd be a kicsomagolt extension mappáját.
-6. Frissítsd újra azokat a céloldalakat, amelyeken automatizmust szeretnél futtatni.
-
-Megjegyzés: frissítés után érdemes bezárni és újranyitni a Builder ablakot is, hogy biztosan az aktuális fájlok fussanak.
-
-## Gyors kezdés
-
-1. Nyisd meg a Buildert az extension popupból.
-2. Hozz létre új automatizmust.
-3. Válassz indítót: manuális indítás, figyelő trigger, időzített indítás vagy kattintás trigger.
-4. Adj hozzá műveleti blokkokat.
-5. Válassz ki oldalelemeket a céloldalról, ha szükséges.
-6. Használj változókat `{{valtozo_nev}}` formában.
-7. Ellenőrizd vagy futtasd dry-run módban.
-8. Mentsd az automatizmust.
-9. Aktiváld a figyelőt, vagy futtasd manuálisan.
+1. Csomagold ki a ZIP fájlt.
+2. Nyisd meg: `chrome://extensions`.
+3. Kapcsold be a **Developer mode / Fejlesztői mód** kapcsolót.
+4. Kattints a **Load unpacked** gombra.
+5. Válaszd ki a kicsomagolt `blockflow-extension-v0.59` mappát.
+6. Frissítsd újra a már nyitott céloldalakat, hogy az új content script biztosan betöltődjön.
 
 ## Fő felületek
 
-### Popup
+### Toolbar popup
 
-Az extension ikonjára kattintva megjelenő kis vezérlő. Innen megnyitható a Builder, a Sidebar, illetve elindítható a kiválasztott workflow.
+Az extension ikonjára kattintva egy kis popup jelenik meg. Innen megnyitható a Builder, a Sidebar, illetve futtatható a kiválasztott workflow.
 
 ### Builder
 
-A fő szerkesztőfelület. Három fő részből áll:
+A Builder a fő szerkesztőfelület. Külön ablakban nyílik meg, hogy kényelmesebb legyen a workflow építése.
 
-- bal oldalon automatizmuslista és blokkpaletta;
-- középen az aktuális workflow blokklistája;
-- jobb oldalon a kiválasztott blokk beállításai, változók, ellenőrzés, sablonok, verziók, napló és import-előnézet.
+A Builder három fő részből áll:
 
-A blokkpaletta kategóriái összecsukhatók, a blokkbeszúrás a kijelölt blokk után történik, ha van aktív kijelölés.
+- bal oldalon: automatizmuslista és blokkpaletta
+- középen: az aktuális workflow blokklistája
+- jobb oldalon: beállítások, változók, ellenőrzés, figyelők, sablonok, verziók és napló
+
+A blokkpaletta kategóriái összecsukhatók, így nagyobb blokklista esetén kevesebbet kell görgetni.
 
 ### Sidebar
 
-Gyorsabb futtatásra és használatra szolgál, amikor nincs szükség a teljes Builder megnyitására.
+A Sidebar gyorsabb futtatásra és használatra való, amikor nem akarod a teljes Buildert megnyitni.
 
-## Blokk-kategóriák
+## Workflow indítása
 
-A palettában a blokkok funkció szerint csoportosítva jelennek meg. A főbb kategóriák:
+Új automatizmus létrehozásakor először indítóblokkot kell választani. Alapértelmezett blokk nem kerül automatikusan a workflow-ba.
 
-- Indítás
-- Figyelő feltételek
-- Műveletek
-- Adatkinyerés / Adat
-- Logika
-- Felhasználó
-- Email
-- PDF
-- DOCX
-- Táblázat
-- Popup / új ablak
-- Haladó
+Támogatott indítók:
 
-## Fontosabb funkciók röviden
+- **Indítás**: kézi futtatáshoz
+- **Figyelő trigger**: automatikus indításhoz feltételek alapján
+- **Időzített indítás**: időközönként vagy napi időpontban
 
-### Indítók
+Ha egy workflow csak Figyelő triggerrel indul, akkor a normál **Futtatás** gomb is ellenőrzi a figyelő feltételeket. Ha a feltétel nem igaz, a műveletek nem futnak le. Teszteléshez használható a **Kényszerített futtatás**, amely átugorja az indítófeltételeket.
 
-- **Indítás**: kézi futtatás.
-- **Figyelő trigger**: feltételek alapján automatikusan indul.
-- **Időzített indítás**: időközönként vagy időpontra.
-- **Kattintás trigger**: akkor indul, amikor a felhasználó egy kiválasztott oldalelemen kattint.
+## Figyelő trigger és figyelő feltételek
 
-### Figyelők
+A Figyelő trigger automatikusan ellenőrzi az oldalt, és csak akkor indítja a workflow-t, ha a benne lévő feltételek teljesülnek.
 
-A figyelők képesek szöveget, elemet, mezőértéket, URL-t vagy értékváltozást figyelni. Feltételcsoportokkal összetett logika is építhető.
+Feltételek:
 
-### Adatfolyam és változók
+- **Feltétel: szöveg**: szöveg/karakter megjelenik az oldalon
+- **Feltétel: elem**: elem létezik vagy látható
+- **Feltétel: mezőérték**: input/textarea/select vagy más elem értéke megfelel egy feltételnek
+- **Feltétel: URL**: az aktuális URL tartalmaz, pontosan egyezik, kezdődik vagy végződik valamivel
+- **Feltétel: érték változik**: előző figyelési körből a jelenlegi körre adott irányú változás történik
+- **Feltételcsoport**: logikai csoport a Figyelő triggeren belül
 
-A blokkok változókat állíthatnak elő. A változók `{{valtozo}}` formában használhatók emailben, PDF-ben, DOCX-ben, értesítésben, CSS-ben, URL-ben és több blokk beállításaiban.
+A Figyelő trigger és a Feltételcsoport logikája lehet:
 
-Általános futási változók:
+- minden feltétel igaz
+- bármelyik feltétel igaz
+- egyik feltétel sem igaz
 
-- `{{current_url}}`
-- `{{today}}`
-- `{{selected_text}}`
-- `{{last_result}}`
-- `{{last_text}}`
-- `{{last_value}}`
-- `{{last_selector}}`
-- `{{last_xpath}}`
-- `{{last_element}}`
-- `{{last_screenshot}}`
+Példa:
 
-### Modern webapp-kompatibilitás
+```text
+Figyelő trigger
+  Státusz változik: ebből → abba
+  Feltételcsoport: bármelyik igaz
+    Mező tartalmazza: Egyik érték
+    Mező tartalmazza: Másik érték
+```
 
-A rendszer több olyan megoldást tartalmaz, amely segíti a React/Vue/Angular/ServiceNow jellegű dinamikus oldalak kezelését:
+Ez azt jelenti, hogy a workflow csak akkor indul, ha a státuszváltozás megtörtént, és közben az adott mező az egyik vagy másik keresett értéket tartalmazza.
 
-- framework-kompatibilis mezőkitöltés;
-- input/change/blur események;
-- szimulált gépelés;
-- SPA navigáció figyelése;
-- Shadow DOM keresés;
-- belső görgethető konténerek kezelése;
-- virtualizált táblázatok/listák görgetéses keresése;
-- label/ARIA/data attribútum alapú elemkeresés.
+## Blokkok mozgatása és beszúrása
 
-### Public log
+A használt blokkoknál a mozgatógombok kontextusfüggők. Csak azok a gombok jelennek meg, amelyek az adott helyzetben használhatók.
 
-Workflow-szinten bekapcsolható. Futás közben az oldalon egy izolált, félig áttetsző naplópanel jelenik meg, amely mutatja a blokkok futását, az átadott értékeket, találatokat, selectorokat és hibákat. A napló TXT-ként letölthető.
+Példák:
 
-### Mini extension export
+- legfelső blokknál nincs felfelé mozgatás
+- legalul lévő blokknál nincs lefelé mozgatás
+- figyelőfeltétel nem húzható ki érvénytelen főszintre
+- konténeren belül a mozgatás az adott szinten történik
 
-Egy kész workflow külön, Builder nélküli mini extensionként exportálható. A generált extension csak a futtatáshoz szükséges workflow-t és runner logikát tartalmazza, szerkesztőfelületet nem.
+Ha a blokkpalettából kattintással adsz hozzá új blokkot, és van kijelölt blokk, akkor az új blokk közvetlenül a kijelölt blokk után kerül. Ha nincs kijelölt blokk, az új blokk a workflow végére kerül. A drag-and-drop továbbra is a húzással megadott célhelyet használja.
 
-### Default automatizmusok
+## Csoport blokk
 
-Az extension tartalmazhat `default.json` fájlt. Ez a meglévő import/export formátummal kompatibilis. Új telepítésnél, ha még nincs workflow, a default automatizmusok automatikusan betöltődhetnek.
+A Csoport blokk workflow-részek rendszerezésére való.
+
+Támogatott:
+
+- csoportszintű ki/bekapcsolás
+- összecsukás a Builderben
+- összecsukott nézetben a benne lévő blokkok ikonjainak megjelenítése
+
+Ha a csoport inaktív, a benne lévő blokkok futáskor kimaradnak, de nem törlődnek.
+
+## Elem kiválasztása az oldalról
+
+Több blokk használ oldalelem-kiválasztást:
+
+- Kattintás
+- Beillesztés / kitöltés
+- Adat kinyerése
+- Feltétel: elem
+- Feltétel: mezőérték
+- Feltétel: érték változik
+- Görgetés
+- Táblázatból kinyerés
+- Popup/új ablak adatkinyerés
+
+A kiválasztó a cél tabot fókuszálja, hover kerettel jelzi az aktuális elemet, majd stabil elemleírást ment. A kinyerésnél több azonosítót is használhat: ID, CSS selector, XPath, label, ARIA, title, valamint enterprise rendszerekben gyakori technikai mezőazonosítókat.
+
+## Modern webapp / ServiceNow / SNOW kompatibilitás
+
+A BlockFlow DOM-alapú általános automatizáló, de több modern webapp-kompatibilitási fejlesztést is tartalmaz.
+
+Támogatott irányok:
+
+- framework-kompatibilis kitöltés React/Vue/Angular/SNOW jellegű felületekhez
+- `input`, `change` és `blur` események küldése kitöltés után
+- szimulált gépelés érzékeny mezőkhöz
+- SPA navigáció figyelése: `pushState`, `replaceState`, `popstate`, `hashchange`
+- Shadow DOM keresés több elem-alapú blokknál
+- elem újrakeresése minden művelet előtt
+- custom/dropdown komponensek kezelése
+- ServiceNow/SNOW jellegű attribútumok figyelése, például `aria-label`, `role`, `data-testid`, `data-field`, `data-name`
+
+## Adat kinyerése
+
+Az **Adat kinyerése** blokk képes:
+
+- input/textarea/select érték olvasására
+- látható szöveg olvasására
+- HTML tartalom olvasására
+- attribútum olvasására, például `title`, `aria-label`, `placeholder`
+- teljes DOM-ban, akár rejtett vagy inaktív fülön lévő mezők között is keresni
+
+Ez különösen hasznos olyan enterprise rendszereknél, ahol az oldal HTML-je már betöltődött, de az adat éppen nem látható aktív fülön.
+
+## Szöveg keresése az oldalon
+
+A **Szöveg keresése az oldalon** blokk egyszerű, regex nélküli keresésre való.
+
+Beállítható:
+
+- keresett szöveg
+- tartalmazza vagy pontos egyezés
+- kis/nagybetű érzékenység
+- látható szövegben, teljes DOM-ban vagy teljes oldalon keressen
+- input/textarea/select értékeket is figyeljen-e
+- attribútumokat is figyeljen-e, például `title`, `aria-label`, `placeholder`, `alt`
+- dinamikus/virtualizált oldalon görgetéssel is keressen
+
+Visszaadott változók:
+
+- `{{szoveg_talalat}}`: true / false
+- `{{szoveg_talalat_db}}`: találatok száma
+- `{{szoveg_talalat_szoveg}}`: első találat környezete
+- `{{szoveg_talalat_hely}}`: hol találta meg
+- `{{szoveg_talalat_selector}}`: CSS selector
+- `{{szoveg_talalat_xpath}}`: XPath
+- `{{szoveg_talalat_lista}}`: első találatok rövid listája
+- `{{szoveg_talalat_sor_selector}}`: találathoz tartozó sor selector
+- `{{szoveg_talalat_click_selector}}`: közeli/kattintható elem selector
+- `{{szoveg_talalat_panel_selector}}`: közeli panel/kártya selector
+- `{{szoveg_talalat_gomb_selector}}`: közeli gomb selector
+
+Ez akkor hasznos, ha egy oldalról nem konkrét mezőt akarsz kinyerni, hanem meg akarod tudni, hogy egy kifejezés hol szerepel, és később a találat környezetében akarsz kattintani vagy adatot gyűjteni.
+
+## Görgetés és dinamikus oldalak
+
+A Görgetés blokk nem csak az egész oldalt tudja görgetni, hanem belső görgethető konténert is kezelhet.
+
+Görgetési célok:
+
+- automatikus
+- teljes oldal
+- cél elem legközelebbi görgethető konténere
+- kézzel kiválasztott görgethető konténer
+
+A **Görgetés szövegig** mód addig görget, amíg a keresett szöveg meg nem jelenik, vagy el nem éri a megadott próbálkozási limitet. Ez olyan oldalakon hasznos, ahol a lista vagy táblázat csak a látható elemeket tölti be.
+
+## Adatkezelő blokkok
+
+Elérhető adatblokkok:
+
+- Változó beállítása
+- Adat átalakítása
+- Szövegrész kinyerése
+- Regex keresés
+- Szöveg keresése az oldalon
+- Maszkolás
+- Vágólapról beolvasás
+- Lokális mentés
+- Lokális beolvasás
+- Összehasonlítás
+- Számítás
+- Adat validálása
+- Hibaüzenet keresése
+- Mező keresése címke alapján
+
+A változókat `{{valtozonev}}` formában lehet használni. A jobb oldali Változók panelen a változó chipek kattinthatók: kattintásra a teljes `{{valtozonev}}` szöveg vágólapra kerül.
+
+## Maszkolás
+
+A Maszkolás blokk karakterek vagy sorok alapján tud adatot maszkolni.
+
+Támogatott:
+
+- karakteralapú maszkolás
+- soralapú maszkolás
+- invert maszkolás
+- üres maszk karakter
+- üres maszkolt sor szöveg
+- Clear / trim mód, amikor a maszkolandó rész törlődik
+
+Így érzékeny adatok PDF, DOCX vagy email előtt tisztíthatók.
+
+## Táblázatok és listák
+
+A Táblázatból kinyerés blokk támogatja:
+
+- első / utolsó / N. sor kiválasztását
+- fejlécnév alapján oszlop választását
+- üres sorok kezelését
+- virtualizált lista/tábla görgetéses keresését
+
+A modern webappokban gyakori, hogy a táblázat csak a látható sorokat tartja a DOM-ban. Ilyenkor a görgetéses keresés segíthet a később betöltődő sorok elérésében.
+
+## Email funkciók
+
+Az extension nem küld emailt automatikusan.
+
+Email blokkok:
+
+- Email összeállítása
+- Email sablon használata
+- Email előnézet
+- Email megnyitása
+
+Az Email megnyitása blokk `mailto:` linket nyit. Ha az email törzse túl hosszú a mailto linkhez, akkor a törzs vágólapra kerül, és a levelező csak címzettel/tárggyal nyílik meg.
+
+## PDF funkciók
+
+A PDF kategória külön blokkcsoportként szerepel.
+
+PDF blokkok:
+
+- PDF indítása
+- PDF szöveg hozzáadása
+- PDF táblázat hozzáadása
+- PDF screenshot hozzáadása
+- PDF új oldal
+- PDF mentése / előnézet
+
+A PDF blokkokkal begyűjtött adatokból és screenshotokból riport készíthető. A blokkok támogatják a változókat.
+
+PDF opciók:
+
+- fájlnév
+- A4 / Letter / Legal
+- álló / fekvő tájolás
+- margó
+- betűméret
+- fejléc / lábléc
+- szövegstílus
+- táblázatszegély
+- screenshot méretezés
+- letöltés / előnézet / letöltés + előnézet
+
+Az előnézet közvetlen PDF blob URL-t nyit meg új tabon. Helyes fájlnévhez a **Letöltés** vagy **Letöltés + előnézet** mód ajánlott.
+
+## DOCX funkciók
+
+A DOCX kategória szerkeszthető Word-riportok készítésére való.
+
+DOCX blokkok:
+
+- DOCX indítása
+- DOCX szöveg hozzáadása
+- DOCX táblázat hozzáadása
+- DOCX screenshot / kép hozzáadása
+- DOCX új oldal
+- DOCX mentése
+
+A DOCX blokkok a PDF blokkokhoz hasonlóan változókat használnak, de a végeredmény szerkeszthető `.docx` fájl. Ha a DOCX mentése blokk nem ad meg külön fájlnevet, akkor a DOCX indítása blokk fájlnevét használja.
+
+## Felhasználói visszajelzés és értesítés
+
+Blokkok:
+
+- Felhasználói üzenet
+- Adat bekérése
+- Választás kérése
+- Rendszerértesítés
+- Hangjelzés
+
+A visszajelzésre váró blokkok külön extension ablakot használnak, nem weboldalba injektált overlayt. Ez stabilabb, mert nem függ a weboldal CSS-étől.
+
+A Hangjelzés blokk támogat beépített hangokat és saját feltöltött hangot is.
+
+## Képernyőkép
+
+A Képernyőkép blokk a Chrome `captureVisibleTab` jellegű működésére épül, ezért csak az aktív/látható tabról tud képet készíteni.
+
+Módok:
+
+- előnézet új tabon
+- PNG letöltés
+- vágólapra másolás
+- csak változóba mentés
+
+## Record mód
+
+A Builder középső munkaterületének tetején, az automatizáció neve mellett található a **Rec** gomb. Record indításakor a céloldalon végzett alapműveletek workflow-vázzá alakulnak.
+
+Rögzített műveletek:
+
+- kattintás
+- mezőkitöltés / select / checkbox változás
+- Enter, Tab, Escape billentyű
+- hosszabb szünetekből egyszerű Várakozás blokk
+
+Record közben csak a **Pause** és **Stop** gombok jelennek meg. Stop után a rögzített műveletekből normál, szerkeszthető blokkok készülnek. Jelszó vagy érzékenynek tűnő mezők értékét a recorder nem menti el konkrét szövegként.
+
+## Mini extension export
+
+A Mini extension export kész workflow-ból Builder nélküli, önálló futtató Chrome extension ZIP-et generál.
+
+A generált extension tartalmazza:
+
+- manifest
+- background/content runtime
+- beégetett fő workflow
+- meghívott workflow-k, ha a fő workflow másik automatizmust hív meg
+- figyelők/időzítők futtatásához szükséges runtime
+
+Nem tartalmazza:
+
+- Buildert
+- Sidebar-t
+- blokkpalettát
+- beállítási UI-t
+- dry-run vagy validációs UI-t
+
+## Import / export / verziók
+
+Támogatott:
+
+- egy workflow exportálása
+- teljes export
+- import
+- import előnézet
+- ellenőrzött / nem ellenőrzött jelzés
+- mentett verziók visszaállítása
+- mini extension export
+
+Importált workflow futtatása előtt javasolt ellenőrzést és dry-runt használni.
+
+## Futtatásbiztonság és hibakezelés
+
+A workflow-k validálhatók futtatás előtt. A napló jelzi, melyik blokk futott, és hiba esetén hol akadt el.
+
+A figyelő storage szinkronizálása úgy működik, hogy mentéskor az adott workflow régi watcher rekordjai törlődnek, és csak az aktív figyelő blokkokból jönnek létre új figyelők.
+
+Az extension reload/frissítés utáni régi content script példányok csendesen leállítják a figyelő loopot, így az `Extension context invalidated` hiba nem ismétlődik folyamatosan.
+
+
+
+## Default automatizmusok
+
+Az extension támogatja a gyökérkönyvtárban található `default.json` fájlt. Ez a meglévő import/export formátummal kompatibilis, ezért egy exportált BlockFlow JSON átnevezhető `default.json`-ra. Új, üres telepítésnél az extension első induláskor betölti a benne lévő workflow-kat. Ha már vannak workflow-k, nem importálja újra, így nem duplikál és nem ír felül meglévő automatizmusokat.
 
 ## Ismert korlátok
 
-- Böngésző belső oldalain és tiltott extension-területeken content script nem fut.
-- Cross-origin iframe tartalma böngészőbiztonsági okból nem mindig hozzáférhető.
+- Chrome belső oldalakon, Chrome Web Store oldalon és tiltott oldalaknál content script nem fut.
+- Cross-origin iframe tartalma böngészőbiztonsági okból nem mindig olvasható.
 - Screenshot csak aktív/látható tabról készíthető.
 - `mailto:` viselkedése függ az operációs rendszertől és az alapértelmezett levelezőprogramtól.
 - Automatikus emailküldés nincs és szándékosan nem része a működésnek.
-- Dinamikus/virtualizált listákban a keresés csak a betöltött vagy görgetéssel elérhető elemekre támaszkodhat.
-- Céges böngészőpolicy korlátozhatja a vágólap, értesítés, fejlesztői mód vagy extension-telepítés működését.
+- PDF előnézetnél a böngésző saját PDF viewerének mentése blob névből dolgozhat; helyes fájlnévhez a BlockFlow Letöltés módját használd.
+
+## Javasolt használati minta
+
+1. Hozz létre új automatizmust.
+2. Válassz indítást: Indítás, Figyelő trigger vagy Időzített indítás.
+3. Válaszd ki az oldalról a szükséges elemeket.
+4. Nyerd ki az adatokat változókba.
+5. Tisztítsd, maszkoljad vagy validáld az adatokat.
+6. Építs emailt, PDF vagy DOCX riportot.
+7. Ellenőrizd a workflow-t.
+8. Futtasd dry-run módban.
+9. Ha rendben van, futtasd élesben vagy aktiváld a figyelőt.
 
 ## Változásnapló
 
-### v0.58
-
-- Public log megjelenítési javítás: a panel Shadow DOM-mal izolált lett, így az oldal CSS-e nem tudja összenyomni vagy elrontani.
-- Stabil minimális magasság, külön fejléc, naplótest és TXT letöltési gomb.
-- A public log panel megjelenése dinamikus/összetett oldalakon is stabilabb lett.
-
-### v0.57
-
-- Public log funkció bevezetése workflow-szintű kapcsolóval.
-- Futás közben az oldalon jobb oldali, félig áttetsző naplópanel jelenik meg.
-- A napló mutatja a blokkok futását, átadott értékeket, selectorokat, találatokat, hibákat és a futás végét.
-- TXT debug log letöltése bekerült.
-- Felhasználói interakciós ablakok minimális testreszabása: ablakstílus, kiemelő szín, méret.
-- Központi blokk-meta / output rendszer alapja bekerült.
-- Import audit és verzió panel képességlistával és blokk-szám diff jelzéssel bővült.
-- Blokk tesztelése több adatkinyerő blokknál részletesebb eredményt ad.
-
-### v0.56
-
-- Átfogó minőségi audit és stabilitási javítások.
-- Görgetés blokk beállítás-renderelési hiba javítva.
-- Numeric mezők egységesebb kezelése.
-- Workflow-váltáskor kevesebb felesleges mentés és storage-írás történik.
-- Változó chipek vágólapra másolása hibatűrőbb lett.
-- Validáció bővült hiányzó célok és kötelező értékek felismerésével.
-- Szövegkeresés találati kontextusának feldolgozása hatékonyabb lett.
-- Mező keresése címke alapján blokk jobban tölti a `last_*` változókat.
-
-### v0.55
-
-- Javítva az Oldalba illesztett gomb beállításainál előforduló `targetPickerHtml is not defined` hiba.
-- Cél elem választó kompatibilitási alias bekerült a régi és új inspector hívásokhoz.
-
-### v0.54
-
-- Oldalba illesztett gomb elem elé / elem után elhelyezése javítva.
-- A felesleges „csak jelenítse meg” mód kikerült.
-- Új Custom elhelyezés: bal/jobb/felső/alsó távolság px/% egységgel és z-index beállítással.
-
 ### v0.53
 
-- Új **Felhasználó** blokk-kategória.
-- Ide kerültek a felhasználói interakciós blokkok: Felhasználói üzenet, Oldalba illesztett gomb, Adat bekérése, Választás kérése, Rendszerértesítés, Hangjelzés.
-- Az Oldalba illesztett gomb láthatóvá vált a blokkpalettában.
+- Új indító blokk: **Kattintás trigger**. A workflow automatikusan indul, amikor a felhasználó a kiválasztott oldalelemen kattint.
+- A Kattintás trigger támogatja a scope beállításokat: domain, path, pontos URL, URL tartalmazza, bármely oldal.
+- A Kattintás trigger mentéskor watcher rekordként szinkronizálódik, és a mini extension exportba is bekerül.
+- Az **URL megnyitása** blokk ellenőrizve/megőrizve a Műveletek kategóriában: aktuális tab, új tab vagy új ablak móddal használható.
 
-### v0.52
-
-- Új blokk: **Várj betöltésre**.
-- Támogatott módok: automatikus, oldal betöltődött, DOM stabil, spinner eltűnt, kiválasztott elem megjelent, kiválasztott elem kattintható.
-- Timeout és timeout esetén folytatás/leállás opciók.
-
-### v0.51
-
-- Új blokk: **Oldalba illesztett gomb**.
-- A workflow várhat arra, hogy a felhasználó az aktuális oldalon megjelenő gombra kattintson.
-- Támogatott elhelyezések: sarkok, középen alul, kiválasztott elem elé/után.
-- Eredményváltozók: kattintott-e, kattintás ideje.
-
-### v0.50
-
-- `default.json` támogatás alapértelmezett automatizmusokhoz.
-- A default fájl kompatibilis a meglévő import/export formátummal.
-- Első induláskor, üres workflow-lista esetén automatikusan betölthetők az alap automatizmusok.
-
-### v0.49
-
-- Új indító blokk: **Kattintás trigger**.
-- A workflow akkor indulhat, amikor a felhasználó egy kiválasztott oldalelemen kattint.
-- URL megnyitása blokk ellenőrizve és dokumentálva a Műveletek kategóriában.
-- Kattintás trigger támogatás bekerült a mini extension exportba is.
 
 ### v0.48
 
-- Edge alatt stabilabb Builder workflow-váltás.
-- A workflow-váltás először memóriában történik, a storage mentés nem blokkolja a UI-váltást.
-- Importált workflow „nem ellenőrzött” jelzése sikeres ellenőrzés, dry-run, futtatás vagy kényszerített futtatás után eltűnik.
-- Módosítás után a workflow újra ellenőrizetlen állapotba kerülhet.
+- Edge kompatibilitási javítás a Builder workflow-váltásához.
+  - Az automatizmus kiválasztása most lokális Builder state-ből azonnal történik.
+  - A workflow-kártya és a Megnyitás gomb ugyanazt a stabil kiválasztási útvonalat használja.
+  - A storage mentés nem blokkolja a UI-váltást, így Edge alatt is stabilabb az automatizmusok közötti váltás.
+- Importált / nem ellenőrzött állapot kezelése javítva.
+  - Sikeres Ellenőrzés után az automatizmus ellenőrzött lesz.
+  - Sikeres Dry-run, normál futás vagy kényszerített futás után szintén eltűnik a nem ellenőrzött jelzés.
+  - Módosítás után az automatizmus újra nem ellenőrzött állapotba kerül, amíg nincs új sikeres ellenőrzés vagy futás.
 
-### v0.47
-
-- Új blokk: **CSS injektálása**.
-- CSS hozzáadása/frissítése/eltávolítása az aktuális oldalba azonosító alapján.
-- Változók használhatók a CSS szabályokban is.
 
 ### v0.46
 
-- README átrendezése és változásnapló tisztítása.
-- Funkciók témakörökbe rendezve.
-- Verziókhoz tartozó változások pontosabb csoportosítása.
+- README rendezése és verzióhelyes változásnapló kialakítása.
+- Az ismétlődő / rossz helyre került verziószakaszok tisztítása.
 
 ### v0.45
 
-- DOCX fájlnévkezelés javítva: a DOCX mentése blokk nem írja felül indokolatlanul a DOCX indítása blokkban megadott fájlnevet.
-- Csoport blokk inaktív állapota futáskor is érvényesül: a kikapcsolt csoport blokkjai kimaradnak.
+- DOCX mentésnél a DOCX indítása blokkban megadott fájlnév elsőbbséget kap, ha a DOCX mentése blokk alapértelmezett vagy üres fájlnévvel fut.
+- Csoport blokk kikapcsolt állapotban futáskor kihagyja a benne lévő blokkokat.
 
 ### v0.44
 
-- Vágólapról beolvasás blokk javítva.
-- Többlépcsős vágólapolvasás: Clipboard API, legacy fallback, extension segédablak.
-- Mini extension export tartalmazza a vágólap-beolvasó segédfájlokat.
+- Vágólapról beolvasás blokk robusztusabb lett.
+- A blokk szükség esetén extension tulajdonú segédablakot használ a vágólap beolvasásához.
+- A beolvasott érték bekerül a megadott változóba, valamint a `{{last_result}}`, `{{last_text}}` és `{{last_value}}` változókba.
+- A mini extension export is tartalmazza a vágólap-beolvasó segédfájlokat.
 
 ### v0.43
 
 - Csoport blokk csoportszintű ki/bekapcsolást kapott.
 - Csoport blokk összecsukható lett.
-- Összecsukott csoport alatt a benne lévő blokkok ikonjai láthatók.
+- Összecsukott csoportnál a benne lévő blokkok ikonjai látszanak.
 
 ### v0.42
 
-- PDF előnézeti megjelenítés javítása: saját iframe/object preview oldal kikerült.
-- Előnézet közvetlen PDF blobként nyílik meg.
-- Letöltés és Letöltés + előnézet mód a megadott fájlnévvel ment.
+- PDF előnézetnél megszűnt a saját előnézeti oldalba ágyazott iframe/object megjelenítés.
+- Az előnézet közvetlen PDF blob URL-t nyit meg új tabon.
+- Letöltés és Letöltés + előnézet módban a saját letöltési logika a PDF blokkban megadott fájlnevet használja.
 
 ### v0.41
 
-- Mini extension export ZIP-generálása javítva.
-- DOCX riportkészítés bekerült.
-- Új DOCX blokkok: indítás, szöveg, táblázat, screenshot/kép, új oldal, mentés.
-- PDF előnézet fájlnévkezelési kísérlet bekerült, amelyet később egyszerűbb preview-működés váltott fel.
+- Mini extension export ZIP generátora javítva lett, hogy a letöltött csomag szabványos ZIP-ként kibontható legyen.
+- Bekerült az egyszerű DOCX riportkészítés külön DOCX blokk-kategóriával.
+- PDF előnézet fájlnévkezelése javult, majd a v0.42-ben a blokkolt iframe/object előnézet helyett közvetlen blob előnézetre váltott.
 
 ### v0.40
 
-- Próbáld meg / hiba esetén blokk drop-kezelése javítva.
-- Szöveg keresése az oldalon dinamikus/virtualizált oldalon görgetéssel is kereshet.
-- Görgetés blokk új módot kapott: Görgetés szövegig.
+- Próbáld meg / hiba esetén blokkba már húzhatók blokkok mind a próbálkozási, mind a hibaágba.
+- Szöveg keresése az oldalon blokk opcionálisan görgetéssel is keres dinamikus vagy virtualizált oldalakon.
+- Görgetés blokk új Görgetés szövegig móddal bővült.
 
 ### v0.39
 
-- Javítva az `options.map is not a function` típusú Builder betöltési hiba.
-- Select renderelés védelmet kapott hibás opciólista esetére.
-- Régi Record-blokkok normalizálása erősebb lett.
-- Record gomb rövidült: Rec.
+- Javítva a `Betöltési hiba: options.map is not a function` hiba.
+- A select renderelés védelmet kapott hibás opciólista esetére.
+- Régi Record által létrehozott blokkok normalizálása erősebb lett.
+- Record gomb rövidült: **Rec**.
 
 ### v0.38
 
-- Görgetés blokk belső görgethető konténer támogatást kapott.
-- Kattintás blokk okos auto-scrollt és kattintható szülő fallbacket kapott.
+- Görgetés blokk belső görgethető konténer támogatással bővült.
+- Kattintás blokk kattintás előtt okos auto-scrollt és kattintható szülő fallbacket kapott.
 - Várj amíg blokk új módokkal bővült: elem eltűnik, elem látható/kattintható, mezőérték változik, URL változik, spinner eltűnik, DOM stabil.
-- Szöveg keresése blokk találati sor, kattintható szülő, panel/kártya és közeli gomb selectorokat ad vissza.
-- Táblázatból kinyerés fejlécnév alapján is tud oszlopot választani.
-- Legördülő opció kiválasztása opciólista-görgetést és egyezési módokat kapott.
-- Új blokk: Hibaüzenet keresése.
-- Új blokk: Mező keresése címke alapján.
-- Same-origin iframe támogatás javítva.
+- Szöveg keresése blokk több kontextust ad vissza: találati sor, kattintható szülő, panel/kártya és közeli gomb selector.
+- Táblázatból kinyerés fejlécnév alapján is tud oszlopot választani, és erősebb virtualizált lista/tábla keresést kapott.
+- Legördülő opció kiválasztása blokk opciólista-görgetést, starts-with egyezést és kis/nagybetű opciót kapott.
+- Új Hibaüzenet keresése blokk.
+- Új Mező keresése címke alapján blokk.
+- Iframe blokk same-origin iframe-ben is képes futtatási kontextust váltani.
 
 ### v0.37
 
 - Record által létrehozott blokkok normál blokksémával jönnek létre.
 - Rögzített blokkok szerkeszthetők, mozgathatók és törölhetők.
-- Régi Record jelölések automatikusan tisztulnak.
+- Régebbi Record-blokkokból megnyitáskor automatikusan eltávolításra kerülnek a csak rögzítési jelölések.
 
 ### v0.36
 
-- Palettából kattintással hozzáadott blokk a kijelölt blokk után kerül.
-- Konténeren belüli beszúrás ugyanabba a behúzott szintbe történik.
-- Figyelő feltételeknél a beszúrás a trigger/feltételcsoport kontextusát követi.
+- Blokkpalettából kattintással hozzáadott új blokk kijelölt blokk után kerül.
+- Konténeren belüli kijelölésnél az új blokk ugyanarra a behúzott szintre kerül.
+- Figyelő feltételeknél a beszúrás a Figyelő trigger vagy Feltételcsoport kontextusát követi.
 
 ### v0.35
 
-- ServiceNow/SNOW és modern webapp kompatibilitási erősítés.
-- Framework-kompatibilis kitöltés bekerült.
-- Kitöltési módok: framework-kompatibilis, egyszerű, szimulált gépelés, paste jellegű mód.
+- Modern webapp és ServiceNow/SNOW kompatibilitási fejlesztések.
+- Framework-kompatibilis kitöltés a Beillesztés / kitöltés blokkban.
+- Kitöltési módok: framework-kompatibilis értékadás, egyszerű értékadás, szimulált gépelés, paste esemény jellegű mód.
 - SPA navigáció figyelése: `pushState`, `replaceState`, `popstate`, `hashchange`.
-- Shadow DOM keresés több blokkban.
+- Shadow DOM keresés több elem-alapú blokknál.
 - Új blokk: Legördülő opció kiválasztása.
-- ServiceNow/SNOW jellegű attribútumok jobb kezelése: `aria-label`, `role`, `data-testid`, `data-field`, `data-name`.
-- Virtualizált lista/tábla támogatás első lépése.
+- ServiceNow/SNOW jellegű attribútumok jobb kezelése: `aria-label`, `role`, `data-testid`, `data-test-id`, `data-field`, `data-name`.
+- Virtualizált lista/táblázat támogatás első lépése.
 
 ### v0.34
 
-- Mini extension export kezeli a Másik automatizmus futtatása blokkok függőségeit.
-- Meghívott workflow-k rekurzívan bekerülnek a mini extensionbe.
-- Meghívott workflow-k alfolyamatként érhetők el a generált mini extensionben.
+- Mini extension export kezeli a Másik automatizmus futtatása blokkokat.
+- Exportáláskor a meghívott workflow-k is bekerülnek a mini extensionbe, rekurzívan.
+- A meghívott workflow-k alfolyamatként kerülnek a csomagba.
 
 ### v0.33
 
-- Record mód bevezetése.
-- Record UI a középső munkaterület tetején jelenik meg.
-- Rögzíthető: kattintás, mezőkitöltés, select/checkbox változás, Enter/Tab/Escape, hosszabb szünetek.
-- Jelszó vagy érzékenynek tűnő mezők értékét a recorder nem menti el konkrétan.
+- Record mód bekerült.
+- A Record UI a középső munkaterület tetején, az automatizáció neve mellett jelenik meg.
+- Rögzítéskor kattintás, mezőkitöltés, select/checkbox változás, Enter/Tab/Escape és hosszabb szünetek rögzíthetők.
+- Érzékeny vagy jelszómezők értékét a recorder nem menti el konkrét szövegként.
 
 ### v0.32
 
 - Mini extension export bekerült.
-- Hangjelzés blokk saját feltöltött hanggal, hangerővel és ismétlésszámmal bővült.
+- Hangjelzés blokk saját feltöltött hanggal, hangerővel és ismétléssel bővült.
 - Táblázatból kinyerés blokk N. sor opciót kapott.
 - Maszkolás blokk Clear / trim móddal bővült.
 
 ### v0.31
 
 - Szöveg keresése → Kattintás flow javítva.
-- Szöveg keresése blokk kattintáshoz/görgetéshez használható selector kimenetet ad.
+- A Szöveg keresése blokk kattintás/görgetés után elsődlegesen használható selector kimenetet ad.
 - Kattintás validáció elfogadja a dinamikus selector/XPath/elem változókat.
 
 ### v0.30
 
 - Blokkpaletta kategóriái összecsukhatók lettek.
-- Szöveg keresése blokk elemhivatkozást, selectort és XPath-et ad tovább.
-- Általános utolsó eredmény változók bekerültek: `{{last_result}}`, `{{last_text}}`, `{{last_value}}`, `{{last_selector}}`, `{{last_xpath}}`, `{{last_element}}`, `{{last_screenshot}}`.
-- Új blokk beszúrásakor több esetben automatikus előkitöltés történik az előző blokk kimenete alapján.
+- Szöveg keresése blokk találati elemhivatkozást, selectort és XPath-et ad tovább.
+- Bevezetésre kerültek az általános utolsó eredmény változók: `{{last_result}}`, `{{last_text}}`, `{{last_value}}`, `{{last_selector}}`, `{{last_xpath}}`, `{{last_element}}`, `{{last_screenshot}}`.
+- Új blokkok beszúrásakor több esetben automatikus előkitöltés történik az előző blokk kimenete alapján.
 
 ### v0.29
 
-- Új blokk: Szöveg keresése az oldalon.
+- Szöveg keresése az oldalon blokk bekerült.
 - Változó chipek kattinthatók lettek a jobb oldali panelen.
 - Blokkmozgató gombok kontextusfüggő megjelenítést kaptak.
 - Builder és jobb oldali beállítási sáv szélesebb lett.
@@ -389,7 +579,7 @@ Az extension tartalmazhat `default.json` fájlt. Ez a meglévő import/export fo
 
 ### v0.25
 
-- Új feltétel: Érték változik.
+- Új feltétel: érték változik.
 - Támogatott módok: miről → mire, bármiről → mire, miről → bármire, bármilyen változás.
 - Előző érték session-alapú tárolása workflow/trigger/feltétel/URL kontextusban.
 
@@ -412,7 +602,7 @@ Az extension tartalmazhat `default.json` fájlt. Ez a meglévő import/export fo
 
 ### v0.21
 
-- Extension context invalidated hiba elleni további védelem.
+- Extension context invalidated hiba ellen további védelem.
 - Felhasználói üzenet blokk saját extension ablakot használ.
 
 ### v0.20
@@ -427,23 +617,23 @@ Az extension tartalmazhat `default.json` fájlt. Ez a meglévő import/export fo
 
 ### v0.18
 
-- Régi figyelő blokkok migrálva új Figyelő trigger + feltétel modellre.
+- Régi Figyelő: szöveg / Figyelő: elem blokkok migrálva új Figyelő trigger + feltétel modellre.
 - Builder felső gombok ikonokat kaptak.
 
 ### v0.17
 
-- Figyelő storage tisztítása workflow mentéskor.
+- Figyelő storage teljes tisztítása workflow mentéskor.
 - Inaktív figyelő nem kerül watcher storage-ba.
 - Mentve / Nem mentett módosítás jelzés bekerült.
 - Új workflow-nál kötelező indítót választani.
 
 ### v0.16
 
-- Figyelő scope részletei láthatóbbak lettek.
+- Figyelő scope részletei láthatóbbak lettek a blokkon és a jobb oldali panelen.
 
 ### v0.15
 
-- Indítóblokkok egyenértékűek lettek.
+- Indítóblokkok egyenértékűek lettek: Indítás, Figyelő: szöveg, Figyelő: elem.
 - Jobb oldali panel betöltési hibái javítva.
 
 ### v0.14
@@ -457,7 +647,8 @@ Az extension tartalmazhat `default.json` fájlt. Ez a meglévő import/export fo
 
 ### v0.12
 
-- Watcher logika Figyelő trigger modell felé rendezve.
+- Watcherek átnevezve Figyelő triggerekre.
+- Figyelők indítóblokként jelentek meg.
 - Maszkolás invert módot és üres maszk támogatást kapott.
 
 ### v0.11
@@ -466,7 +657,7 @@ Az extension tartalmazhat `default.json` fájlt. Ez a meglévő import/export fo
 
 ### v0.10
 
-- Watcher és email sablon panel kompaktabb lett.
+- Watcher és email sablon panel kompaktabb lett, részletes szerkesztés modalba került.
 
 ### v0.9
 
@@ -481,3 +672,73 @@ Az extension tartalmazhat `default.json` fájlt. Ez a meglévő import/export fo
 - Kattintás, adatkinyerés, beillesztés, várakozás, ismétlés és email alapfunkciók.
 - Builder külön ablakos működése.
 - Import/export alapok.
+
+### v0.47
+
+- Új blokk: **CSS injektálása**. Egyedi CSS szabályokat tud beszúrni az aktuális oldalba, azonosító alapján frissíthető vagy eltávolítható style tagként. Hasznos ideiglenes kiemeléshez, elrejtéshez, vizuális segédjelölésekhez vagy riport/screenshot előkészítéshez.
+
+
+### v0.53
+
+- Új **Felhasználó** blokk-kategória a palettában.
+- Ide kerültek a felhasználói interakciós blokkok: Felhasználói üzenet, Oldalba illesztett gomb, Adat bekérése, Választás kérése, Rendszerértesítés és Hangjelzés.
+- Az **Oldalba illesztett gomb** blokk most már elérhető a palettából, nem egy nem létező kategóriába kerül.
+
+
+## v0.55
+
+- Oldalba illesztett gomb javítása: az elem elé/után elhelyezés nem omlik össze, a blokk mindig kattintásra vár.
+- Új Custom elhelyezés: bal/jobb/felső/alsó távolság px/% egységgel és z-index beállítással.
+
+
+
+
+
+### v0.60
+
+- Az automatizmuslista összecsukható lett a Builder bal oldali paneljén.
+- Bekerült az automatizmuslista keresője, amely név és workflow ID alapján szűr.
+- Az összecsukott/nyitott állapot és a keresőszöveg megmarad a Builder újranyitása után.
+- Új automatizmus, másolat vagy import után a lista automatikusan kinyílik, hogy az új elem látható legyen.
+- Javítva lett a paletta kategória nyitás/zárás dupla toggle hibája.
+
+### v0.59
+
+- Négykörös minőségi fejlesztési csomag:
+  - stabilitás: központi blokk meta/IO regiszter, workflow kompatibilitási elemzés, import audit bővítés;
+  - teljesítmény: futási napló és szerkesztési állapot kevesebb felesleges DOM/storage terheléssel;
+  - kompatibilitás: elem-alapú blokkokhoz bővített diagnosztikai teszt és kompatibilitási ajánlások;
+  - UX: blokk tesztelése több adatkinyerő blokknál, verzióknál blokk-szám diff, importnál képességlista.
+- Új workflow szintű opció: **Public log**. Bekapcsolva az aktuális oldalon jobb oldali, félig áttetsző futási napló jelenik meg. Mutatja a lépéseket, átadott értékeket, selectorokat, találatokat és a futás végét. A panelről TXT debug log tölthető le.
+- Felhasználói interakciós ablakok minimális testreszabása:
+  - ablak stílusa: alap / kompakt / szélesebb / figyelemfelhívó;
+  - kiemelő szín: kék / zöld / narancs / piros / semleges;
+  - ablakméret: kicsi / normál / nagy.
+- A beállítások érintik: Felhasználói üzenet, Adat bekérése, Választás kérése és Email előnézet.
+
+### v0.56
+
+- Átfogó minőségi audit és kisebb stabilitási javítások.
+- Javítva a Görgetés blokk középső és jobb oldali beállításainak hibás select-renderelése.
+- A numeric mezők egységesebb kezelésével javult a Builder beállításainak konzisztenciája.
+- A workflow-váltás előtti automatikus mentés csak módosított workflow esetén fut, így kevesebb felesleges verzió és storage-írás keletkezik.
+- A változó chipek vágólapra másolása hibatűrőbb lett.
+- A validáció több hiányzó cél/érték esetet felismer: URL megnyitás, görgetés cél, Várj betöltésre elem mód, Oldalba illesztett gomb elem elé/után mód, preflight cél.
+- A Szöveg keresése találati kontextusának kiszámítása hatékonyabb lett.
+- A Mező keresése címke alapján blokk eredménye most az utolsó eredmény változókat is jobban tölti.
+
+### v0.55
+
+- Javítás: az Oldalba illesztett gomb jobb oldali beállításainál előforduló `targetPickerHtml is not defined` hiba elhárítva.
+- Kompatibilitási alias bekerült a cél elem választó rendereléséhez, hogy régi és új inspector hívások is biztonságosan működjenek.
+
+
+## v0.59 - Többnyelvű felhasználói felület
+
+- Bekerült az i18n alapréteg a megjelenített felületi szövegekhez.
+- Új fájlstruktúra: `locales/languages.json`, `locales/hu.json`, `locales/en.json`.
+- Első körben Magyar és English nyelv érhető el.
+- A popupban diszkrét nyelvváltó jelent meg: Auto / Magyar / English.
+- Automatikus módban a böngésző nyelve alapján választ nyelvet, fallback nyelvként magyar használható.
+- A belső workflow struktúra, blokk `type` értékek, változónevek, import/export és `default.json` kompatibilitás változatlan maradt.
+- Új nyelv hozzáadásához a `languages.json` bővítése és egy új nyelvi JSON fájl hozzáadása szükséges.

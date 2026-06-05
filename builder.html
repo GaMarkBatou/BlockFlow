@@ -1,60 +1,69 @@
 <!doctype html><html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BlockFlow Builder</title><link rel="stylesheet" href="app.css"></head><body>
   <div class="topbar">
     <div class="brand">BlockFlow</div>
-    <button id="newWorkflow">＋ Új</button>
-    <button id="saveWorkflow" class="primary">💾 Mentés</button>
-    <button id="validateWorkflow">✓ Ellenőrzés</button>
+    <button id="newWorkflow">＋ <span data-i18n="button.new">Új</span></button>
+    <button id="saveWorkflow" class="primary">💾 <span data-i18n="button.save">Mentés</span></button>
+    <button id="validateWorkflow">✓ <span data-i18n="button.validate">Ellenőrzés</span></button>
     <button id="dryRunWorkflow">🧪 Dry-run</button>
-    <button id="runWorkflow">▶ Futtatás</button>
-    <button id="forceRunWorkflow">⚡ Kényszerített futtatás</button>
+    <button id="runWorkflow">▶ <span data-i18n="button.run">Futtatás</span></button>
+    <button id="forceRunWorkflow">⚡ <span data-i18n="button.forceRun">Kényszerített futtatás</span></button>
     <button id="stopRun" class="danger">■ Stop</button>
     <button id="exportOne">⇩ Export</button>
     <button id="exportMini">🧩 Mini extension</button>
-    <button id="exportAll">⇩ Teljes export</button>
-    <button id="importBtn">⇧ Import</button>
+    <button id="exportAll">⇩ <span data-i18n="button.exportAll">Teljes export</span></button>
+    <button id="importBtn">⇧ <span data-i18n="button.import">Import</span></button>
     <input id="importFile" type="file" accept="application/json,.json,.bfa" class="hidden">
     <span id="targetInfo" class="status">Cél tab: keresés...</span><span id="saveState" class="status save-state saved">Mentve</span>
   </div>
   <main class="layout">
     <aside class="sidebar">
-      <div class="section-title">Automatizmusok</div>
+      <div class="workflow-panel-head">
+        <button id="workflowListToggle" class="workflow-toggle" title="Automatizmuslista nyitása/zárása">
+          <span id="workflowListCaret">▾</span>
+          <b data-i18n="panel.workflows">Automatizmusok</b>
+          <small id="workflowListCount"></small>
+        </button>
+      </div>
+      <div id="workflowListControls" class="workflow-list-controls">
+        <input id="workflowSearch" type="search" autocomplete="off" data-i18n-placeholder="workflowList.searchPlaceholder" placeholder="Automatizmus keresése...">
+      </div>
       <div id="workflowList"></div>
-      <div class="section-title">Blokkok</div>
+      <div class="section-title" data-i18n="panel.blocks">Blokkok</div>
       <div id="palette"></div>
     </aside>
     <section class="workspace">
       <div class="workflow-card">
-        <div class="workflow-title"><input id="workflowName"><button id="duplicateWorkflow">Másolat</button><button id="markVerified" class="ghost">Ellenőrzött</button><label class="public-log-toggle" title="Lépésnapló megjelenítése az oldalon futás közben"><input type="checkbox" id="publicLogEnabled"> Public log</label><span id="recordControls" class="record-controls"><button id="recordStart" class="record-start">● Rec</button><button id="recordPause" class="hidden">⏸ Pause</button><button id="recordStop" class="hidden danger">■ Stop</button><span id="recordStatus" class="status muted hidden"></span></span></div>
+        <div class="workflow-title"><input id="workflowName"><button id="duplicateWorkflow" data-i18n="button.duplicate">Másolat</button><button id="markVerified" class="ghost" data-i18n="button.verified">Ellenőrzött</button><label class="public-log-toggle" title="Lépésnapló megjelenítése az oldalon futás közben"><input type="checkbox" id="publicLogEnabled"> <span data-i18n="button.publicLog">Public log</span></label><span id="recordControls" class="record-controls"><button id="recordStart" class="record-start">● Rec</button><button id="recordPause" class="hidden">⏸ Pause</button><button id="recordStop" class="hidden danger">■ Stop</button><span id="recordStatus" class="status muted hidden"></span></span></div>
         <div id="importWarning" class="warning hidden"></div>
         <div id="blocks"></div>
       </div>
     </section>
     <aside class="inspector">
-      <div class="section-title">Beállítások</div>
+      <div class="section-title" data-i18n="panel.settings">Beállítások</div>
       <div id="inspector"></div>
       <div class="hr"></div>
-      <div class="section-title">Változók</div>
+      <div class="section-title" data-i18n="panel.variables">Változók</div>
       <div id="variables" class="var-list"></div>
       <div class="hr"></div>
-      <div class="section-title">Futtatás előtti ellenőrzés</div>
+      <div class="section-title" data-i18n="panel.validation">Futtatás előtti ellenőrzés</div>
       <div id="validationPanel" class="status muted">Még nem futott ellenőrzés.</div>
       <div class="hr"></div>
-      <div class="section-title">Élő változók</div>
+      <div class="section-title" data-i18n="panel.liveVariables">Élő változók</div>
       <div id="liveVariables" class="status muted">Még nincs futási eredmény.</div>
       <div class="hr"></div>
-      <div class="section-title">Figyelő triggerek</div>
+      <div class="section-title" data-i18n="panel.watchers">Figyelő triggerek</div>
       <div id="watcherPanel" class="status muted">Betöltés...</div>
       <div class="hr"></div>
-      <div class="section-title">Sablonok</div>
+      <div class="section-title" data-i18n="panel.templates">Sablonok</div>
       <div id="templatePanel" class="status muted">Betöltés...</div>
       <div class="hr"></div>
-      <div class="section-title">Verziók / Undo</div>
+      <div class="section-title" data-i18n="panel.versions">Verziók / Undo</div>
       <div id="versionPanel" class="status muted">Nincs verzió betöltve.</div>
       <div class="hr"></div>
-      <div class="section-title">Import előnézet</div>
+      <div class="section-title" data-i18n="panel.importPreview">Import előnézet</div>
       <div id="importPreview" class="status muted">Nincs import folyamatban.</div>
       <div class="hr"></div>
-      <div class="section-title">Napló</div>
+      <div class="section-title" data-i18n="panel.log">Napló</div>
       <div id="log" class="status">Nincs futás.</div>
     </aside>
   </main>
