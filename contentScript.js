@@ -10,6 +10,46 @@
   function rootDocument(root = getSearchRoot()) { return root && root.nodeType === 9 ? root : document; }
 
 
+  const BF_I18N = { loaded:false, selected:'auto', active:'hu', fallback:'hu', languages:[], dict:{}, fallbackDict:{} };
+  async function bfFetchJson(path, fallback = {}) {
+    try {
+      const res = await fetch(chrome.runtime.getURL(path));
+      if (!res.ok) throw new Error(String(res.status));
+      return await res.json();
+    } catch (_) { return fallback; }
+  }
+  function bfNormalizeLang(code) { return String(code || 'hu').toLowerCase().split('-')[0]; }
+  function bfResolveLang(selected, languages) {
+    const list = (languages || []).filter(l => l.code && l.code !== 'auto');
+    const supported = new Set(list.map(l => l.code));
+    if (selected && selected !== 'auto' && supported.has(selected)) return selected;
+    const browser = bfNormalizeLang(navigator.language || 'hu');
+    return supported.has(browser) ? browser : (BF_I18N.fallback || 'hu');
+  }
+  async function ensureRuntimeI18n() {
+    if (BF_I18N.loaded) return BF_I18N;
+    const meta = await bfFetchJson('locales/languages.json', { fallback:'hu', languages:[{code:'hu',file:'hu.json'}] });
+    BF_I18N.languages = meta.languages || [];
+    BF_I18N.fallback = meta.fallback || 'hu';
+    let selected = meta.default || 'auto';
+    try { const st = await chrome.storage.local.get(['uiLanguage']); selected = st.uiLanguage || selected; } catch (_) {}
+    BF_I18N.selected = selected;
+    BF_I18N.active = bfResolveLang(selected, BF_I18N.languages);
+    const activeInfo = BF_I18N.languages.find(l => l.code === BF_I18N.active) || { file: BF_I18N.active + '.json' };
+    const fallbackInfo = BF_I18N.languages.find(l => l.code === BF_I18N.fallback) || { file: BF_I18N.fallback + '.json' };
+    BF_I18N.fallbackDict = await bfFetchJson('locales/' + (fallbackInfo.file || (BF_I18N.fallback + '.json')), {});
+    BF_I18N.dict = BF_I18N.active === BF_I18N.fallback ? BF_I18N.fallbackDict : await bfFetchJson('locales/' + (activeInfo.file || (BF_I18N.active + '.json')), {});
+    BF_I18N.loaded = true;
+    return BF_I18N;
+  }
+  function rt(key, vars) {
+    const d = BF_I18N.dict || {}, f = BF_I18N.fallbackDict || {};
+    const str = Object.prototype.hasOwnProperty.call(d, key) ? d[key] : (Object.prototype.hasOwnProperty.call(f, key) ? f[key] : key);
+    if (!vars) return str;
+    return String(str).replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : '');
+  }
+
+
   function makePublicRunLogger(workflow, options = {}) {
     if (!workflow?.publicLogEnabled || options?.silentPublicLog) {
       return { append(){}, done(){}, error(){} };
@@ -61,16 +101,16 @@
         .empty{color:#cbd5e1;font-style:italic;}
       </style>
       <div class="panel" role="log" aria-live="polite">
-        <div class="head"><b>BlockFlow napló</b><button type="button" data-download>TXT</button><button type="button" data-close>×</button></div>
+        <div class="head"><b>${rt('publicLog.title')}</b><button type="button" data-download>${rt('publicLog.txt')}</button><button type="button" data-close>×</button></div>
         <div class="title"></div>
-        <div class="body"><div class="empty">Futási napló indul...</div></div>
+        <div class="body"><div class="empty">${rt('publicLog.starting')}</div></div>
       </div>`;
     root.innerHTML = html;
 
     const title = root.querySelector('.title');
     const body = root.querySelector('.body');
     const empty = root.querySelector('.empty');
-    if (title) title.textContent = workflow.name || 'Automatizmus futása';
+    if (title) title.textContent = workflow.name || rt('publicLog.workflowRun');
 
     const append = (text, cls = '') => {
       const line = `[${new Date().toLocaleTimeString()}] ${String(text ?? '')}`;
@@ -99,16 +139,16 @@
       setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     };
 
-    append('Futás indult. URL: ' + location.href, 'muted');
+    append(rt('runtime.runStarted', { url: location.href }), 'muted');
     return {
       append,
       done(vars) {
-        append('Futás befejeződött.', 'ok');
+        append(rt('runtime.runFinished'), 'ok');
         const keys = Object.keys(vars || {}).filter(k => /^last_|_file_name$|result|talalat|hiba|button|docx|pdf/i.test(k)).slice(0, 20);
-        if (keys.length) append('Fontos változók: ' + keys.map(k => `${k}=${String(vars[k]).slice(0,80)}`).join(' | '), 'muted');
-        if (workflow.publicLogDownload) append('A TXT gombbal letölthető a futási napló.', 'muted');
+        if (keys.length) append(rt('runtime.importantVars', { values: keys.map(k => `${k}=${String(vars[k]).slice(0,80)}`).join(' | ') }), 'muted');
+        if (workflow.publicLogDownload) append(rt('publicLog.downloadHint'), 'muted');
       },
-      error(err) { append('HIBA: ' + String(err?.message || err), 'err'); }
+      error(err) { append(rt('runtime.errorPrefix') + ': ' + String(err?.message || err), 'err'); }
     };
   }
 
@@ -731,7 +771,7 @@
     const start = Date.now();
     const minWait = Math.max(150, Number(timeoutMs || 0));
     while (Date.now() - start < minWait) {
-      if (stopRequested) throw new Error('Futtatás megszakítva.');
+      if (stopRequested) throw new Error(rt('runtime.runStopped'));
       const el = findElement(target, options);
       if (el) return el;
       await sleep(150);
@@ -821,7 +861,7 @@
     const start = Date.now();
     const needle = caseSensitive ? String(text || '') : String(text || '').toLowerCase();
     while (Date.now() - start < timeoutMs) {
-      if (stopRequested) throw new Error('Futtatás megszakítva.');
+      if (stopRequested) throw new Error(rt('runtime.runStopped'));
       const hay = caseSensitive ? document.body.innerText : document.body.innerText.toLowerCase();
       if (needle && hay.includes(needle)) return true;
       await sleep(150);
@@ -945,7 +985,7 @@
   async function waitForPopup(timeoutMs = 10000) {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-      if (stopRequested) throw new Error('Futtatás megszakítva.');
+      if (stopRequested) throw new Error(rt('runtime.runStopped'));
       const p = findPopup();
       if (p) return p;
       await sleep(150);
@@ -2355,6 +2395,7 @@
   }
 
   async function runWorkflow(workflow, options = {}) {
+    await ensureRuntimeI18n();
     stopRequested = false;
     const vars = { current_url: location.href, today: new Date().toISOString().slice(0, 10), selected_text: String(getSelection?.() || ''), last_result: '', last_text: '', last_value: '', last_selector: '', last_xpath: '', last_element: '', last_screenshot: '' };
     const log = [];
@@ -2397,25 +2438,25 @@
 
     function checkWorkflowStartGate() {
       if (options.forceRun || options.skipTriggerGate || options.triggeredByWatcher || options.scheduled) {
-        log.push(options.forceRun ? 'Kényszerített futtatás: az indítófeltételek kihagyva.' : 'Automatikus/alworkflow futás: indítófeltételek nem kerülnek újraellenőrzésre.');
+        log.push(options.forceRun ? rt('runtime.forceRunGate') : rt('runtime.autoSubRunGate'));
         return true;
       }
       const manualTriggers = collectBlocks(rootBlocks, b => b.type === 'trigger');
       if (manualTriggers.length) {
-        log.push('Manuális Indítás blokk található: a kézi Futtatás azonnal indít.');
+        log.push(rt('runtime.manualTriggerFound'));
         return true;
       }
       const triggerGroups = collectBlocks(rootBlocks, b => b.type === 'triggerGroup' && b.triggerEnabled !== false);
       const clickTriggers = collectBlocks(rootBlocks, b => b.type === 'clickTrigger' && b.triggerEnabled !== false);
       if (!triggerGroups.length) {
         if (clickTriggers.length) {
-          log.push(`Kattintás trigger található (${clickTriggers.length}). A normál Futtatás nem indít, mert ez az indító csak a kijelölt elemre kattintáskor aktiválódik. Használd a Kényszerített futtatást teszthez.`);
+          log.push(rt('runtime.clickTriggerFound', { count: clickTriggers.length }));
           return false;
         }
-        log.push('Nincs aktív figyelő/kattintás trigger. A workflow műveleti része elindul.');
+        log.push(rt('runtime.noActiveTrigger'));
         return true;
       }
-      log.push(`Figyelő trigger ellenőrzése kézi futtatáshoz: ${triggerGroups.length} aktív trigger.`);
+      log.push(rt('runtime.checkingTriggers', { count: triggerGroups.length }));
       let anyPassed = false;
       for (const tg of triggerGroups) {
         const watcher = watcherFromTriggerBlock(tg);
@@ -2423,11 +2464,11 @@
         const conditionCount = Array.isArray(watcher.conditions) ? watcher.conditions.length : 0;
         let passed = false;
         if (scopeOk && conditionCount) passed = evalWatcherGroup(watcher);
-        log.push(`Figyelő trigger ${tg.id || ''}: scope=${scopeOk ? 'igaz' : 'hamis'}, feltételek=${conditionCount}, eredmény=${passed ? 'igaz' : 'hamis'}.`);
+        log.push(rt('runtime.triggerResult', { id: tg.id || '', scope: scopeOk ? rt('common.true') : rt('common.false'), count: conditionCount, result: passed ? rt('common.true') : rt('common.false') }));
         if (passed) anyPassed = true;
       }
       if (!anyPassed) {
-        log.push('Automatizmus nem indult el: egyik figyelő trigger feltétele sem igaz. Kényszerített futtatással a műveleti blokkok tesztelhetők.');
+        log.push(rt('runtime.noTriggerMatched'));
       }
       return anyPassed;
     }
@@ -2440,9 +2481,9 @@
     async function runList(list, label = 'root') {
       let i = 0;
       while (i < list.length) {
-        if (stopRequested) throw new Error('Futtatás megszakítva.');
+        if (stopRequested) throw new Error(rt('runtime.runStopped'));
         const b = list[i];
-        log.push(`${label} · ${i + 1}: ${b.type}${options.dryRun ? ' [dry-run]' : ''}`);
+        log.push(rt('runtime.blockStep', { label, index: i + 1, type: b.type, dry: options.dryRun ? ' [dry-run]' : '' }));
 
         if (b.type === 'trigger' || b.type === 'triggerGroup' || b.type === 'clickTrigger' || b.type === 'scheduledTrigger' || String(b.type || '').startsWith('condition')) { i++; continue; }
 
@@ -2450,7 +2491,7 @@
           const ok = await conditionPass(b, vars);
           const children = Array.isArray(b.children) ? b.children : [];
           const elseChildren = Array.isArray(b.elseChildren) ? b.elseChildren : [];
-          log.push(ok ? `Feltétel: igaz · gyermek blokkok: ${children.length}` : `Feltétel: hamis · különben blokkok: ${elseChildren.length}`);
+          log.push(ok ? rt('runtime.ifTrue', { count: children.length }) : rt('runtime.ifFalse', { count: elseChildren.length }));
           if (ok && children.length) await runList(children, 'if');
           if (!ok && elseChildren.length) await runList(elseChildren, 'else');
           // Backward compatibility for old workflows from v0.2-v0.5.
@@ -2466,7 +2507,7 @@
           const children = Array.isArray(b.children) ? b.children : [];
           if (children.length) {
             for (let r = 0; r < count; r++) {
-              log.push(`Ismétlés ${r + 1}/${count} · gyermek blokkok: ${children.length}`);
+              log.push(rt('runtime.repeatChildren', { current: r + 1, total: count, count: children.length }));
               await runList(children, 'repeat');
             }
           } else if (b.blockCount) {
@@ -2475,13 +2516,13 @@
             const childEnd = Math.min(list.length, childStart + Math.max(0, Math.min(50, Number(b.blockCount || 1))));
             const legacyChildren = list.slice(childStart, childEnd);
             for (let r = 0; r < count; r++) {
-              log.push(`Ismétlés ${r + 1}/${count} · legacy blokkok: ${legacyChildren.length}`);
+              log.push(rt('runtime.repeatLegacy', { current: r + 1, total: count, count: legacyChildren.length }));
               await runList(legacyChildren, 'repeat');
             }
             i = childEnd;
             continue;
           } else {
-            log.push('Ismétlés: nincs behúzott blokk.');
+            log.push(rt('runtime.repeatEmpty'));
           }
           i++;
           continue;
@@ -2510,7 +2551,7 @@
 
         if (b.type === 'groupBlock') {
           if (b.groupEnabled === false) {
-            log.push(`Csoport kihagyva: ${b.title || 'Csoport'} kikapcsolva.`);
+            log.push(rt('runtime.groupSkipped', { title: b.title || rt('block.groupBlock.name') }));
             i++;
             continue;
           }
@@ -2525,7 +2566,7 @@
           else frame = b.target ? await waitForElement(b.target, Number(b.timeoutMs || 5000), { requireVisible: false }) : null;
           let doc = null;
           try { doc = frame?.contentDocument; } catch (_) { doc = null; }
-          if (!doc) throw new Error('Iframe nem hozzáférhető vagy cross-origin.');
+          if (!doc) throw new Error(rt('runtime.iframeNotAccessible'));
           bfRootStack.push(doc);
           try { await runList(Array.isArray(b.children) ? b.children : [], 'iframe'); }
           finally { bfRootStack.pop(); }
@@ -2549,7 +2590,7 @@
           const data = await safeStorageGet('workflows');
           const workflows = Array.isArray(data?.workflows) ? data.workflows : [];
           const target = workflows.find(w => w.id === b.workflowId || w.name === b.workflowId);
-          if (!target) throw new Error('Nem található meghívott automatizmus: ' + (b.workflowId || ''));
+          if (!target) throw new Error(rt('runtime.calledWorkflowMissing', { name: b.workflowId || '' }));
           const sub = await runWorkflow(target, { ...options, skipTriggerGate: true });
           const prefix = b.resultPrefix || 'called';
           Object.entries(sub.vars || {}).forEach(([k,v]) => { vars[`${prefix}_${k}`] = v; });
@@ -2559,10 +2600,10 @@
 
         if (b.type === 'rowLoop') {
           const container = await waitForElement(b.target, Number(b.timeoutMs || 5000));
-          if (!container) throw Object.assign(new Error(`Nem található lista/táblázat: ${b.target?.label || ''}`), { blockId: b.id });
+          if (!container) throw Object.assign(new Error(rt('runtime.tableMissing', { label: b.target?.label || '' })), { blockId: b.id });
           const rows = rowsFromContainer(container, Number(b.maxRows || 20));
           const children = Array.isArray(b.children) ? b.children : [];
-          log.push(`Sor feldolgozás: ${rows.length} sor · gyermek blokkok: ${children.length}`);
+          log.push(rt('runtime.rowLoop', { rows: rows.length, count: children.length }));
           for (let r = 0; r < rows.length; r++) {
             vars[b.rowVar || 'sor_szoveg'] = (rows[r].innerText || rows[r].textContent || '').trim();
             vars.row_index = String(r + 1);
@@ -2579,11 +2620,11 @@
           updateLastOutput(vars, b, execRes);
           if (execRes && execRes.ok !== false) {
             const details = [];
-            if (execRes.value !== undefined) details.push('érték=' + String(execRes.value).slice(0, 160));
-            if (execRes.count !== undefined) details.push('db=' + execRes.count);
-            if (execRes.fileName) details.push('fájl=' + execRes.fileName);
+            if (execRes.value !== undefined) details.push(rt('runtime.detailValue') + '=' + String(execRes.value).slice(0, 160));
+            if (execRes.count !== undefined) details.push(rt('runtime.detailCount') + '=' + execRes.count);
+            if (execRes.fileName) details.push(rt('runtime.detailFile') + '=' + execRes.fileName);
             if (vars.last_selector) details.push('selector=' + String(vars.last_selector).slice(0, 120));
-            log.push(`Átadás: ${b.type}${details.length ? ' · ' + details.join(' · ') : ' · kész'}`);
+            log.push(rt('runtime.output', { type: b.type, details: details.length ? ' · ' + details.join(' · ') : ' · ' + rt('runtime.doneWord') }));
           }
         } catch (err) {
           err.blockId = err.blockId || b.id;

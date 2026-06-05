@@ -694,6 +694,14 @@ Az extension támogatja a gyökérkönyvtárban található `default.json` fájl
 
 
 
+
+### v0.61
+
+- Többnyelvű UI kiterjesztése Sidebarra, feedback ablakokra, validációs üzenetekre, háttérfolyamatok hibaüzeneteire és futási naplókra.
+- Public log / oldali debug panel szövegei nyelvi kulcsokat kaptak.
+- Mini extension export most a nyelvi fájlokat és a feedback ablakhoz szükséges közös i18n réteget is csomagolja.
+- A validációs hibák és több runtime naplósor magyar/angol fordítási kulcs alapján jelenik meg.
+
 ### v0.60
 
 - Az automatizmuslista összecsukható lett a Builder bal oldali paneljén.

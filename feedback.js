@@ -7,6 +7,7 @@ const cancelBtn = document.getElementById('cancel');
 const continueBtn = document.getElementById('continue');
 let item = {};
 let valueControl = null;
+function ft(key, vars){ return window.BF?.t ? BF.t(key, vars) : key; }
 
 function renderControl() {
   inputArea.innerHTML = '';
@@ -31,7 +32,7 @@ function renderControl() {
   if (item.promptType === 'choice' || item.promptType === 'emailPreview') {
     inputArea.classList.remove('hidden');
     const select = document.createElement('select');
-    const opts = Array.isArray(item.options) && item.options.length ? item.options : ['OK'];
+    const opts = Array.isArray(item.options) && item.options.length ? item.options : [ft('button.ok')];
     for (const opt of opts) {
       const o = document.createElement('option');
       o.value = opt;
@@ -45,19 +46,20 @@ function renderControl() {
 }
 
 async function load() {
+  if (window.BF?.initI18n) { await BF.initI18n(); BF.applyI18nToDom(document); }
   const key = `feedback_${id}`;
   const data = await chrome.storage.local.get(key);
   item = data[key] || {};
-  titleEl.textContent = item.title || 'BlockFlow';
+  titleEl.textContent = item.title || ft('feedback.defaultTitle');
   messageEl.textContent = item.message || '';
-  cancelBtn.textContent = item.cancelText || 'Megszakítás';
-  continueBtn.textContent = item.buttonText || 'Folytatás';
+  cancelBtn.textContent = item.cancelText || ft('button.cancel');
+  continueBtn.textContent = item.buttonText || ft('button.continue');
   document.body.dataset.style = item.feedbackStyle || 'default';
   document.body.dataset.accent = item.accent || 'blue';
   document.body.dataset.size = item.windowSize || 'normal';
   if (item.mode === 'notify') {
     document.body.classList.add('notify');
-    continueBtn.textContent = 'Rendben';
+    continueBtn.textContent = ft('button.ok');
   }
   renderControl();
 }
@@ -78,6 +80,6 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) respond('continue');
 });
 load().catch(err => {
-  titleEl.textContent = 'BlockFlow hiba';
+  titleEl.textContent = ft('feedback.errorTitle');
   messageEl.textContent = String(err?.message || err);
 });

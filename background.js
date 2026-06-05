@@ -3,6 +3,41 @@ const INJECTABLE_URL_RE = /^(https?:|file:)/;
 const pendingFeedback = new Map();
 const pendingClipboardReads = new Map();
 
+const BG_I18N = { loaded:false, selected:'auto', active:'hu', fallback:'hu', languages:[], dict:{}, fallbackDict:{} };
+async function bgFetchJson(path, fallback = {}) {
+  try { const res = await fetch(chrome.runtime.getURL(path)); if (!res.ok) throw new Error(String(res.status)); return await res.json(); } catch (_) { return fallback; }
+}
+function bgNormalizeLang(code) { return String(code || 'hu').toLowerCase().split('-')[0]; }
+function bgResolveLang(selected, languages) {
+  const list = (languages || []).filter(l => l.code && l.code !== 'auto');
+  const supported = new Set(list.map(l => l.code));
+  if (selected && selected !== 'auto' && supported.has(selected)) return selected;
+  const browser = bgNormalizeLang(navigator.language || 'hu');
+  return supported.has(browser) ? browser : (BG_I18N.fallback || 'hu');
+}
+async function ensureBgI18n() {
+  if (BG_I18N.loaded) return BG_I18N;
+  const meta = await bgFetchJson('locales/languages.json', { fallback:'hu', languages:[{ code:'hu', file:'hu.json' }] });
+  BG_I18N.languages = meta.languages || [];
+  BG_I18N.fallback = meta.fallback || 'hu';
+  let selected = meta.default || 'auto';
+  try { const st = await chrome.storage.local.get(['uiLanguage']); selected = st.uiLanguage || selected; } catch (_) {}
+  BG_I18N.selected = selected;
+  BG_I18N.active = bgResolveLang(selected, BG_I18N.languages);
+  const activeInfo = BG_I18N.languages.find(l => l.code === BG_I18N.active) || { file: BG_I18N.active + '.json' };
+  const fallbackInfo = BG_I18N.languages.find(l => l.code === BG_I18N.fallback) || { file: BG_I18N.fallback + '.json' };
+  BG_I18N.fallbackDict = await bgFetchJson('locales/' + (fallbackInfo.file || (BG_I18N.fallback + '.json')), {});
+  BG_I18N.dict = BG_I18N.active === BG_I18N.fallback ? BG_I18N.fallbackDict : await bgFetchJson('locales/' + (activeInfo.file || (BG_I18N.active + '.json')), {});
+  BG_I18N.loaded = true;
+  return BG_I18N;
+}
+function bt(key, vars) {
+  const d = BG_I18N.dict || {}, f = BG_I18N.fallbackDict || {};
+  const str = Object.prototype.hasOwnProperty.call(d, key) ? d[key] : (Object.prototype.hasOwnProperty.call(f, key) ? f[key] : key);
+  if (!vars) return str;
+  return String(str).replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : '');
+}
+
 async function setLastActiveTab(tabId) {
   try {
     const tab = await chrome.tabs.get(tabId);
@@ -76,7 +111,7 @@ chrome.windows.onRemoved.addListener(windowId => {
   for (const [id, item] of [...pendingClipboardReads.entries()]) {
     if (item.windowId === windowId) {
       pendingClipboardReads.delete(id);
-      try { item.sendResponse({ ok: false, error: 'A vágólap beolvasó ablak bezáródott.' }); } catch (_) {}
+      try { item.sendResponse({ ok: false, error: bt('background.clipboardWindowClosed') }); } catch (_) {}
       chrome.storage.local.remove(`clipboard_${id}`).catch(() => {});
     }
   }
@@ -126,6 +161,7 @@ if (chrome.alarms) {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
+    await ensureBgI18n();
     if (msg?.type === 'OPEN_BUILDER') {
       const target = await getUsableTargetTab(msg.tabId || sender?.tab?.id);
       if (target?.id) await setLastActiveTab(target.id);
@@ -143,7 +179,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     if (msg?.type === 'OPEN_SIDEPANEL') {
       const target = await getUsableTargetTab(sender?.tab?.id);
-      if (!target?.id) throw new Error('Nincs használható weboldal tab a sidebarhoz.');
+      if (!target?.id) throw new Error(bt('background.noUsableSidebarTab'));
       await setLastActiveTab(target.id);
       if (chrome.sidePanel?.setOptions) {
         await chrome.sidePanel.setOptions({ tabId: target.id, path: 'sidepanel.html', enabled: true });
@@ -164,7 +200,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     if (msg?.type === 'SEND_TO_TARGET_TAB') {
       const target = await getUsableTargetTab(msg.tabId);
-      if (!target?.id) throw new Error('Nincs használható aktív weboldal tab. Nyiss meg egy http/https oldalt, majd próbáld újra.');
+      if (!target?.id) throw new Error(bt('background.noUsableActiveTab'));
       await setLastActiveTab(target.id);
       await ensureContentScript(target.id);
       if (msg.payload?.type === 'BF_START_PICKER' || msg.payload?.type === 'BF_START_RECORDING') {
@@ -232,7 +268,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const item = pendingClipboardReads.get(id);
         if (!item) return;
         pendingClipboardReads.delete(id);
-        try { item.sendResponse({ ok: false, error: 'Vágólap beolvasása timeout.' }); } catch (_) {}
+        try { item.sendResponse({ ok: false, error: bt('background.clipboardTimeout') }); } catch (_) {}
         try { chrome.storage.local.remove(`clipboard_${id}`); } catch (_) {}
         try { if (win?.id) chrome.windows.remove(win.id); } catch (_) {}
       }, 15000);
@@ -266,8 +302,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           placeholder: String(msg.placeholder || '').slice(0, 500),
           defaultValue: String(msg.defaultValue || '').slice(0, 8000),
           options: Array.isArray(msg.options) ? msg.options.slice(0, 20).map(x => String(x).slice(0, 500)) : [],
-          buttonText: String(msg.buttonText || 'Folytatás').slice(0, 80),
-          cancelText: String(msg.cancelText || 'Megszakítás').slice(0, 80),
+          buttonText: String(msg.buttonText || bt('button.continue')).slice(0, 80),
+          cancelText: String(msg.cancelText || bt('button.cancel')).slice(0, 80),
           feedbackStyle: String(msg.feedbackStyle || 'default').slice(0, 40),
           accent: String(msg.accent || 'blue').slice(0, 40),
           windowSize: String(msg.windowSize || 'normal').slice(0, 40)
@@ -312,10 +348,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     if (msg?.type === 'BF_OPEN_URL') {
       const url = String(msg.url || '');
-      if (!url) throw new Error('Nincs megadva URL.');
+      if (!url) throw new Error(bt('background.noUrl'));
       if (msg.mode === 'sameTab') {
         const target = await getUsableTargetTab(sender?.tab?.id);
-        if (!target?.id) throw new Error('Nincs cél tab.');
+        if (!target?.id) throw new Error(bt('background.noTargetTab'));
         await chrome.tabs.update(target.id, { url });
       } else if (msg.mode === 'newWindow') {
         await chrome.windows.create({ url, type: 'popup', width: 1100, height: 800, focused: true });
@@ -377,7 +413,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (found?.id) { sendResponse({ ok: true, tabId: found.id, url: found.url, title: found.title }); return; }
         await new Promise(r => setTimeout(r, 500));
       }
-      sendResponse({ ok: false, error: 'Timeout: nem jelent meg megfelelő tab/ablak.' });
+      sendResponse({ ok: false, error: bt('background.tabWaitTimeout') });
       return;
     }
 
@@ -389,10 +425,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     if (msg?.type === 'BF_EXTRACT_FROM_TAB') {
       const tabId = Number(msg.tabId || 0);
-      if (!tabId) throw new Error('Nincs popup/tab azonosító.');
+      if (!tabId) throw new Error(bt('background.noPopupTabId'));
       await ensureContentScript(tabId);
       const response = await chrome.tabs.sendMessage(tabId, { type:'BF_EXTRACT_ONCE', target: msg.target, extractMode: msg.extractMode, attributeName: msg.attributeName, timeoutMs: msg.timeoutMs });
-      sendResponse(response || { ok:false, error:'Nincs válasz a tabtól.' });
+      sendResponse(response || { ok:false, error:bt('background.noTabResponse') });
       return;
     }
 
@@ -404,7 +440,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     if (msg?.type === 'BF_SYSTEM_NOTIFICATION') {
       const title = String(msg.title || 'BlockFlow').slice(0, 120);
-      const message = String(msg.message || '').slice(0, 2000) || 'Értesítés';
+      const message = String(msg.message || '').slice(0, 2000) || bt('block.systemNotify.name');
       const notificationId = `blockflow-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       await chrome.notifications.create(notificationId, {
         type: 'basic',

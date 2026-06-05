@@ -111,7 +111,7 @@ async function refreshTarget() {
     currentTargetHost = '';
     currentTargetPath = '/';
   }
-  $('#targetInfo').textContent = res.ok ? `Cél tab: ${safeHost(res.url)}` : 'Nincs weboldal cél tab';
+  $('#targetInfo').textContent = res.ok ? BF.t('status.targetTab', { host: safeHost(res.url) }) : BF.t('status.noTargetTab');
 }
 
 function ensureWorkflowDefaults(w) {
@@ -132,7 +132,7 @@ function renderWorkflowOptions() {
 function renderSaveState() {
   const el = $('#saveState');
   if (!el) return;
-  el.textContent = isDirty ? 'Nem mentett módosítás' : 'Mentve';
+  el.textContent = isDirty ? BF.t('status.unsaved') : BF.t('status.saved');
   el.className = `status save-state ${isDirty ? 'dirty' : 'saved'}`;
 }
 
@@ -179,7 +179,7 @@ function showPanelError(name, err) {
   };
   const id = map[name] || name;
   const el = document.getElementById(id);
-  if (el) el.innerHTML = `<div class="issue-error">Betöltési hiba: ${escapeHtml(err?.message || err)}</div>`;
+  if (el) el.innerHTML = `<div class="issue-error">${escapeHtml(BF.t('status.loadError'))}: ${escapeHtml(err?.message || err)}</div>`;
 }
 
 
@@ -187,7 +187,7 @@ function renderImportWarning() {
   const warn = $('#importWarning');
   if (activeWorkflow?.verified === false || activeWorkflow?.imported) {
     warn.classList.remove('hidden');
-    warn.textContent = 'Importált vagy még nem ellenőrzött automatizmus. Futtatás előtt használd a Dry-run módot és ellenőrizd az elemeket.';
+    warn.textContent = BF.t('workflow.importWarning');
   } else {
     warn.classList.add('hidden');
   }
@@ -245,8 +245,8 @@ function renderRecordControls() {
   pause.classList.toggle('hidden', !recorderState.active);
   stop.classList.toggle('hidden', !recorderState.active);
   status.classList.toggle('hidden', !recorderState.active);
-  pause.textContent = recorderState.paused ? '▶ Folytatás' : '⏸ Pause';
-  status.textContent = recorderState.active ? `Record ${recorderState.paused ? 'szünetel' : 'fut'} · ${recorderState.count || 0} lépés` : '';
+  pause.textContent = recorderState.paused ? '▶ ' + BF.t('button.continue') : '⏸ ' + BF.t('button.pause');
+  status.textContent = recorderState.active ? BF.t(recorderState.paused ? 'record.pausedStatus' : 'record.runningStatus', { count: recorderState.count || 0 }) : '';
 }
 
 function recordedEventToBlock(ev) {
@@ -318,10 +318,10 @@ async function startRecording() {
   try {
     await saveCurrent();
     const res = await BF.sendToTarget({ type:'BF_START_RECORDING' }, targetTabId);
-    if (!res.ok || res.response?.ok === false) throw new Error(res.response?.error || res.error || 'Record indítása sikertelen.');
+    if (!res.ok || res.response?.ok === false) throw new Error(res.response?.error || res.error || BF.t('record.startFailed'));
     recorderState = { active:true, paused:false, startedAt:Date.now(), count:0 };
     renderRecordControls();
-    $('#log').textContent = 'Record elindult. A céloldalon végzett kattintások, mezőkitöltések és fő billentyűk rögzülnek.';
+    $('#log').textContent = BF.t('record.startedLog');
   } catch (err) { alert(err.message || String(err)); }
 }
 
@@ -330,7 +330,7 @@ async function toggleRecordingPause() {
   try {
     const paused = !recorderState.paused;
     const res = await BF.sendToTarget({ type:'BF_PAUSE_RECORDING', paused }, targetTabId);
-    if (!res.ok || res.response?.ok === false) throw new Error(res.response?.error || res.error || 'Record szüneteltetés sikertelen.');
+    if (!res.ok || res.response?.ok === false) throw new Error(res.response?.error || res.error || BF.t('record.pauseFailed'));
     recorderState.paused = paused;
     renderRecordControls();
   } catch (err) { alert(err.message || String(err)); }
@@ -340,12 +340,12 @@ async function stopRecording() {
   if (!recorderState.active) return;
   try {
     const res = await BF.sendToTarget({ type:'BF_STOP_RECORDING' }, targetTabId);
-    if (!res.ok || res.response?.ok === false) throw new Error(res.response?.error || res.error || 'Record leállítása sikertelen.');
+    if (!res.ok || res.response?.ok === false) throw new Error(res.response?.error || res.error || BF.t('record.stopFailed'));
     const events = res.response?.events || [];
     const added = appendRecordedBlocks(events);
     recorderState = { active:false, paused:false, startedAt:0, count:0 };
     renderRecordControls();
-    $('#log').textContent = `Record leállt. ${events.length} műveletből ${added} blokk készült.`;
+    $('#log').textContent = BF.t('record.stoppedLog', { events: events.length, added });
   } catch (err) {
     recorderState = { active:false, paused:false, startedAt:0, count:0 };
     renderRecordControls();
@@ -403,8 +403,8 @@ function renderWorkflowList() {
 
   listEl.innerHTML = filtered.map(w => `<div class="list-item ${w.id===activeWorkflow.id?'selected':''}" data-workflow-row="${w.id}">
     <div class="list-title">${escapeHtml(w.name)}</div>
-    <div class="muted">${BF.countBlocks ? BF.countBlocks(w.blocks) : (w.blocks||[]).length} blokk ${w.imported?' · importált':''} ${w.verified===false?' · nem ellenőrzött':''}</div>
-    <div class="split" style="margin-top:8px"><button class="small" data-open="${w.id}">Megnyitás</button><button class="small danger" data-delwf="${w.id}">Törlés</button></div>
+    <div class="muted">${BF.t('workflow.blockCount', { count: BF.countBlocks ? BF.countBlocks(w.blocks) : (w.blocks||[]).length })}${w.imported?' · '+BF.t('workflow.imported'):''}${w.verified===false?' · '+BF.t('workflow.unverifiedSuffix'):''}</div>
+    <div class="split" style="margin-top:8px"><button class="small" data-open="${w.id}">${BF.t('workflowList.open')}</button><button class="small danger" data-delwf="${w.id}">${BF.t('button.delete')}</button></div>
   </div>`).join('');
   document.querySelectorAll('[data-workflow-row]').forEach(row => row.onclick = async (e) => {
     if (e.target.closest('button')) return;
@@ -418,8 +418,8 @@ function renderWorkflowList() {
   document.querySelectorAll('[data-delwf]').forEach(b => b.onclick = async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (workflows.length < 2) return alert('Legalább egy automatizmusnak maradnia kell.');
-    if (!confirm('Törlöd ezt az automatizmust?')) return;
+    if (workflows.length < 2) return alert(BF.t('workflow.mustKeepOne'));
+    if (!confirm(BF.t('workflow.confirmDelete'))) return;
     const deletedCurrent = activeWorkflow?.id === b.dataset.delwf;
     workflows = workflows.filter(w => w.id !== b.dataset.delwf);
     activeWorkflow = deletedCurrent ? workflows[0] : (workflows.find(w => w.id === activeWorkflow?.id) || workflows[0]);
@@ -445,11 +445,11 @@ function renderPalette() {
   $('#palette').innerHTML = hint + controls + Object.entries(grouped).map(([cat, items]) => {
     const collapsed = Boolean(paletteCollapsed[cat]);
     return `<div class="palette-category ${collapsed ? 'collapsed' : ''}" data-palette-cat="${escapeAttr(cat)}">
-      <button class="section-title palette-category-title" data-toggle-palette="${escapeAttr(cat)}" title="Kategória nyitása/zárása"><span>${collapsed ? '▸' : '▾'}</span><b>${escapeHtml(cat)}</b><small>${items.length}</small></button>
+      <button class="section-title palette-category-title" data-toggle-palette="${escapeAttr(cat)}" title="${BF.t('palette.toggleCategory')}"><span>${collapsed ? '▸' : '▾'}</span><b>${escapeHtml(cat)}</b><small>${items.length}</small></button>
       <div class="palette-category-body" ${collapsed ? 'hidden' : ''}>${items.map(item => {
         const canAddConditionByClick = item.type.startsWith('condition') && (['triggerGroup','conditionGroup'].includes(selected?.type) || ['triggerGroup','conditionGroup'].includes(selectedInfo?.parent?.type) || Boolean(findSingleTriggerGroup()));
         const disabled = (needsStarter && !['trigger','triggerGroup','clickTrigger','scheduledTrigger'].includes(item.type)) || (item.type.startsWith('condition') && !canAddConditionByClick);
-        return `<button class="palette-btn ${disabled?'disabled':''}" data-add="${item.type}" draggable="${disabled ? 'false' : 'true'}" ${disabled?'disabled title="Először válassz indító blokkot, figyelő feltételnél pedig jelölj ki egy Figyelő triggert vagy feltételt."':'title="Kattints a kijelölt blokk után beszúráshoz, vagy húzd be a megfelelő helyre."'}><span>${BF.BLOCKS[item.type].name}</span><span>+</span></button>`;
+        return `<button class="palette-btn ${disabled?'disabled':''}" data-add="${item.type}" draggable="${disabled ? 'false' : 'true'}" ${disabled ? `disabled title="${escapeAttr(BF.t('palette.needStarterOrTrigger'))}"` : `title="${escapeAttr(BF.t('palette.addHint'))}"`}><span>${BF.BLOCKS[item.type].name}</span><span>+</span></button>`;
       }).join('')}</div>
     </div>`;
   }).join('');
@@ -473,8 +473,8 @@ function renderPalette() {
 
 function addBlock(type) {
   const isStarter = ['trigger','triggerGroup','clickTrigger','scheduledTrigger'].includes(type);
-  if (!hasAnyStarter() && !isStarter) return alert('Először válassz indító blokkot: Indítás, Figyelő trigger, Kattintás trigger vagy Időzített indítás.');
-  if (type === 'trigger' && containsType(activeWorkflow.blocks, 'trigger')) return alert('Egy manuális indító blokk már van a workflow-ban.');
+  if (!hasAnyStarter() && !isStarter) return alert(BF.t('workflow.chooseStarterFirst'));
+  if (type === 'trigger' && containsType(activeWorkflow.blocks, 'trigger')) return alert(BF.t('workflow.manualStarterExists'));
 
   const selectedInfo = findBlock(selectedBlockId);
   const selected = selectedInfo?.block;
@@ -493,7 +493,7 @@ function addBlock(type) {
       insertAt(selected.children, selected.children.length, selected.children[selected.children.length - 1] || selected);
     } else {
       const targetTrigger = findSingleTriggerGroup();
-      if (!targetTrigger) return alert('Figyelő feltételt csak Figyelő trigger alá lehet tenni. Jelöld ki a Figyelő triggert, feltételcsoportot vagy egy meglévő feltételt, esetleg húzd be a feltételt a trigger alá.');
+      if (!targetTrigger) return alert(BF.t('workflow.conditionNeedsTrigger'));
       targetTrigger.children ||= [];
       insertAt(targetTrigger.children, targetTrigger.children.length, targetTrigger.children[targetTrigger.children.length - 1] || targetTrigger);
     }
@@ -553,7 +553,7 @@ function canPlaceBlockInContainer(block, containerId, silent = false) {
   if (!block) return false;
   if (!containerId || containerId === 'root') {
     if (String(block.type || '').startsWith('condition')) {
-      if (!silent) alert('Figyelő feltétel csak Figyelő trigger alá kerülhet.');
+      if (!silent) alert(BF.t('workflow.conditionOnlyUnderTrigger'));
       return false;
     }
     return true;
@@ -564,11 +564,11 @@ function canPlaceBlockInContainer(block, containerId, silent = false) {
   const isCondition = String(block.type || '').startsWith('condition');
   const isWatcherConditionContainer = target.type === 'triggerGroup' || target.type === 'conditionGroup';
   if (isWatcherConditionContainer && !isCondition) {
-    if (!silent) alert('A Figyelő trigger/feltételcsoport alá csak figyelő feltétel blokkok húzhatók.');
+    if (!silent) alert(BF.t('workflow.onlyWatcherConditions'));
     return false;
   }
   if (!isWatcherConditionContainer && isCondition) {
-    if (!silent) alert('Figyelő feltétel csak Figyelő trigger vagy Feltételcsoport alá kerülhet.');
+    if (!silent) alert(BF.t('workflow.conditionOnlyTriggerOrGroup'));
     return false;
   }
   return true;
@@ -629,9 +629,9 @@ function walk(blocks, fn) {
 
 function renderBlocks() {
   $('#workflowName').value = activeWorkflow.name;
-  $('#blocks').innerHTML = `<div class="drop-zone root-drop" data-drop-container="root">Workflow gyökér szint</div>` +
+  $('#blocks').innerHTML = `<div class="drop-zone root-drop" data-drop-container="root">${BF.t('workspace.rootLevel')}</div>` +
     renderBlockList(activeWorkflow.blocks, 0, null) +
-    `<div class="drop-zone root-drop" data-drop-container="root">Ide húzhatsz blokkot a fő szintre</div>`;
+    `<div class="drop-zone root-drop" data-drop-container="root">${BF.t('workspace.dropMain')}</div>`;
   bindBlockEvents();
 }
 
@@ -645,45 +645,56 @@ function canOutdentToRoot(block, parentId) {
 function blockActionButtons(b, idx, total, parentId) {
   const parts = [];
   if (idx > 0) {
-    parts.push(`<button class="small" title="Legfelülre" data-top="${b.id}">⇈</button>`);
-    parts.push(`<button class="small" title="Fel" data-up="${b.id}">↑</button>`);
+    parts.push(`<button class="small" title="${BF.t('action.moveTop')}" data-top="${b.id}">⇈</button>`);
+    parts.push(`<button class="small" title="${BF.t('action.moveUp')}" data-up="${b.id}">↑</button>`);
   }
   if (idx < total - 1) {
-    parts.push(`<button class="small" title="Le" data-down="${b.id}">↓</button>`);
-    parts.push(`<button class="small" title="Legalulra" data-bottom="${b.id}">⇊</button>`);
+    parts.push(`<button class="small" title="${BF.t('action.moveDown')}" data-down="${b.id}">↓</button>`);
+    parts.push(`<button class="small" title="${BF.t('action.moveBottom')}" data-bottom="${b.id}">⇊</button>`);
   }
-  if (canOutdentToRoot(b, parentId)) parts.push(`<button class="small" title="Kihúzás fő szintre" data-outdent="${b.id}">⇤</button>`);
-  if (canDeleteBlock(b)) parts.push(`<button class="small danger" title="Törlés" data-del="${b.id}">×</button>`);
+  if (canOutdentToRoot(b, parentId)) parts.push(`<button class="small" title="${BF.t('action.outdent')}" data-outdent="${b.id}">⇤</button>`);
+  if (canDeleteBlock(b)) parts.push(`<button class="small danger" title="${BF.t('button.delete')}" data-del="${b.id}">×</button>`);
   return parts.join('');
 }
 
 function groupChildIconSummary(b) {
   const children = Array.isArray(b.children) ? b.children : [];
-  if (!children.length) return '<span class="group-mini muted">üres</span>';
+  if (!children.length) return `<span class="group-mini muted">${BF.t('common.empty')}</span>`;
   const max = 14;
   const icons = children.slice(0, max).map(child => `<span class="group-mini-icon" title="${escapeAttr(BF.blockTitle(child))}">${escapeHtml(blockIcon(child))}</span>`).join('');
   const more = children.length > max ? `<span class="group-mini more">+${children.length - max}</span>` : '';
-  return `<div class="group-collapsed-icons" title="A csoportban lévő blokkok ikonjai">${icons}${more}</div>`;
+  return `<div class="group-collapsed-icons" title="${BF.t('group.collapsedIconsTitle')}">${icons}${more}</div>`;
 }
 
+
+function containerLabelFor(b) {
+  if (b.type === 'triggerGroup') return BF.t('container.triggerConditions');
+  if (b.type === 'conditionGroup') return BF.t('container.conditionGroup');
+  if (b.type === 'ifBlock') return BF.t('container.ifTrue');
+  if (b.type === 'tryBlock') return BF.t('container.tryBlock');
+  if (b.type === 'groupBlock') return BF.t('container.groupBlocks');
+  return BF.t('container.childBlocks');
+}
+function elseContainerLabelFor(b) { return b.type === 'tryBlock' ? BF.t('container.onError') : BF.t('container.else'); }
+
 function renderBlockList(blocks, level, parentId) {
-  if (!blocks || !blocks.length) return level ? '<div class="empty nested-empty">Húzz ide blokkokat, vagy jelöld ki a konténert és adj hozzá blokkot a bal oldalon.</div>' : '<div class="empty starter-empty"><b>Válassz indítást a bal oldalon.</b><br>Indítás vagy Figyelő trigger szükséges az automatizmushoz.</div>';
+  if (!blocks || !blocks.length) return level ? `<div class="empty nested-empty">${BF.t('workspace.nestedEmpty')}</div>` : `<div class="empty starter-empty"><b>${BF.t('workspace.chooseStarter')}</b><br>${BF.t('workspace.starterRequired')}</div>`;
   return blocks.map((b, idx) => {
     let childHtml = '';
     if (CONTAINERS.has(b.type)) {
       const isCollapsedGroup = b.type === 'groupBlock' && b.collapsed === true;
       childHtml = isCollapsedGroup
         ? `<div class="container-body group-collapsed" data-drop-container="${b.id}">
-            <div class="container-label">CSOPORT ÖSSZECSUKVA - a benne lévő blokkok ikonként látszanak</div>
+            <div class="container-label">${BF.t('group.collapsedLabel')}</div>
             ${groupChildIconSummary(b)}
           </div>`
         : `<div class="container-body" data-drop-container="${b.id}">
-        <div class="container-label">${b.type === 'triggerGroup' ? 'FIGYELŐ FELTÉTELEK - ezek döntik el, indul-e az automatizmus' : (b.type === 'conditionGroup' ? 'FELTÉTELCSOPORT - ide további figyelő feltételek kerülnek' : (b.type === 'ifBlock' ? 'HA IGAZ - behúzott blokkok' : (b.type === 'tryBlock' ? 'PRÓBÁLD MEG - behúzott blokkok' : (b.type === 'groupBlock' ? 'CSOPORT BLOKKJAI' : 'A blokk hatása alá tartozó behúzott blokkok'))))}</div>
+        <div class="container-label">${containerLabelFor(b)}</div>
         ${renderBlockList(b.children || [], level + 1, b.id)}
       </div>`;
       if (b.type === 'ifBlock' || b.type === 'tryBlock') {
         childHtml += `<div class="container-body else-body" data-drop-container="else:${b.id}">
-          <div class="container-label">${b.type === 'tryBlock' ? 'HIBA ESETÉN - behúzott blokkok' : 'KÜLÖNBEN - behúzott blokkok'}</div>
+          <div class="container-label">${elseContainerLabelFor(b)}</div>
           ${renderBlockList(b.elseChildren || [], level + 1, `else:${b.id}`)}
         </div>`;
       }
@@ -711,7 +722,7 @@ function blockOutputHtml(b) {
   if (out.elementVar) chips.push(`elem: {{${escapeHtml(out.elementVar)}}}`);
   if (out.selectorVar) chips.push(`selector: {{${escapeHtml(out.selectorVar)}}}`);
   if (!chips.length) return '';
-  return `<div class="block-output"><span>Továbbadja:</span>${chips.map(c => `<b>${c}</b>`).join('')}</div>`;
+  return `<div class="block-output"><span>${BF.t('block.outputLabel')}:</span>${chips.map(c => `<b>${c}</b>`).join('')}</div>`;
 }
 
 function blockIcon(b) {
@@ -726,10 +737,10 @@ function inlineSelect(field, value, options, cls='') {
   const opts = Array.isArray(options) ? options : [];
   return `<select class="inline-select ${cls}" data-inline-field="${field}">${opts.map(([v,l])=>`<option value="${escapeAttr(v)}" ${String(v)===String(value)?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select>`;
 }
-function inlinePick(b, label='Cél elem') { return `<button class="inline-pick ${b.target ? 'has-target' : ''}" data-inline-pick="target" title="Elem kiválasztása az oldalról"><span>${escapeHtml(label)}</span><b>${escapeHtml(targetLabel(b))}</b></button>`; }
+function inlinePick(b, label=BF.t('target.targetElement')) { return `<button class="inline-pick ${b.target ? 'has-target' : ''}" data-inline-pick="target" title="${BF.t('target.pickFromPage')}"><span>${escapeHtml(label)}</span><b>${escapeHtml(targetLabel(b))}</b></button>`; }
 function inlineTargetSource(b) { return `${inlineSelect('targetMode', b.targetMode || 'manual', [['manual','kézi elem'],['last','előző találat'],['var','elem változó'],['selector','selector változó'],['xpath','XPath változó']])}${(b.targetMode === 'var' || b.targetMode === 'selector' || b.targetMode === 'xpath') ? inlineInput('targetVar', b.targetVar || (b.targetMode === 'selector' ? 'szoveg_talalat_selector' : b.targetMode === 'xpath' ? 'szoveg_talalat_xpath' : 'szoveg_talalat_elem'), 'változó') : ''}`; }
 function inlineOpenInspector(label='Bővített') { return `<button class="inline-more" data-inline-more="1" title="Bővített beállítások a jobb oldalon">${escapeHtml(label)}</button>`; }
-function targetLabel(b) { return b.target ? (b.target.label || b.target.tag || 'kiválasztott elem') : 'nincs cél'; }
+function targetLabel(b) { return b.target ? (b.target.label || b.target.tag || BF.t('target.selectedElement')) : BF.t('target.noTarget'); }
 function scopeLabel(scope) {
   return ({ domain:'domain', path:'domain + path', exact:'pontos URL', contains:'URL tartalmazza', any:'bármely oldal' })[scope || 'domain'] || 'domain';
 }
@@ -1227,8 +1238,8 @@ function renderInspector() {
   const soundFile = $('#customSoundFile');
   if (soundFile) soundFile.onchange = async e => {
     const f = e.target.files?.[0]; if (!f) return;
-    if (!/^audio\//.test(f.type || '') && !/\.(mp3|wav|ogg|m4a)$/i.test(f.name || '')) return alert('Csak hangfájl tölthető fel.');
-    if (f.size > 1024 * 1024) return alert('A saját hang legyen rövid, maximum 1 MB.');
+    if (!/^audio\//.test(f.type || '') && !/\.(mp3|wav|ogg|m4a)$/i.test(f.name || '')) return alert(BF.t('sound.onlyAudio'));
+    if (f.size > 1024 * 1024) return alert(BF.t('sound.maxSize'));
     const dataUrl = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(f); });
     const block = findBlock(selectedBlockId)?.block; if (!block) return;
     block.soundSource = 'custom'; block.customSoundName = f.name; block.customSoundData = dataUrl;
@@ -1238,7 +1249,7 @@ function renderInspector() {
   if (previewSound) previewSound.onclick = () => {
     const block = findBlock(selectedBlockId)?.block;
     if (block?.customSoundData) { const a = new Audio(block.customSoundData); a.volume = Math.max(0, Math.min(1, Number(block.volume ?? 0.7))); a.play().catch(()=>{}); }
-    else alert('Nincs feltöltött saját hang.');
+    else alert(BF.t('sound.noCustomSound'));
   };
   const pick = $('#pickElement'); if (pick) pick.onclick = () => startPick(b.id, 'target');
   document.querySelectorAll('[data-pick]').forEach(btn => btn.onclick = () => startPick(b.id, btn.dataset.pick || 'target'));
@@ -1264,7 +1275,7 @@ function renderInspector() {
 }
 
 function targetPickerHtml(b){ return targetEditor(b); }
-function targetEditor(b){ return `<div class="field"><label>Cél elem</label><div class="status">${b.target ? escapeHtml(b.target.label + ' · ' + b.target.tag) : 'Nincs elem kiválasztva'}</div><button id="pickElement" class="primary">Elem kiválasztása az oldalról</button></div>`; }
+function targetEditor(b){ return `<div class="field"><label>${BF.t('target.targetElement')}</label><div class="status">${b.target ? escapeHtml(b.target.label + ' · ' + b.target.tag) : BF.t('target.noElementSelected')}</div><button id="pickElement" class="primary">${BF.t('target.pickFromPage')}</button></div>`; }
 function watcherAdvanced(b){
   const scope = b.scope || 'domain';
   let detail = '';
@@ -1904,16 +1915,20 @@ async function exportMiniExtension() {
   const exportedWorkflows = dependencyGraph.workflows.length ? dependencyGraph.workflows : [wf];
   const watchers = buildWatchersForExport(wf);
   const schedules = buildSchedulesForExport(wf);
-  const [bg, cs, css, fbHtml, fbCss, fbJs, clipHtml, clipCss, clipJs, icon16, icon48, icon128] = await Promise.all([
+  const [bg, cs, css, commonJs, fbHtml, fbCss, fbJs, clipHtml, clipCss, clipJs, langJson, huJson, enJson, icon16, icon48, icon128] = await Promise.all([
     fetch(chrome.runtime.getURL('background.js')).then(r=>r.text()),
     fetch(chrome.runtime.getURL('contentScript.js')).then(r=>r.text()),
     fetch(chrome.runtime.getURL('contentScript.css')).then(r=>r.text()),
+    fetch(chrome.runtime.getURL('common.js')).then(r=>r.text()),
     fetch(chrome.runtime.getURL('feedback.html')).then(r=>r.text()),
     fetch(chrome.runtime.getURL('feedback.css')).then(r=>r.text()),
     fetch(chrome.runtime.getURL('feedback.js')).then(r=>r.text()),
     fetch(chrome.runtime.getURL('clipboard.html')).then(r=>r.text()),
     fetch(chrome.runtime.getURL('clipboard.css')).then(r=>r.text()),
     fetch(chrome.runtime.getURL('clipboard.js')).then(r=>r.text()),
+    fetch(chrome.runtime.getURL('locales/languages.json')).then(r=>r.text()),
+    fetch(chrome.runtime.getURL('locales/hu.json')).then(r=>r.text()),
+    fetch(chrome.runtime.getURL('locales/en.json')).then(r=>r.text()),
     fetch(chrome.runtime.getURL('icons/icon16.png')).then(r=>r.arrayBuffer()).catch(()=>new ArrayBuffer(0)),
     fetch(chrome.runtime.getURL('icons/icon48.png')).then(r=>r.arrayBuffer()).catch(()=>new ArrayBuffer(0)),
     fetch(chrome.runtime.getURL('icons/icon128.png')).then(r=>r.arrayBuffer()).catch(()=>new ArrayBuffer(0))
@@ -1937,7 +1952,11 @@ async function exportMiniExtension() {
     { name:'background.js', content: makeStandaloneBackground(wf, exportedWorkflows, watchers, schedules, bg) },
     { name:'contentScript.js', content: cs },
     { name:'contentScript.css', content: css },
+    { name:'common.js', content: commonJs },
     { name:'README_MINI.md', content: readme },
+    { name:'locales/languages.json', content: langJson },
+    { name:'locales/hu.json', content: huJson },
+    { name:'locales/en.json', content: enJson },
     { name:'feedback.html', content: fbHtml },
     { name:'feedback.css', content: fbCss },
     { name:'feedback.js', content: fbJs },

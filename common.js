@@ -737,19 +737,19 @@ const BF = (() => {
       if (b.type === 'textSearch' && !String(b.query||'').trim()) issues.push({ level:'warning', blockId:b.id, text:'Szöveg keresése: üres keresett szöveg.' });
       if (b.type === 'fieldByLabel' && !String(b.labelText||'').trim()) issues.push({ level:'warning', blockId:b.id, text:'Mező keresése címke alapján: üres címke.' });
       if (b.type === 'mask' && !String(b.source||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Maszkolás blokk: hiányzik a forrás szöveg vagy változó.' });
-      if (b.type === 'mask' && !String(b.resultName||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Maszkolás blokk: hiányzik az eredmény változó neve.' });
-      if (b.type === 'openEmail' && !String(b.draftName||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Email megnyitása: hiányzik a draft változó neve.' });
-      if (b.type === 'openUrl' && !String(b.url||'').trim()) issues.push({ level:'error', blockId:b.id, text:'URL megnyitása: hiányzik az URL.' });
-      if (b.type === 'selectOption' && !String(b.optionText||'').trim()) issues.push({ level:'warning', blockId:b.id, text:'Legördülő opció: üres opciószöveg.' });
-      if (b.type === 'scroll' && (b.mode || 'element') === 'element' && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:'Görgetés elemhez: hiányzik a cél elem vagy dinamikus cél változó.' });
-      if (b.type === 'scroll' && b.direction === 'untilText' && !String(b.searchText||'').trim()) issues.push({ level:'warning', blockId:b.id, text:'Görgetés szövegig: üres keresett szöveg.' });
-      if (b.type === 'waitLoad' && ['elementVisible','elementClickable'].includes(b.loadMode || '') && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:'Várj betöltésre: elem módhoz hiányzik a cél elem.' });
-      if (b.type === 'preflight' && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:'Elem ellenőrzése: hiányzik a cél elem.' });
-      if (b.type === 'pageButton' && ['afterTarget','beforeTarget'].includes(b.position || '') && !b.target) issues.push({ level:'error', blockId:b.id, text:'Oldalba illesztett gomb: elem elé/után elhelyezéshez hiányzik a cél elem.' });
-      if (b.type === 'click' && /delete|remove|send|submit|pay|confirm|order|törl|küld|fizet|rendel|végleges/i.test(`${b.target?.label || ''} ${b.target?.text || ''}`)) issues.push({ level:'warning', blockId:b.id, text:`Kockázatos kattintás lehet: ${b.target?.label || 'cél elem'}.` });
+      if (b.type === 'mask' && !String(b.resultName||'').trim()) issues.push({ level:'error', blockId:b.id, text:t('validation.maskMissingResult') });
+      if (b.type === 'openEmail' && !String(b.draftName||'').trim()) issues.push({ level:'error', blockId:b.id, text:t('validation.emailMissingDraft') });
+      if (b.type === 'openUrl' && !String(b.url||'').trim()) issues.push({ level:'error', blockId:b.id, text:t('validation.openUrlMissingUrl') });
+      if (b.type === 'selectOption' && !String(b.optionText||'').trim()) issues.push({ level:'warning', blockId:b.id, text:t('validation.selectOptionEmpty') });
+      if (b.type === 'scroll' && (b.mode || 'element') === 'element' && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:t('validation.scrollMissingTarget') });
+      if (b.type === 'scroll' && b.direction === 'untilText' && !String(b.searchText||'').trim()) issues.push({ level:'warning', blockId:b.id, text:t('validation.scrollUntilTextEmpty') });
+      if (b.type === 'waitLoad' && ['elementVisible','elementClickable'].includes(b.loadMode || '') && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:t('validation.waitLoadMissingTarget') });
+      if (b.type === 'preflight' && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:t('validation.preflightMissingTarget') });
+      if (b.type === 'pageButton' && ['afterTarget','beforeTarget'].includes(b.position || '') && !b.target) issues.push({ level:'error', blockId:b.id, text:t('validation.pageButtonMissingTarget') });
+      if (b.type === 'click' && /delete|remove|send|submit|pay|confirm|order|törl|küld|fizet|rendel|végleges/i.test(`${b.target?.label || ''} ${b.target?.text || ''}`)) issues.push({ level:'warning', blockId:b.id, text:t('validation.riskyClick', { label: b.target?.label || t('validation.targetElement') }) });
     });
     for (const ref of collectVariableRefs(workflow)) {
-      if (!defined.has(ref)) issues.push({ level:'warning', blockId:null, text:`A {{${ref}}} változó nincs korábban létrehozva.` });
+      if (!defined.has(ref)) issues.push({ level:'warning', blockId:null, text:t('validation.variableNotDefined', { name: ref }) });
     }
     return { ok: !issues.some(i => i.level === 'error'), issues };
   }

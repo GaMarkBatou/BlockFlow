@@ -3,20 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BlockFlow üzenet</title>
+  <title>BlockFlow</title>
   <link rel="stylesheet" href="feedback.css">
 </head>
 <body>
   <main class="card">
     <div class="eyebrow">BlockFlow</div>
-    <h1 id="title">Üzenet</h1>
+    <h1 id="title" data-i18n="feedback.messageTitle">Üzenet</h1>
     <div id="message" class="message"></div>
     <div id="inputArea" class="input-area hidden"></div>
     <div id="actions" class="actions">
-      <button id="cancel" class="secondary">Megszakítás</button>
-      <button id="continue" class="primary">Folytatás</button>
+      <button id="cancel" class="secondary" data-i18n="button.cancel">Megszakítás</button>
+      <button id="continue" class="primary" data-i18n="button.continue">Folytatás</button>
     </div>
   </main>
-  <script src="feedback.js"></script>
+  <script src="common.js"></script><script src="feedback.js"></script>
 </body>
 </html>

@@ -4,21 +4,21 @@
     <button id="newWorkflow">＋ <span data-i18n="button.new">Új</span></button>
     <button id="saveWorkflow" class="primary">💾 <span data-i18n="button.save">Mentés</span></button>
     <button id="validateWorkflow">✓ <span data-i18n="button.validate">Ellenőrzés</span></button>
-    <button id="dryRunWorkflow">🧪 Dry-run</button>
+    <button id="dryRunWorkflow">🧪 <span data-i18n="button.dryRun">Dry-run</span></button>
     <button id="runWorkflow">▶ <span data-i18n="button.run">Futtatás</span></button>
     <button id="forceRunWorkflow">⚡ <span data-i18n="button.forceRun">Kényszerített futtatás</span></button>
-    <button id="stopRun" class="danger">■ Stop</button>
-    <button id="exportOne">⇩ Export</button>
-    <button id="exportMini">🧩 Mini extension</button>
+    <button id="stopRun" class="danger">■ <span data-i18n="button.stop">Stop</span></button>
+    <button id="exportOne">⇩ <span data-i18n="button.export">Export</span></button>
+    <button id="exportMini">🧩 <span data-i18n="button.miniExtension">Mini extension</span></button>
     <button id="exportAll">⇩ <span data-i18n="button.exportAll">Teljes export</span></button>
     <button id="importBtn">⇧ <span data-i18n="button.import">Import</span></button>
     <input id="importFile" type="file" accept="application/json,.json,.bfa" class="hidden">
-    <span id="targetInfo" class="status">Cél tab: keresés...</span><span id="saveState" class="status save-state saved">Mentve</span>
+    <span id="targetInfo" class="status" data-i18n="status.findingTarget">Cél tab: keresés...</span><span id="saveState" class="status save-state saved" data-i18n="status.saved">Mentve</span>
   </div>
   <main class="layout">
     <aside class="sidebar">
       <div class="workflow-panel-head">
-        <button id="workflowListToggle" class="workflow-toggle" title="Automatizmuslista nyitása/zárása">
+        <button id="workflowListToggle" class="workflow-toggle" data-i18n-title="workflowList.toggleTitle" title="Automatizmuslista nyitása/zárása">
           <span id="workflowListCaret">▾</span>
           <b data-i18n="panel.workflows">Automatizmusok</b>
           <small id="workflowListCount"></small>
@@ -33,7 +33,7 @@
     </aside>
     <section class="workspace">
       <div class="workflow-card">
-        <div class="workflow-title"><input id="workflowName"><button id="duplicateWorkflow" data-i18n="button.duplicate">Másolat</button><button id="markVerified" class="ghost" data-i18n="button.verified">Ellenőrzött</button><label class="public-log-toggle" title="Lépésnapló megjelenítése az oldalon futás közben"><input type="checkbox" id="publicLogEnabled"> <span data-i18n="button.publicLog">Public log</span></label><span id="recordControls" class="record-controls"><button id="recordStart" class="record-start">● Rec</button><button id="recordPause" class="hidden">⏸ Pause</button><button id="recordStop" class="hidden danger">■ Stop</button><span id="recordStatus" class="status muted hidden"></span></span></div>
+        <div class="workflow-title"><input id="workflowName"><button id="duplicateWorkflow" data-i18n="button.duplicate">Másolat</button><button id="markVerified" class="ghost" data-i18n="button.verified">Ellenőrzött</button><label class="public-log-toggle" data-i18n-title="publicLog.toggleTitle" title="Lépésnapló megjelenítése az oldalon futás közben"><input type="checkbox" id="publicLogEnabled"> <span data-i18n="button.publicLog">Public log</span></label><span id="recordControls" class="record-controls"><button id="recordStart" class="record-start">● Rec</button><button id="recordPause" class="hidden">⏸ <span data-i18n="button.pause">Pause</span></button><button id="recordStop" class="hidden danger">■ <span data-i18n="button.stop">Stop</span></button><span id="recordStatus" class="status muted hidden"></span></span></div>
         <div id="importWarning" class="warning hidden"></div>
         <div id="blocks"></div>
       </div>
@@ -46,25 +46,25 @@
       <div id="variables" class="var-list"></div>
       <div class="hr"></div>
       <div class="section-title" data-i18n="panel.validation">Futtatás előtti ellenőrzés</div>
-      <div id="validationPanel" class="status muted">Még nem futott ellenőrzés.</div>
+      <div id="validationPanel" class="status muted" data-i18n="panel.validationNotRun">Még nem futott ellenőrzés.</div>
       <div class="hr"></div>
       <div class="section-title" data-i18n="panel.liveVariables">Élő változók</div>
-      <div id="liveVariables" class="status muted">Még nincs futási eredmény.</div>
+      <div id="liveVariables" class="status muted" data-i18n="panel.noRunResult">Még nincs futási eredmény.</div>
       <div class="hr"></div>
       <div class="section-title" data-i18n="panel.watchers">Figyelő triggerek</div>
-      <div id="watcherPanel" class="status muted">Betöltés...</div>
+      <div id="watcherPanel" class="status muted" data-i18n="status.loading">Betöltés...</div>
       <div class="hr"></div>
       <div class="section-title" data-i18n="panel.templates">Sablonok</div>
-      <div id="templatePanel" class="status muted">Betöltés...</div>
+      <div id="templatePanel" class="status muted" data-i18n="status.loading">Betöltés...</div>
       <div class="hr"></div>
       <div class="section-title" data-i18n="panel.versions">Verziók / Undo</div>
-      <div id="versionPanel" class="status muted">Nincs verzió betöltve.</div>
+      <div id="versionPanel" class="status muted" data-i18n="panel.noVersionLoaded">Nincs verzió betöltve.</div>
       <div class="hr"></div>
       <div class="section-title" data-i18n="panel.importPreview">Import előnézet</div>
-      <div id="importPreview" class="status muted">Nincs import folyamatban.</div>
+      <div id="importPreview" class="status muted" data-i18n="panel.noImportInProgress">Nincs import folyamatban.</div>
       <div class="hr"></div>
       <div class="section-title" data-i18n="panel.log">Napló</div>
-      <div id="log" class="status">Nincs futás.</div>
+      <div id="log" class="status" data-i18n="panel.noRun">Nincs futás.</div>
     </aside>
   </main>
 <script src="common.js"></script><script src="builder.js"></script>
