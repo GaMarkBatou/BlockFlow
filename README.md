@@ -1,4 +1,4 @@
-# BlockFlow Automation MVP 0.53
+# BlockFlow Automation MVP 0.54
 
 BlockFlow egy lokális Chrome extension, amellyel általános weboldalakon lehet böngészőautomatizmusokat összeállítani vizuális, blokkos felületen. A cél az, hogy a gyakori adminisztrációs, adatgyűjtési, email-előkészítési, figyelési és riportkészítési folyamatokat programozás nélkül lehessen felépíteni.
 
@@ -683,3 +683,9 @@ Az extension támogatja a gyökérkönyvtárban található `default.json` fájl
 - Új **Felhasználó** blokk-kategória a palettában.
 - Ide kerültek a felhasználói interakciós blokkok: Felhasználói üzenet, Oldalba illesztett gomb, Adat bekérése, Választás kérése, Rendszerértesítés és Hangjelzés.
 - Az **Oldalba illesztett gomb** blokk most már elérhető a palettából, nem egy nem létező kategóriába kerül.
+
+
+## v0.54
+
+- Oldalba illesztett gomb javítása: az elem elé/után elhelyezés nem omlik össze, a blokk mindig kattintásra vár.
+- Új Custom elhelyezés: bal/jobb/felső/alsó távolság px/% egységgel és z-index beállítással.

@@ -37,7 +37,7 @@ const BF = (() => {
     rowLoop: { name: 'Minden sorra...', desc: 'Egyszerű táblázat/lista sorfeldolgozó konténer.' },
     mask: { name: 'Maszkolás', desc: 'Kinyert adat maszkolása karakterek vagy sorok alapján.' },
     userPrompt: { name: 'Felhasználói üzenet', desc: 'Futás közben felugró ablakot mutat, opcionálisan visszajelzésre vár.' },
-    pageButton: { name: 'Oldalba illesztett gomb', desc: 'Gombot szúr be az aktuális oldalba, és opcionálisan megvárja a kattintást.' },
+    pageButton: { name: 'Oldalba illesztett gomb', desc: 'Gombot szúr be az aktuális oldalba, és kattintásig vár.' },
 
     transform: { name: 'Adat átalakítása', desc: 'Szöveg tisztítása, kis/nagybetű, számok/betűk megtartása.' },
     textSlice: { name: 'Szövegrész kinyerése', desc: 'Szöveget vág ki kezdő/záró minta, sor vagy karakter alapján.' },
@@ -212,7 +212,7 @@ const BF = (() => {
     if (type === 'errorSearch') return { id, type, includeAlerts: true, includeAriaLive: true, includeErrorClasses: true, includeInvalidFields: true, resultName: 'hiba_van', textName: 'hiba_szoveg', selectorName: 'hiba_selector', countName: 'hiba_db' };
     if (type === 'fieldByLabel') return { id, type, labelText: '', matchMode: 'contains', caseSensitive: false, shadowSearch: true, resultName: 'mezo_ertek', selectorName: 'mezo_selector', xpathName: 'mezo_xpath', elementName: 'mezo_elem' };
     if (type === 'setVar') return { id, type, varName: 'valtozo', value: '' };
-    if (type === 'pageButton') return { id, type, label: 'Folytatás', tooltip: 'Kattints a BlockFlow folytatásához', waitForClick: true, position: 'bottomRight', target: null, placement: 'floating', timeoutSec: 300, onTimeout: 'stop', removeAfterClick: true, resultName: 'button_clicked' };
+    if (type === 'pageButton') return { id, type, label: 'Folytatás', tooltip: 'Kattints a BlockFlow folytatásához', waitForClick: true, position: 'bottomRight', target: null, placement: 'floating', customRight: 24, customBottom: 24, customUnit: 'px', customZIndex: 2147483647, timeoutSec: 300, onTimeout: 'stop', removeAfterClick: true, resultName: 'button_clicked' };
     if (type === 'userInput') return { id, type, title: 'Adat bekérése', message: 'Adj meg egy értéket:', inputType: 'text', placeholder: '', defaultValue: '', resultName: 'user_input' };
     if (type === 'userChoice') return { id, type, title: 'Választás', message: 'Válassz egy opciót:', options: 'Igen\nNem', resultName: 'valasztas' };
     if (type === 'tableExtract') return { id, type, target: null, rowMode: 'first', rowIndex: 1, rowContains: '', rowColumnIndex: 0, columnMode: 'index', columnIndex: 1, columnHeader: '', includeHeader: false, skipEmptyRows: true, missingRowMode: 'empty', virtualSearch: false, maxScrolls: 10, scrollAmount: 600, resultName: 'tabla_adat', timeoutMs: 5000 };

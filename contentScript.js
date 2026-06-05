@@ -1524,14 +1524,24 @@
   function downloadDocxBlob(blob, fileName){ const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=makeDocxName(fileName); document.documentElement.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url), 60000); }
 
 
-  function positionBlockFlowButton(host, position) {
+  function positionBlockFlowButton(host, position, block = {}) {
     const st = host.style;
     st.position = 'fixed';
     st.zIndex = '2147483647';
     st.fontFamily = 'Arial, sans-serif';
     st.pointerEvents = 'auto';
     st.maxWidth = 'calc(100vw - 32px)';
-    if (position === 'bottomLeft') { st.left = '16px'; st.bottom = '16px'; }
+    if (position === 'custom') {
+      const unit = block?.customUnit || 'px';
+      const setPos = (prop, val) => { if (val !== undefined && val !== null && String(val) !== '') st[prop] = `${val}${unit}`; };
+      setPos('left', block?.customLeft);
+      setPos('right', block?.customRight);
+      setPos('top', block?.customTop);
+      setPos('bottom', block?.customBottom);
+      st.zIndex = String(block?.customZIndex || 2147483647);
+      if (!st.left && !st.right) st.right = `24${unit}`;
+      if (!st.top && !st.bottom) st.bottom = `24${unit}`;
+    } else if (position === 'bottomLeft') { st.left = '16px'; st.bottom = '16px'; }
     else if (position === 'topRight') { st.right = '16px'; st.top = '16px'; }
     else if (position === 'topLeft') { st.left = '16px'; st.top = '16px'; }
     else if (position === 'bottomCenter') { st.left = '50%'; st.bottom = '16px'; st.transform = 'translateX(-50%)'; }
@@ -1541,7 +1551,7 @@
   async function showPageButton(block, vars = {}, dryRun = false) {
     const label = interpolate(block.label || 'Folytatás', vars) || 'Folytatás';
     const tooltip = interpolate(block.tooltip || '', vars);
-    const waitForClick = block.waitForClick !== false && String(block.waitForClick) !== 'false';
+    const waitForClick = true;
     const timeoutMs = Math.max(0, Number(block.timeoutSec || 300) * 1000);
     const resultName = block.resultName || 'button_clicked';
     if (dryRun) {
@@ -1580,11 +1590,11 @@
         if (pos === 'beforeTarget') target.parentNode.insertBefore(host, target);
         else target.parentNode.insertBefore(host, target.nextSibling);
       } else {
-        positionBlockFlowButton(host, 'bottomRight');
+        positionBlockFlowButton(host, 'bottomRight', block);
         document.body.appendChild(host);
       }
     } else {
-      positionBlockFlowButton(host, pos);
+      positionBlockFlowButton(host, pos, block);
       document.body.appendChild(host);
     }
 
