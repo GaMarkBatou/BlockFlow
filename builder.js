@@ -1184,6 +1184,7 @@ function renderInspector() {
   }
 }
 
+function targetPickerHtml(b){ return targetEditor(b); }
 function targetEditor(b){ return `<div class="field"><label>Cél elem</label><div class="status">${b.target ? escapeHtml(b.target.label + ' · ' + b.target.tag) : 'Nincs elem kiválasztva'}</div><button id="pickElement" class="primary">Elem kiválasztása az oldalról</button></div>`; }
 function watcherAdvanced(b){
   const scope = b.scope || 'domain';

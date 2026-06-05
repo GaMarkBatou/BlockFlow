@@ -685,7 +685,13 @@ Az extension támogatja a gyökérkönyvtárban található `default.json` fájl
 - Az **Oldalba illesztett gomb** blokk most már elérhető a palettából, nem egy nem létező kategóriába kerül.
 
 
-## v0.54
+## v0.55
 
 - Oldalba illesztett gomb javítása: az elem elé/után elhelyezés nem omlik össze, a blokk mindig kattintásra vár.
 - Új Custom elhelyezés: bal/jobb/felső/alsó távolság px/% egységgel és z-index beállítással.
+
+
+### v0.55
+
+- Javítás: az Oldalba illesztett gomb jobb oldali beállításainál előforduló `targetPickerHtml is not defined` hiba elhárítva.
+- Kompatibilitási alias bekerült a cél elem választó rendereléséhez, hogy régi és új inspector hívások is biztonságosan működjenek.
