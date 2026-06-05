@@ -17,7 +17,7 @@ const NUMERIC_FIELDS = new Set([
   'timeoutMs','timeoutSec','ms','maxUrlLength','repeatCount','maxRows','keepStart','keepEnd','keepFirstLines','keepLastLines',
   'throttleSec','intervalSec','intervalMinutes','charStart','charEnd','lineNumber','group','columnIndex','rowIndex','maxItems',
   'attempts','delayMs','amount','volume','stableMs','maxOptionScrolls','matchIndex','maxScrolls','scrollAmount','scrollDelayMs',
-  'openDelayMs','width','fontSize','spaceAfter','margin','customLeft','customRight','customTop','customBottom','customZIndex','repeatCount'
+  'openDelayMs','width','publicLogWidth','fontSize','spaceAfter','margin','customLeft','customRight','customTop','customBottom','customZIndex','publicLogOpacity','repeatCount'
 ]);
 function normalizeFieldValue(field, value) {
   return NUMERIC_FIELDS.has(field) ? (value === '' ? '' : Number(value)) : value;
@@ -35,6 +35,7 @@ async function init() {
 }
 
 function normalizeWorkflow(workflow) {
+  ensureWorkflowDefaults(workflow);
   const walk = blocks => {
     for (let i = 0; i < (blocks || []).length; i++) {
       const b = blocks[i];
@@ -110,6 +111,21 @@ async function refreshTarget() {
   $('#targetInfo').textContent = res.ok ? `Cél tab: ${safeHost(res.url)}` : 'Nincs weboldal cél tab';
 }
 
+function ensureWorkflowDefaults(w) {
+  if (!w) return;
+  if (typeof w.publicLogEnabled !== 'boolean') w.publicLogEnabled = false;
+  if (w.publicLogWidth === undefined) w.publicLogWidth = 280;
+  if (w.publicLogOpacity === undefined) w.publicLogOpacity = 0.82;
+  if (typeof w.publicLogDownload !== 'boolean') w.publicLogDownload = true;
+}
+
+function renderWorkflowOptions() {
+  ensureWorkflowDefaults(activeWorkflow);
+  const cb = $('#publicLogEnabled');
+  if (!cb || !activeWorkflow) return;
+  cb.checked = Boolean(activeWorkflow.publicLogEnabled);
+}
+
 function renderSaveState() {
   const el = $('#saveState');
   if (!el) return;
@@ -135,6 +151,7 @@ function renderAll() {
     }
   };
   renderSaveState();
+  renderWorkflowOptions();
   renderRecordControls();
   safe('workflowList', renderWorkflowList);
   safe('palette', renderPalette);
@@ -1129,8 +1146,8 @@ function renderInspector() {
   if (b.type === 'regex') html += textField('source','Forrás', b.source || '{{adat}}') + textField('pattern','Regex minta', b.pattern || '') + textField('flags','Flagek', b.flags || 'i') + numberField('group','Capture group', b.group || 0) + checkboxField('allMatches','Összes találat', Boolean(b.allMatches)) + textField('resultName','Eredmény változó', b.resultName || 'regex_talalat');
   if (b.type === 'textSearch') html += textField('query','Keresett szöveg', b.query || '') + selectField('operator','Egyezés módja', b.operator || 'contains', [['contains','Tartalmazza'],['equals','Pontosan egyezik']]) + selectField('searchScope','Hol keressen?', b.searchScope || 'all', [['all','Teljes oldal: szöveg + mezőérték + attribútum'],['visible','Csak látható szöveg'],['dom','Teljes DOM szövege']]) + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive)) + checkboxField('includeValues','Input/textarea/select értékeket is keresse', b.includeValues !== false) + checkboxField('includeAttributes','Title/aria/placeholder/alt attribútumokban is keressen', b.includeAttributes !== false) + checkboxField('scrollSearch','Dinamikus/virtualizált oldalon görgetéssel is keressen', Boolean(b.scrollSearch)) + selectField('scrollTarget','Görgetési cél keresés közben', b.scrollTarget || 'auto', [['auto','Automatikus'],['page','Teljes oldal'],['nearest','Legnagyobb belső görgethető konténer'],['container','Kézzel kiválasztott görgethető konténer']]) + (b.scrollTarget === 'container' ? '<div class="field"><label>Görgethető konténer</label><button class="btn pick-btn" data-pick="scrollContainer">Elem kiválasztása</button></div>' : '') + numberField('maxScrolls','Max görgetési próbálkozás', b.maxScrolls || 25) + numberField('scrollAmount','Görgetés mértéke px', b.scrollAmount || 700) + numberField('scrollDelayMs','Várakozás görgetés után ms', b.scrollDelayMs || 250) + textField('resultName','Találat igaz/hamis változó', b.resultName || 'szoveg_talalat') + textField('countName','Találatszám változó', b.countName || 'szoveg_talalat_db') + textField('contextName','Első találat környezete változó', b.contextName || 'szoveg_talalat_szoveg') + textField('placeName','Találat helye változó', b.placeName || 'szoveg_talalat_hely') + textField('selectorName','CSS selector változó', b.selectorName || 'szoveg_talalat_selector') + textField('xpathName','XPath változó', b.xpathName || 'szoveg_talalat_xpath') + textField('elementName','Elemhivatkozás változó', b.elementName || 'szoveg_talalat_elem') + textField('rowSelectorName','Találati sor selector változó', b.rowSelectorName || 'szoveg_talalat_sor_selector') + textField('clickableSelectorName','Kattintható szülő selector változó', b.clickableSelectorName || 'szoveg_talalat_click_selector') + textField('parentSelectorName','Panel/kártya selector változó', b.parentSelectorName || 'szoveg_talalat_panel_selector') + textField('nearButtonSelectorName','Közeli gomb selector változó', b.nearButtonSelectorName || 'szoveg_talalat_gomb_selector') + `<div class="status">Görgetéses keresésnél a blokk több körben görgeti az oldalt vagy a belső listát, minden kör után újraolvassa a DOM-ot, majd az első megtalált elem selectorát adja tovább kattintáshoz/görgetéshez.</div>`;
   if (b.type === 'setVar') html += textField('varName','Változó neve', b.varName || 'valtozo') + textArea('value','Érték', b.value || '');
-  if (b.type === 'userInput') html += textField('title','Cím', b.title || '') + textArea('message','Kérdés', b.message || '') + selectField('inputType','Mező típusa', b.inputType || 'text', [['text','Rövid szöveg'],['textarea','Hosszú szöveg']]) + textField('placeholder','Placeholder', b.placeholder || '') + textField('defaultValue','Alapérték', b.defaultValue || '') + textField('resultName','Eredmény változó', b.resultName || 'user_input');
-  if (b.type === 'userChoice') html += textField('title','Cím', b.title || '') + textArea('message','Kérdés', b.message || '') + textArea('options','Opciók soronként', b.options || '') + textField('resultName','Eredmény változó', b.resultName || 'valasztas');
+  if (b.type === 'userInput') html += textField('title','Cím', b.title || '') + textArea('message','Kérdés', b.message || '') + selectField('inputType','Mező típusa', b.inputType || 'text', [['text','Rövid szöveg'],['textarea','Hosszú szöveg']]) + textField('placeholder','Placeholder', b.placeholder || '') + textField('defaultValue','Alapérték', b.defaultValue || '') + feedbackStyleFields(b) + textField('resultName','Eredmény változó', b.resultName || 'user_input');
+  if (b.type === 'userChoice') html += textField('title','Cím', b.title || '') + textArea('message','Kérdés', b.message || '') + textArea('options','Opciók soronként', b.options || '') + feedbackStyleFields(b) + textField('resultName','Eredmény változó', b.resultName || 'valasztas');
   if (b.type === 'errorSearch') html += checkboxField('includeAlerts','Alert / notification elemek', b.includeAlerts !== false) + checkboxField('includeAriaLive','aria-live üzenetek', b.includeAriaLive !== false) + checkboxField('includeErrorClasses','error/invalid classok', b.includeErrorClasses !== false) + checkboxField('includeInvalidFields','aria-invalid / invalid mezők', b.includeInvalidFields !== false) + textField('resultName','Hiba van változó', b.resultName || 'hiba_van') + textField('textName','Hiba szöveg változó', b.textName || 'hiba_szoveg') + textField('selectorName','Hiba selector változó', b.selectorName || 'hiba_selector') + textField('countName','Találatszám változó', b.countName || 'hiba_db');
   if (b.type === 'fieldByLabel') html += textField('labelText','Mező címkéje / aria / data név', b.labelText || '') + selectField('matchMode','Egyezés', b.matchMode || 'contains', [['contains','Tartalmazza'],['equals','Pontosan egyezik']]) + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive)) + checkboxField('shadowSearch','Shadow DOM keresés', b.shadowSearch !== false) + textField('resultName','Eredmény érték változó', b.resultName || 'mezo_ertek') + textField('selectorName','Selector változó', b.selectorName || 'mezo_selector') + textField('xpathName','XPath változó', b.xpathName || 'mezo_xpath') + textField('elementName','Elemhivatkozás változó', b.elementName || 'mezo_elem');
   if (b.type === 'tableExtract') html += selectField('rowMode','Sor kiválasztása', b.rowMode || 'first', [['first','Első'],['last','Utolsó'],['nth','N. sor'],['contains','Tartalmazza']]) + (b.rowMode === 'nth' ? numberField('rowIndex','N. sor száma', b.rowIndex || 1) : '') + textField('rowContains','Sor tartalmazza', b.rowContains || '') + checkboxField('includeHeader','Fejlécsort is beleszámolja', Boolean(b.includeHeader)) + checkboxField('skipEmptyRows','Üres sorokat kihagyja', b.skipEmptyRows !== false) + checkboxField('virtualSearch','Virtualizált lista/tábla: görgetéssel keressen tovább', Boolean(b.virtualSearch)) + numberField('maxScrolls','Max görgetési próbálkozás', b.maxScrolls || 10) + numberField('scrollAmount','Görgetés mértéke px', b.scrollAmount || 600) + selectField('missingRowMode','Ha nincs ilyen sor', b.missingRowMode || 'empty', [['empty','Üres érték'],['error','Hiba']]) + selectField('columnMode','Oszlop kiválasztása', b.columnMode || 'index', [['index','Oszlop száma'],['header','Fejlécnév alapján']]) + (b.columnMode === 'header' ? textField('columnHeader','Fejléc neve', b.columnHeader || '') : numberField('columnIndex','Oszlop száma', b.columnIndex || 1)) + textField('resultName','Eredmény változó', b.resultName || 'tabla_adat') + `<div class="status">Virtualizált SNOW/React/Vue tábláknál a DOM-ban gyakran csak a látható sorok vannak jelen. A görgetéses keresés ilyenkor több körben újraolvassa a sorokat.</div>`;
@@ -1145,9 +1162,13 @@ function renderInspector() {
   if (b.type === 'compare') html += textField('left','Bal oldal', b.left || '') + selectField('operator','Operátor', b.operator || 'equals', [['equals','Egyenlő'],['notEquals','Nem egyenlő'],['contains','Tartalmazza'],['greater','Nagyobb'],['less','Kisebb']]) + textField('right','Jobb oldal', b.right || '') + textField('resultName','Eredmény változó', b.resultName || 'osszehasonlitas');
   if (b.type === 'math') html += textField('left','A', b.left || '0') + selectField('operator','Művelet', b.operator || 'add', [['add','Összeadás'],['subtract','Kivonás'],['multiply','Szorzás'],['divide','Osztás']]) + textField('right','B', b.right || '1') + textField('resultName','Eredmény változó', b.resultName || 'szamitas');
   if (b.type === 'validateData') html += textField('source','Forrás', b.source || '{{adat}}') + selectField('validation','Validáció', b.validation || 'notEmpty', [['notEmpty','Nem üres'],['email','Email formátum'],['contains','Tartalmazza'],['regex','Regex']]) + textField('pattern','Minta', b.pattern || '') + selectField('onFail','Hiba esetén', b.onFail || 'stop', [['stop','Leállítás'],['warn','Csak napló']]);
+  if (b.type === 'userPrompt') html += feedbackStyleFields(b);
+  if (b.type === 'emailPreview') html += feedbackStyleFields(b);
   if (b.type === 'groupBlock') html += checkboxField('groupEnabled','A csoport blokkjai aktívak', b.groupEnabled !== false) + checkboxField('collapsed','Csoport összecsukása a munkaterületen', Boolean(b.collapsed)) + `<div class="status">Ha a csoport inaktív, a benne lévő blokkok futáskor kimaradnak. Összecsukva a gyermekblokkok helyett csak az ikonjaik látszanak, a workflow áttekinthetőbb marad.</div>`;
 
   if (CONTAINERS.has(b.type)) html += `<div class="hr"></div><div class="status">Tipp: ${b.type === 'triggerGroup' ? 'húzz ide Figyelő feltétel blokkokat. Ezek nem futási lépések, csak eldöntik, induljon-e az automatizmus.' : 'húzz blokkokat a blokk alatti behúzott területre, vagy hagyd kijelölve ezt a blokkot és adj hozzá új blokkot a bal oldali palettából.'}</div>`;
+  const compat = BF.analyzeWorkflowCompatibility ? BF.analyzeWorkflowCompatibility(activeWorkflow) : null;
+  if (compat) html += `<div class="hr"></div><div class="status"><b>Workflow minőség / kompatibilitás</b><br>Kapacitások: ${escapeHtml((compat.capabilities || []).slice(0, 12).join(', ') || 'nincs')}<br>${(compat.recommendations || []).slice(0,2).map(x => '• ' + escapeHtml(x)).join('<br>')}</div>`;
   html += `<div class="hr"></div><button id="testBlock" class="ghost">Blokk tesztelése</button>`;
   $('#inspector').innerHTML = html;
   $('#inspector').querySelectorAll('[data-field]').forEach(input => {
@@ -1213,6 +1234,12 @@ function watcherAdvanced(b){
     numberField('throttleSec','Újraindítási szünet másodpercben', b.throttleSec || 15);
 }
 
+function feedbackStyleFields(b){
+  return selectField('feedbackStyle','Ablak stílusa', b.feedbackStyle || 'default', [['default','Alap'],['compact','Kompakt'],['wide','Szélesebb'],['alert','Figyelemfelhívó']]) +
+    selectField('accent','Kiemelő szín', b.accent || 'blue', [['blue','Kék'],['green','Zöld'],['orange','Narancs'],['red','Piros'],['neutral','Semleges']]) +
+    selectField('windowSize','Ablakméret', b.windowSize || 'normal', [['small','Kicsi'],['normal','Normál'],['large','Nagy']]);
+}
+
 function valueSourceHelp(){ return `<div class="status">Használható változók: {{email}}, {{nev}}, {{popup_szoveg}}. A jobb oldali változóra kattintva vágólapra másolódik.</div>`; }
 function textField(field,label,value){ return `<div class="field"><label>${label}</label><input data-field="${field}" value="${escapeAttr(value)}"></div>`; }
 function numberField(field,label,value){ return `<div class="field"><label>${label}</label><input data-field="${field}" type="number" value="${escapeAttr(value)}"></div>`; }
@@ -1230,7 +1257,7 @@ function updateField(field, value) {
   renderBlocks();
   renderVariables();
   renderImportWarning();
-  if (['waitMode','conditionMode','maskMode','scope','domain','path','url','urlContains','logic','operator','changeMode','readMode','searchScope','firstRun','pageSize','orientation','source','action','style','align','soundSource','rowMode','columnMode','scrollTarget','mode','direction','loadMode','onTimeout','position','waitForClick'].includes(field)) renderInspector();
+  if (['waitMode','conditionMode','maskMode','scope','domain','path','url','urlContains','logic','operator','changeMode','readMode','searchScope','firstRun','pageSize','orientation','source','action','style','align','soundSource','rowMode','columnMode','scrollTarget','mode','direction','loadMode','onTimeout','position','waitForClick','feedbackStyle','accent','windowSize'].includes(field)) renderInspector();
 }
 
 function renderVariables() {
@@ -1295,6 +1322,11 @@ chrome.runtime.onMessage.addListener((msg) => {
 
 async function testBlock(b) {
   await refreshTarget();
+  if (['textSearch','fieldByLabel','errorSearch','findElements','tableExtract'].includes(b.type)) {
+    const res = await BF.sendToTarget({ type: 'BF_TEST_BLOCK', block: b }, targetTabId);
+    $('#log').textContent = res.response?.ok ? `Blokk teszt OK:\n${JSON.stringify(res.response.result, null, 2)}` : `Blokk teszt hiba: ${res.response?.error || res.error || 'ismeretlen'}`;
+    return;
+  }
   if (b.target) {
     const res = await BF.sendToTarget({ type: 'BF_TEST_TARGET', target: b.target }, targetTabId);
     $('#log').textContent = res.response?.ok ? `Teszt OK: ${res.response.element.label}` : `Teszt hiba: elem nem található`;
@@ -1631,7 +1663,13 @@ function closeModal(){ const root=$('#bfModalRoot'); if(root) root.innerHTML='';
 async function renderVersions() {
   const panel = $('#versionPanel'); if (!panel || !activeWorkflow?.id) return;
   const versions = await BF.getVersions(activeWorkflow.id);
-  panel.innerHTML = versions.length ? versions.slice(0,8).map((v,i)=>`<div class="version-item">${escapeHtml(new Date(v.at).toLocaleString())}<br><button class="small" data-restore-version="${i}">visszaállítás</button></div>`).join('') : 'Még nincs előző mentett verzió.';
+  const currentCount = BF.countBlocks(activeWorkflow.blocks || []);
+  panel.innerHTML = versions.length ? versions.slice(0,8).map((v,i)=>{
+    const oldCount = BF.countBlocks(v.workflow?.blocks || []);
+    const delta = currentCount - oldCount;
+    const diff = delta === 0 ? 'nincs blokk-szám változás' : (delta > 0 ? `+${delta} blokk a jelenlegi verzióban` : `${delta} blokk a jelenlegi verzióban`);
+    return `<div class="version-item">${escapeHtml(new Date(v.at).toLocaleString())}<br><span class="muted">${escapeHtml(diff)}</span><br><button class="small" data-restore-version="${i}">visszaállítás</button></div>`;
+  }).join('') : 'Még nincs előző mentett verzió.';
   panel.querySelectorAll('[data-restore-version]').forEach(btn => btn.onclick = async () => { const v=versions[Number(btn.dataset.restoreVersion)]; if(!v || !confirm('Visszaállítod ezt a verziót?')) return; const restored=v.workflow; restored.id=activeWorkflow.id; activeWorkflow=restored; normalizeWorkflow(activeWorkflow); selectedBlockId=firstBlock(activeWorkflow.blocks)?.id; await BF.saveWorkflow(activeWorkflow); const store=await BF.getStore(); workflows=store.workflows; renderAll(); });
 }
 
@@ -1875,6 +1913,7 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === 'BF_RECORD_EVENT') { recorderState.count = Number(msg.count || recorderState.count || 0); renderRecordControls(); }
 });
 $('#workflowName').oninput = () => { activeWorkflow.name = $('#workflowName').value; markDirty(); renderWorkflowList(); };
+$('#publicLogEnabled').onchange = () => { activeWorkflow.publicLogEnabled = $('#publicLogEnabled').checked; markDirty(); renderWorkflowOptions(); };
 $('#saveWorkflow').onclick = async () => { await saveCurrent(); $('#log').textContent = 'Mentve.'; renderAll(); };
 $('#newWorkflow').onclick = async () => { await saveCurrent(); const w = BF.DEFAULT_WORKFLOW(); workflows.push(w); activeWorkflow = w; selectedBlockId = null; await BF.saveWorkflow(w); isDirty = false; renderAll(); };
 $('#duplicateWorkflow').onclick = async () => { const w = JSON.parse(JSON.stringify(activeWorkflow)); w.id = crypto.randomUUID(); w.name += ' másolat'; w.imported = false; w.verified = true; reidBlocks(w.blocks); workflows.push(w); activeWorkflow = w; selectedBlockId = firstBlock(w.blocks)?.id; await BF.saveWorkflow(w); renderAll(); };
@@ -1902,7 +1941,11 @@ $('#importFile').onchange = async e => {
   try {
     const payload = JSON.parse(await f.text());
     const analysis = BF.analyzeImport(payload);
-    $('#importPreview').textContent = `Import előnézet:\nSéma: ${analysis.schemaVersion}\nWorkflow-k: ${analysis.rawCount}\n\n` + analysis.workflows.map(w => `- ${w.name}: ${w.blockCount} blokk, ${w.riskyCount} kockázatos/módosító blokk\n  Típusok: ${w.blocks.join(', ')}`).join('\n');
+    const compatLines = (payload.workflows || []).map(w => {
+      const c = BF.analyzeWorkflowCompatibility ? BF.analyzeWorkflowCompatibility(w) : null;
+      return c ? `\n  Képességek: ${(c.capabilities || []).slice(0, 10).join(', ') || 'nincs'}${c.recommendations?.length ? `\n  Tipp: ${c.recommendations[0]}` : ''}` : '';
+    });
+    $('#importPreview').textContent = `Import előnézet:\nSéma: ${analysis.schemaVersion}\nWorkflow-k: ${analysis.rawCount}\n\n` + analysis.workflows.map((w, i) => `- ${w.name}: ${w.blockCount} blokk, ${w.riskyCount} kockázatos/módosító blokk\n  Típusok: ${w.blocks.join(', ')}${compatLines[i] || ''}`).join('\n');
     if (!confirm(`${analysis.rawCount} workflow importálható. Importálod?`)) return;
     const imported = await BF.importPayload(payload);
     const store = await BF.getStore(); workflows = store.workflows; activeWorkflow = workflows.find(w => w.id === store.activeWorkflowId); normalizeWorkflow(activeWorkflow); selectedBlockId = firstBlock(activeWorkflow.blocks)?.id; renderAll(); $('#log').textContent = `${imported.length} workflow importálva. Első futtatás előtt Dry-run javasolt.`;

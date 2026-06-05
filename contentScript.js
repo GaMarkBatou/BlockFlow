@@ -9,6 +9,64 @@
   function getSearchRoot() { return bfRootStack.length ? bfRootStack[bfRootStack.length - 1] : document; }
   function rootDocument(root = getSearchRoot()) { return root && root.nodeType === 9 ? root : document; }
 
+
+  function makePublicRunLogger(workflow, options = {}) {
+    if (!workflow?.publicLogEnabled || options?.silentPublicLog) {
+      return { append(){}, done(){}, error(){} };
+    }
+    const width = Math.max(220, Math.min(420, Number(workflow.publicLogWidth || 280)));
+    const opacity = Math.max(0.35, Math.min(1, Number(workflow.publicLogOpacity ?? 0.82)));
+    const lines = [];
+    let root = document.getElementById('bf-public-run-log');
+    if (root) root.remove();
+    root = document.createElement('div');
+    root.id = 'bf-public-run-log';
+    root.innerHTML = `<div class="bf-public-log-head"><b>BlockFlow napló</b><button type="button" data-bf-log-download>TXT</button><button type="button" data-bf-log-close>×</button></div><div class="bf-public-log-title"></div><div class="bf-public-log-body"></div>`;
+    Object.assign(root.style, {
+      position: 'fixed', top: '12px', right: '12px', width: width + 'px', maxHeight: 'calc(100vh - 24px)',
+      zIndex: '2147483647', background: `rgba(15, 23, 42, ${opacity})`, color: '#f8fafc', border: '1px solid rgba(255,255,255,.25)',
+      borderRadius: '14px', boxShadow: '0 20px 60px rgba(0,0,0,.35)', font: '12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+      overflow: 'hidden', backdropFilter: 'blur(8px)'
+    });
+    const style = document.createElement('style');
+    style.textContent = `#bf-public-run-log .bf-public-log-head{display:flex;gap:6px;align-items:center;padding:8px 10px;background:rgba(255,255,255,.10)}#bf-public-run-log .bf-public-log-head b{flex:1;font-family:system-ui,sans-serif;font-size:12px}#bf-public-run-log button{border:0;border-radius:8px;padding:3px 7px;font-weight:700;cursor:pointer;background:#dbeafe;color:#0f172a}#bf-public-run-log .bf-public-log-title{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.14);font-family:system-ui,sans-serif;font-weight:700}#bf-public-run-log .bf-public-log-body{padding:8px 10px;overflow:auto;max-height:calc(100vh - 112px);white-space:pre-wrap}#bf-public-run-log .bf-line{padding:3px 0;border-bottom:1px dashed rgba(255,255,255,.10)}#bf-public-run-log .bf-ok{color:#bbf7d0}#bf-public-run-log .bf-err{color:#fecaca}#bf-public-run-log .bf-muted{color:#cbd5e1}`;
+    root.prepend(style);
+    document.documentElement.appendChild(root);
+    const title = root.querySelector('.bf-public-log-title');
+    const body = root.querySelector('.bf-public-log-body');
+    title.textContent = workflow.name || 'Automatizmus futása';
+    const append = (text, cls = '') => {
+      const line = `[${new Date().toLocaleTimeString()}] ${String(text || '')}`;
+      lines.push(line);
+      const div = document.createElement('div');
+      div.className = `bf-line ${cls}`;
+      div.textContent = line;
+      body.appendChild(div);
+      while (body.children.length > 350) body.firstChild.remove();
+      body.scrollTop = body.scrollHeight;
+    };
+    root.querySelector('[data-bf-log-close]').onclick = () => root.remove();
+    root.querySelector('[data-bf-log-download]').onclick = () => {
+      const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${(workflow.name || 'blockflow').toLowerCase().replace(/[^a-z0-9_-]+/gi,'-')}-debug-log.txt`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    };
+    append('Futás indult. URL: ' + location.href, 'bf-muted');
+    return {
+      append,
+      done(vars) {
+        append('Futás befejeződött.', 'bf-ok');
+        const keys = Object.keys(vars || {}).filter(k => /^last_|_file_name$|result|talalat|hiba|button|docx|pdf/i.test(k)).slice(0, 20);
+        if (keys.length) append('Fontos változók: ' + keys.map(k => `${k}=${String(vars[k]).slice(0,80)}`).join(' | '), 'bf-muted');
+        if (workflow.publicLogDownload) append('A TXT gombbal letölthető a futási napló.', 'bf-muted');
+      },
+      error(err) { append('HIBA: ' + String(err?.message || err), 'bf-err'); }
+    };
+  }
+
   function cssPath(el) {
     if (!el || el.nodeType !== 1) return '';
     if (el.id) return `#${CSS.escape(el.id)}`;
@@ -1206,7 +1264,10 @@
       message,
       mode,
       buttonText: block.buttonText || 'Folytatás',
-      cancelText: block.cancelText || 'Megszakítás'
+      cancelText: block.cancelText || 'Megszakítás',
+      feedbackStyle: block.feedbackStyle || 'default',
+      accent: block.accent || 'blue',
+      windowSize: block.windowSize || 'normal'
     });
 
     if (!response || response.ok === false) {
@@ -1233,7 +1294,10 @@
       defaultValue: interpolate(block.defaultValue || '', vars),
       options: String(block.options || '').split(/\r?\n/).map(x => interpolate(x.trim(), vars)).filter(Boolean),
       buttonText: 'OK',
-      cancelText: 'Mégse'
+      cancelText: 'Mégse',
+      feedbackStyle: block.feedbackStyle || 'default',
+      accent: block.accent || 'blue',
+      windowSize: block.windowSize || 'normal'
     });
     if (!response || response.ok === false) throw new Error(response?.error || 'Felhasználói ablak hiba.');
     if (['cancel','closed'].includes(response.action)) throw Object.assign(new Error('Felhasználó megszakította a futást.'), { userCancelled: true });
@@ -2121,7 +2185,7 @@
     if (block.type === 'emailPreview') {
       const draft = vars[block.draftName || 'email_draft'];
       if (!draft) throw new Error('Nincs email draft az előnézethez.');
-      const res = await safeRuntimeSend({ type: 'BF_USER_PROMPT', promptType: 'emailPreview', title: draft.subject || 'Email előnézet', message: `Címzett: ${draft.to}\n\n${draft.body}`, mode: 'wait', options: ['Megnyitás levelezőben','Törzs vágólapra','Megszakítás'], buttonText: 'OK', cancelText: 'Megszakítás' });
+      const res = await safeRuntimeSend({ type: 'BF_USER_PROMPT', promptType: 'emailPreview', title: draft.subject || 'Email előnézet', message: `Címzett: ${draft.to}\n\n${draft.body}`, mode: 'wait', options: ['Megnyitás levelezőben','Törzs vágólapra','Megszakítás'], buttonText: 'OK', cancelText: 'Megszakítás', feedbackStyle: block.feedbackStyle || 'default', accent: block.accent || 'blue', windowSize: block.windowSize || 'large' });
       const action = res?.value || res?.action || '';
       vars[block.resultName || 'email_preview_action'] = action;
       if (!dryRun && action === 'Megnyitás levelezőben') await executeBlock({ type:'openEmail', draftName: block.draftName || 'email_draft', maxUrlLength: 1800 }, vars, options);
@@ -2249,6 +2313,13 @@
     stopRequested = false;
     const vars = { current_url: location.href, today: new Date().toISOString().slice(0, 10), selected_text: String(getSelection?.() || ''), last_result: '', last_text: '', last_value: '', last_selector: '', last_xpath: '', last_element: '', last_screenshot: '' };
     const log = [];
+    const publicLogger = makePublicRunLogger(workflow, options);
+    const rawLogPush = log.push.bind(log);
+    log.push = (...items) => {
+      const n = rawLogPush(...items);
+      try { items.forEach(x => publicLogger.append(x)); } catch (_) {}
+      return n;
+    };
     const rootBlocks = workflow.blocks || [];
 
     function collectBlocks(list, predicate, out = []) {
@@ -2461,6 +2532,14 @@
         try {
           const execRes = await executeBlock(b, vars, options);
           updateLastOutput(vars, b, execRes);
+          if (execRes && execRes.ok !== false) {
+            const details = [];
+            if (execRes.value !== undefined) details.push('érték=' + String(execRes.value).slice(0, 160));
+            if (execRes.count !== undefined) details.push('db=' + execRes.count);
+            if (execRes.fileName) details.push('fájl=' + execRes.fileName);
+            if (vars.last_selector) details.push('selector=' + String(vars.last_selector).slice(0, 120));
+            log.push(`Átadás: ${b.type}${details.length ? ' · ' + details.join(' · ') : ' · kész'}`);
+          }
         } catch (err) {
           err.blockId = err.blockId || b.id;
           err.partialVars = vars;
@@ -2471,8 +2550,14 @@
       }
     }
 
-    await runList(rootBlocks);
-    return { vars, log };
+    try {
+      await runList(rootBlocks);
+      publicLogger.done(vars);
+      return { vars, log };
+    } catch (err) {
+      publicLogger.error(err);
+      throw err;
+    }
   }
 
   function pageSummary() {
@@ -2877,6 +2962,17 @@
       if (msg?.type === 'BF_STOP_PICKER') { stopPicker(); sendResponse({ ok: true }); return; }
       if (msg?.type === 'BF_PAGE_SUMMARY') { sendResponse({ ok: true, summary: pageSummary() }); return; }
       if (msg?.type === 'BF_TEST_TARGET') { const el = findElement(msg.target); sendResponse({ ok: Boolean(el), element: el ? descriptor(el) : null }); return; }
+      if (msg?.type === 'BF_TEST_BLOCK') {
+        const b = msg.block || {};
+        try {
+          if (b.type === 'textSearch') { const hits = findTextOccurrences(b, {}); sendResponse({ ok:true, result:{ count:hits.length, first:hits[0] ? { context:hits[0].context, place:hits[0].place, selector:hits[0].selector, rowSelector:hits[0].rowSelector, clickableSelector:hits[0].clickableSelector } : null } }); return; }
+          if (b.type === 'fieldByLabel') { const el = findFieldByLabelText(b.labelText || '', b); sendResponse({ ok:true, result:{ found:Boolean(el), selector:el ? cssPath(el) : '', value:el ? getElementValue(el, 'auto') : '' } }); return; }
+          if (b.type === 'errorSearch') { const hits = findErrorMessages(b); sendResponse({ ok:true, result:{ count:hits.length, first:hits[0] ? { text:hits[0].text, selector:hits[0].selector } : null } }); return; }
+          if (b.type === 'findElements') { const els = findElementsForBlock(b, Number(b.maxItems || 50)); sendResponse({ ok:true, result:{ count:els.length, first:els[0] ? { text:(getElementValue(els[0],'auto') || els[0].innerText || '').trim().slice(0,200), selector:cssPath(els[0]) } : null } }); return; }
+          if (b.type === 'tableExtract') { const el = b.target ? findElement(b.target) : null; sendResponse({ ok:true, result:{ targetFound:Boolean(el), rows:el ? rowsFromContainer(el, 500).length : 0 } }); return; }
+          sendResponse({ ok:false, error:'Ehhez a blokkhoz nincs teszt handler.' }); return;
+        } catch (err) { sendResponse({ ok:false, error:String(err?.message || err) }); return; }
+      }
       if (msg?.type === 'BF_RUN_WORKFLOW') { try { const result = await runWorkflow(msg.workflow, msg.options || {}); sendResponse({ ok: true, result }); } catch (err) { sendResponse({ ok: false, error: String(err.message || err), blockId: err.blockId || null, vars: err.partialVars || null, log: err.partialLog || [] }); } return; }
       if (msg?.type === 'BF_STOP_RUN') { stopRequested = true; sendResponse({ ok: true }); return; }
       if (msg?.type === 'BF_TEST_POPUP') { const p = findPopup(); sendResponse({ ok: Boolean(p), text: p ? (p.innerText || '').slice(0, 500) : '' }); return; }

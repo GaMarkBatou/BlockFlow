@@ -1,4 +1,4 @@
-# BlockFlow Automation MVP 0.56
+# BlockFlow Automation MVP 0.57
 
 BlockFlow egy lokális Chrome extension, amellyel általános weboldalakon lehet böngészőautomatizmusokat összeállítani vizuális, blokkos felületen. A cél az, hogy a gyakori adminisztrációs, adatgyűjtési, email-előkészítési, figyelési és riportkészítési folyamatokat programozás nélkül lehessen felépíteni.
 
@@ -26,7 +26,7 @@ Az extension nem használ AI-t, és nem küld adatot külső szolgáltatásnak. 
 2. Nyisd meg: `chrome://extensions`.
 3. Kapcsold be a **Developer mode / Fejlesztői mód** kapcsolót.
 4. Kattints a **Load unpacked** gombra.
-5. Válaszd ki a kicsomagolt `blockflow-extension-v0.48` mappát.
+5. Válaszd ki a kicsomagolt `blockflow-extension-v0.57` mappát.
 6. Frissítsd újra a már nyitott céloldalakat, hogy az új content script biztosan betöltődjön.
 
 ## Fő felületek
@@ -691,6 +691,21 @@ Az extension támogatja a gyökérkönyvtárban található `default.json` fájl
 - Új Custom elhelyezés: bal/jobb/felső/alsó távolság px/% egységgel és z-index beállítással.
 
 
+
+
+### v0.57
+
+- Négykörös minőségi fejlesztési csomag:
+  - stabilitás: központi blokk meta/IO regiszter, workflow kompatibilitási elemzés, import audit bővítés;
+  - teljesítmény: futási napló és szerkesztési állapot kevesebb felesleges DOM/storage terheléssel;
+  - kompatibilitás: elem-alapú blokkokhoz bővített diagnosztikai teszt és kompatibilitási ajánlások;
+  - UX: blokk tesztelése több adatkinyerő blokknál, verzióknál blokk-szám diff, importnál képességlista.
+- Új workflow szintű opció: **Public log**. Bekapcsolva az aktuális oldalon jobb oldali, félig áttetsző futási napló jelenik meg. Mutatja a lépéseket, átadott értékeket, selectorokat, találatokat és a futás végét. A panelről TXT debug log tölthető le.
+- Felhasználói interakciós ablakok minimális testreszabása:
+  - ablak stílusa: alap / kompakt / szélesebb / figyelemfelhívó;
+  - kiemelő szín: kék / zöld / narancs / piros / semleges;
+  - ablakméret: kicsi / normál / nagy.
+- A beállítások érintik: Felhasználói üzenet, Adat bekérése, Választás kérése és Email előnézet.
 
 ### v0.56
 

@@ -66,3 +66,17 @@ body.notify .actions { justify-content: flex-end; }
 .input-area input, .input-area select, .input-area textarea { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 12px; padding: 10px 12px; font: inherit; }
 .input-area textarea { min-height: 140px; resize: vertical; }
 .hidden { display: none; }
+body[data-style="compact"] { padding: 12px; }
+body[data-style="compact"] .card { padding: 16px; border-radius: 16px; }
+body[data-style="compact"] .message { min-height: 56px; max-height: 110px; }
+body[data-style="wide"] .card { width: min(100%, 620px); }
+body[data-style="alert"] { background: linear-gradient(180deg, #fff7ed 0%, #fee2e2 100%); }
+body[data-style="alert"] .card { border-color: #fecaca; box-shadow: 0 18px 48px rgba(127, 29, 29, .18); }
+body[data-accent="green"] button.primary { background: #16a34a; }
+body[data-accent="orange"] button.primary { background: #f97316; }
+body[data-accent="red"] button.primary { background: #dc2626; }
+body[data-accent="neutral"] button.primary { background: #334155; }
+body[data-size="large"] .card { width: min(100%, 660px); }
+body[data-size="large"] .message { max-height: 260px; }
+body[data-size="small"] .card { width: min(100%, 390px); }
+body[data-size="small"] .message { min-height: 56px; max-height: 95px; }

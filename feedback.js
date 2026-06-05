@@ -52,6 +52,9 @@ async function load() {
   messageEl.textContent = item.message || '';
   cancelBtn.textContent = item.cancelText || 'Megszakítás';
   continueBtn.textContent = item.buttonText || 'Folytatás';
+  document.body.dataset.style = item.feedbackStyle || 'default';
+  document.body.dataset.accent = item.accent || 'blue';
+  document.body.dataset.size = item.windowSize || 'normal';
   if (item.mode === 'notify') {
     document.body.classList.add('notify');
     continueBtn.textContent = 'Rendben';

@@ -477,3 +477,16 @@ html, body {
 .group-collapsed-icons{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 2px 2px}
 .group-mini-icon,.group-mini{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;border-radius:10px;background:#eef2ff;border:1px solid #dbe4ff;color:#243b93;font-weight:800;font-size:12px;padding:0 7px}
 .group-mini.more{background:#fff;border-color:#cbd5e1;color:#475467}
+.public-log-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border, #d7def0);
+  background: #f8fbff;
+  border-radius: 12px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #21345f;
+  white-space: nowrap;
+}
+.public-log-toggle input { margin: 0; }

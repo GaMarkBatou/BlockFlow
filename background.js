@@ -267,14 +267,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           defaultValue: String(msg.defaultValue || '').slice(0, 8000),
           options: Array.isArray(msg.options) ? msg.options.slice(0, 20).map(x => String(x).slice(0, 500)) : [],
           buttonText: String(msg.buttonText || 'Folytatás').slice(0, 80),
-          cancelText: String(msg.cancelText || 'Megszakítás').slice(0, 80)
+          cancelText: String(msg.cancelText || 'Megszakítás').slice(0, 80),
+          feedbackStyle: String(msg.feedbackStyle || 'default').slice(0, 40),
+          accent: String(msg.accent || 'blue').slice(0, 40),
+          windowSize: String(msg.windowSize || 'normal').slice(0, 40)
         }
       });
+      const size = String(msg.windowSize || 'normal');
+      const dims = size === 'small' ? { width: 440, height: mode === 'notify' ? 260 : 330 } : size === 'large' ? { width: 680, height: mode === 'notify' ? 380 : 520 } : { width: 520, height: mode === 'notify' ? 320 : 390 };
       const win = await chrome.windows.create({
         url: chrome.runtime.getURL('feedback.html') + `?id=${encodeURIComponent(id)}`,
         type: 'popup',
-        width: 520,
-        height: mode === 'notify' ? 320 : 390,
+        width: dims.width,
+        height: dims.height,
         focused: true
       });
       pendingFeedback.set(id, { sendResponse, windowId: win.id });

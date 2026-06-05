@@ -1,5 +1,5 @@
 const BF = (() => {
-  const SCHEMA_VERSION = 20;
+  const SCHEMA_VERSION = 21;
 
   const DEFAULT_WORKFLOW = () => ({
     id: crypto.randomUUID(),
@@ -7,6 +7,10 @@ const BF = (() => {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     verified: true,
+    publicLogEnabled: false,
+    publicLogWidth: 280,
+    publicLogOpacity: 0.82,
+    publicLogDownload: true,
     blocks: []
   });
 
@@ -213,8 +217,8 @@ const BF = (() => {
     if (type === 'fieldByLabel') return { id, type, labelText: '', matchMode: 'contains', caseSensitive: false, shadowSearch: true, resultName: 'mezo_ertek', selectorName: 'mezo_selector', xpathName: 'mezo_xpath', elementName: 'mezo_elem' };
     if (type === 'setVar') return { id, type, varName: 'valtozo', value: '' };
     if (type === 'pageButton') return { id, type, label: 'Folytatás', tooltip: 'Kattints a BlockFlow folytatásához', waitForClick: true, position: 'bottomRight', target: null, placement: 'floating', customRight: 24, customBottom: 24, customUnit: 'px', customZIndex: 2147483647, timeoutSec: 300, onTimeout: 'stop', removeAfterClick: true, resultName: 'button_clicked' };
-    if (type === 'userInput') return { id, type, title: 'Adat bekérése', message: 'Adj meg egy értéket:', inputType: 'text', placeholder: '', defaultValue: '', resultName: 'user_input' };
-    if (type === 'userChoice') return { id, type, title: 'Választás', message: 'Válassz egy opciót:', options: 'Igen\nNem', resultName: 'valasztas' };
+    if (type === 'userInput') return { id, type, title: 'Adat bekérése', message: 'Adj meg egy értéket:', inputType: 'text', placeholder: '', defaultValue: '', resultName: 'user_input', feedbackStyle: 'default', accent: 'blue', windowSize: 'normal' };
+    if (type === 'userChoice') return { id, type, title: 'Választás', message: 'Válassz egy opciót:', options: 'Igen\nNem', resultName: 'valasztas', feedbackStyle: 'default', accent: 'blue', windowSize: 'normal' };
     if (type === 'tableExtract') return { id, type, target: null, rowMode: 'first', rowIndex: 1, rowContains: '', rowColumnIndex: 0, columnMode: 'index', columnIndex: 1, columnHeader: '', includeHeader: false, skipEmptyRows: true, missingRowMode: 'empty', virtualSearch: false, maxScrolls: 10, scrollAmount: 600, resultName: 'tabla_adat', timeoutMs: 5000 };
     if (type === 'elementLoop') return { id, type, target: null, selector: '', itemVar: 'elem_szoveg', indexVar: 'elem_index', maxItems: 20, children: [] };
     if (type === 'waitUntil') return { id, type, conditionMode: 'textExists', text: '', target: null, operator: 'contains', value: '', timeoutMs: 10000, stableMs: 800, spinnerSelector: '' };
@@ -238,7 +242,7 @@ const BF = (() => {
     if (type === 'iframeBlock') return { id, type, target: null, iframeMode: 'manual', urlContains: '', iframeIndex: 1, children: [] };
     if (type === 'findElements') return { id, type, target: null, selector: '', resultName: 'talalatok', countName: 'talalat_db', maxItems: 50 };
     if (type === 'emailTemplate') return { id, type, templateId: '', to: '{{email}}', resultName: 'email_draft' };
-    if (type === 'emailPreview') return { id, type, draftName: 'email_draft', resultName: 'email_preview_action' };
+    if (type === 'emailPreview') return { id, type, draftName: 'email_draft', resultName: 'email_preview_action', feedbackStyle: 'default', accent: 'blue', windowSize: 'large' };
     if (type === 'validateData') return { id, type, source: '{{adat}}', validation: 'notEmpty', pattern: '', onFail: 'stop' };
     if (type === 'comment') return { id, type, note: 'Megjegyzés...' };
     if (type === 'groupBlock') return { id, type, title: 'Csoport', groupEnabled: true, collapsed: false, children: [] };
@@ -247,7 +251,7 @@ const BF = (() => {
     if (type === 'stopRun') return { id, type, message: 'Futás leállítva.' };
     if (type === 'sound') return { id, type, soundSource: 'builtIn', tone: 'success', customSoundName: '', customSoundData: '', volume: 0.7, repeatCount: 1 };
     if (type === 'scheduledTrigger') return { id, type, triggerEnabled: true, scheduleMode: 'interval', intervalMinutes: 15, timeOfDay: '08:00', days: 'mon,tue,wed,thu,fri' };
-    if (type === 'userPrompt') return { id, type, title: 'BlockFlow', message: 'Ellenőrizd az eredményt, majd folytasd.', mode: 'wait', buttonText: 'Folytatás', cancelText: 'Megszakítás', resultName: '' };
+    if (type === 'userPrompt') return { id, type, title: 'BlockFlow', message: 'Ellenőrizd az eredményt, majd folytasd.', mode: 'wait', buttonText: 'Folytatás', cancelText: 'Megszakítás', resultName: '', feedbackStyle: 'default', accent: 'blue', windowSize: 'normal' };
     if (type === 'systemNotify') return { id, type, title: 'BlockFlow', message: 'Az automatizmus elért egy értesítési ponthoz.' };
     if (type === 'pdfStart') return { id, type, title: 'BlockFlow riport', fileName: 'blockflow-riport.pdf', pageSize: 'a4', orientation: 'portrait', margin: 40, fontSize: 11, header: '', footer: 'date,page,url' };
     if (type === 'pdfText') return { id, type, heading: '', text: 'Szöveg: {{adat}}', style: 'normal', align: 'left', fontSize: 11, spaceAfter: 10 };
@@ -614,6 +618,76 @@ const BF = (() => {
     return [...refs];
   }
 
+
+  const BLOCK_IO = {
+    extract: { outputs: ['text:value', 'element:target'] },
+    textSearch: { outputs: ['boolean:found', 'number:count', 'text:context', 'selector:selector', 'xpath:xpath', 'element:elementRef', 'selector:rowSelector', 'selector:clickableSelector'] },
+    fieldByLabel: { outputs: ['text:value', 'selector:selector', 'xpath:xpath', 'element:elementRef'] },
+    findElements: { outputs: ['text:list', 'number:count'] },
+    tableExtract: { outputs: ['text:value'] },
+    screenshot: { outputs: ['image:dataUrl'] },
+    clipboardRead: { outputs: ['text:value'] },
+    userInput: { outputs: ['text:value'] },
+    userChoice: { outputs: ['text:value'] },
+    pageButton: { outputs: ['boolean:clicked', 'time:clickedAt'] },
+    errorSearch: { outputs: ['boolean:found', 'text:errorText', 'selector:selector', 'number:count'] },
+    compare: { outputs: ['boolean:result'] },
+    math: { outputs: ['number:result'] },
+    pdfSave: { outputs: ['file:pdf'] },
+    docxSave: { outputs: ['file:docx'] },
+    popupWindowWait: { outputs: ['tab:tabId'] },
+    callWorkflow: { outputs: ['object:prefixedVars'] }
+  };
+
+  const BLOCK_CAPABILITIES = {
+    click: ['dom','elementRef','scroll'], fill: ['dom','elementRef','forms','frameworkEvents'], selectOption: ['dom','elementRef','dropdown'],
+    extract: ['dom','elementRef','read'], textSearch: ['dom','textSearch','scrollSearch'], tableExtract: ['dom','table'],
+    screenshot: ['tabs','capture'], pdfSave: ['downloads','pdf'], docxSave: ['downloads','docx'], systemNotify: ['notifications'],
+    clipboardRead: ['clipboardRead'], copy: ['clipboardWrite'], openEmail: ['tabs','mailto','clipboardWrite'], openUrl: ['tabs'],
+    triggerGroup: ['watcher','storage'], clickTrigger: ['clickWatcher','storage'], scheduledTrigger: ['alarms','storage'],
+    userPrompt: ['feedbackWindow'], userInput: ['feedbackWindow'], userChoice: ['feedbackWindow'], emailPreview: ['feedbackWindow'],
+    pageButton: ['pageOverlay'], sound: ['audio'], localSet: ['storage'], localGet: ['storage']
+  };
+
+  function blockOutputSpec(block) {
+    if (!block) return [];
+    const base = BLOCK_IO[block.type]?.outputs || [];
+    const dynamic = [];
+    if (block.varName) dynamic.push(`text:${block.varName}`);
+    if (block.resultName) dynamic.push(`value:${block.resultName}`);
+    if (block.countName) dynamic.push(`number:${block.countName}`);
+    if (block.selectorName) dynamic.push(`selector:${block.selectorName}`);
+    if (block.xpathName) dynamic.push(`xpath:${block.xpathName}`);
+    if (block.elementName) dynamic.push(`element:${block.elementName}`);
+    return [...new Set([...base, ...dynamic])];
+  }
+
+  function blockCapabilities(block) {
+    return [...new Set(BLOCK_CAPABILITIES[block?.type] || [])];
+  }
+
+  function analyzeWorkflowCompatibility(workflow) {
+    const capabilities = new Set();
+    const outputs = [];
+    let elementBlocks = 0;
+    let dynamicTargets = 0;
+    let feedbackBlocks = 0;
+    walkBlocks(workflow?.blocks || [], b => {
+      blockCapabilities(b).forEach(x => capabilities.add(x));
+      const out = blockOutputSpec(b);
+      if (out.length) outputs.push({ blockId: b.id, type: b.type, outputs: out });
+      if (['click','fill','selectOption','extract','scroll','waitUntil','waitLoad','preflight','pageButton','tableExtract','fieldByLabel'].includes(b.type)) elementBlocks++;
+      if (b.targetMode && b.targetMode !== 'manual') dynamicTargets++;
+      if (['userPrompt','userInput','userChoice','emailPreview','pageButton'].includes(b.type)) feedbackBlocks++;
+    });
+    const recommendations = [];
+    if (capabilities.has('watcher') || capabilities.has('clickWatcher')) recommendations.push('Figyelőknél érdemes domain/path scope-ot használni a felesleges DOM-ellenőrzés csökkentésére.');
+    if (capabilities.has('textSearch')) recommendations.push('Nagy vagy virtualizált oldalon kapcsold be a görgetéses keresést csak akkor, ha tényleg szükséges.');
+    if (elementBlocks) recommendations.push('Elem alapú blokkoknál stabilabb a selector + aria/data attribútum fallback, mint a puszta XPath.');
+    if (feedbackBlocks) recommendations.push('Felhasználói interakciónál érdemes rövid címet és egyértelmű elsődleges gombot használni.');
+    return { capabilities: [...capabilities], outputs, elementBlocks, dynamicTargets, feedbackBlocks, recommendations };
+  }
+
   function validateWorkflow(workflow) {
     const issues = [];
     const defined = new Set(['current_url','today','selected_text','row_index','sor_szoveg','last_result','last_text','last_value','last_selector','last_xpath','last_element','last_screenshot']);
@@ -686,5 +760,5 @@ const BF = (() => {
     return n;
   }
 
-  return { SCHEMA_VERSION, DEFAULT_WORKFLOW, BLOCKS, PALETTE, newBlock, blockTitle, blockDesc, triggerLogicLabel, operatorLabel, changeModeLabel, getStore, saveWorkflow, setActiveWorkflow, downloadJson, exportPayload, analyzeImport, importPayload, sendToTarget, getTargetTab, collectVariables, collectVariableRefs, validateWorkflow, getTemplates, saveTemplates, getVersions, pushVersion, countBlocks, walkBlocks, short };
+  return { SCHEMA_VERSION, DEFAULT_WORKFLOW, BLOCKS, PALETTE, newBlock, blockTitle, blockDesc, triggerLogicLabel, operatorLabel, changeModeLabel, blockOutputSpec, blockCapabilities, analyzeWorkflowCompatibility, getStore, saveWorkflow, setActiveWorkflow, downloadJson, exportPayload, analyzeImport, importPayload, sendToTarget, getTargetTab, collectVariables, collectVariableRefs, validateWorkflow, getTemplates, saveTemplates, getVersions, pushVersion, countBlocks, walkBlocks, short };
 })();
