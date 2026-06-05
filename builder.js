@@ -13,6 +13,15 @@ let recorderState = { active: false, paused: false, startedAt: 0, count: 0 };
 
 const $ = sel => document.querySelector(sel);
 const CONTAINERS = new Set(['ifBlock', 'repeatBlock', 'rowLoop', 'triggerGroup', 'conditionGroup', 'tryBlock', 'retryBlock', 'elementLoop', 'iframeBlock', 'groupBlock']);
+const NUMERIC_FIELDS = new Set([
+  'timeoutMs','timeoutSec','ms','maxUrlLength','repeatCount','maxRows','keepStart','keepEnd','keepFirstLines','keepLastLines',
+  'throttleSec','intervalSec','intervalMinutes','charStart','charEnd','lineNumber','group','columnIndex','rowIndex','maxItems',
+  'attempts','delayMs','amount','volume','stableMs','maxOptionScrolls','matchIndex','maxScrolls','scrollAmount','scrollDelayMs',
+  'openDelayMs','width','fontSize','spaceAfter','margin','customLeft','customRight','customTop','customBottom','customZIndex','repeatCount'
+]);
+function normalizeFieldValue(field, value) {
+  return NUMERIC_FIELDS.has(field) ? (value === '' ? '' : Number(value)) : value;
+}
 
 async function init() {
   const store = await BF.getStore();
@@ -186,7 +195,7 @@ async function selectWorkflow(workflowId, options = {}) {
   const next = workflows.find(w => w.id === workflowId);
   if (!next || next.id === activeWorkflow?.id) return;
   try {
-    if (activeWorkflow && options.saveCurrent !== false) await saveCurrent();
+    if (activeWorkflow && options.saveCurrent !== false) await saveCurrent({ force: isDirty });
   } catch (err) {
     console.warn('Workflow váltás előtti mentés nem sikerült:', err);
   }
@@ -649,7 +658,7 @@ function inlineNumber(field, value, placeholder='', cls='tiny') { return `<input
 function inlineCheck(field, checked, label) { return `<label class="inline-check"><input type="checkbox" data-inline-check="${field}" ${checked ? 'checked' : ''}> ${escapeHtml(label)}</label>`; }
 function inlineSelect(field, value, options, cls='') {
   const opts = Array.isArray(options) ? options : [];
-  return `<select class="inline-select ${cls}" data-inline-field="${field}">${opts.map(([v,l])=>`<option value="${escapeAttr(v)}" ${v===value?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select>`;
+  return `<select class="inline-select ${cls}" data-inline-field="${field}">${opts.map(([v,l])=>`<option value="${escapeAttr(v)}" ${String(v)===String(value)?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select>`;
 }
 function inlinePick(b, label='Cél elem') { return `<button class="inline-pick ${b.target ? 'has-target' : ''}" data-inline-pick="target" title="Elem kiválasztása az oldalról"><span>${escapeHtml(label)}</span><b>${escapeHtml(targetLabel(b))}</b></button>`; }
 function inlineTargetSource(b) { return `${inlineSelect('targetMode', b.targetMode || 'manual', [['manual','kézi elem'],['last','előző találat'],['var','elem változó'],['selector','selector változó'],['xpath','XPath változó']])}${(b.targetMode === 'var' || b.targetMode === 'selector' || b.targetMode === 'xpath') ? inlineInput('targetVar', b.targetVar || (b.targetMode === 'selector' ? 'szoveg_talalat_selector' : b.targetMode === 'xpath' ? 'szoveg_talalat_xpath' : 'szoveg_talalat_elem'), 'változó') : ''}`; }
@@ -730,7 +739,7 @@ function blockInline(b) {
   if (b.type === 'elementLoop') return `${inlinePick(b, 'Konténer')} ${inlineInput('selector', b.selector || '', 'selector opcionális')} ${inlineInput('itemVar', b.itemVar || 'elem_szoveg', 'elem változó')} ${inlineNumber('maxItems', b.maxItems || 20, 'max')}`;
   if (b.type === 'waitUntil') return `${inlineSelect('conditionMode', b.conditionMode || 'textExists', [['textExists','szöveg'],['elementExists','elem megjelenik'],['elementVisible','elem látható'],['elementHidden','elem eltűnik'],['elementClickable','kattintható'],['valueContains','mezőérték'],['valueChanges','érték változik'],['urlContains','URL'],['urlChanges','URL változik'],['spinnerGone','spinner eltűnik'],['domStable','DOM stabil']])} ${['elementExists','elementVisible','elementHidden','elementClickable','valueContains','valueChanges'].includes(b.conditionMode) ? inlinePick(b) : inlineInput('text', b.text || b.value || '', 'várt érték', 'wide')} ${inlineNumber('timeoutMs', b.timeoutMs || 10000, 'timeout')}`;
   if (b.type === 'waitLoad') return `${inlineSelect('loadMode', b.loadMode || 'auto', [['auto','automatikus'],['pageReady','oldal betöltődött'],['domStable','DOM stabil'],['spinnerGone','spinner eltűnt'],['elementVisible','elem megjelent'],['elementClickable','elem kattintható']])} ${['elementVisible','elementClickable'].includes(b.loadMode) ? inlinePick(b) : ''} ${inlineNumber('timeoutMs', b.timeoutMs || 15000, 'timeout')}`;
-  if (b.type === 'scroll') return `${inlineSelect('mode', b.mode || 'element', [['element','elemhez'],['page','oldal/konténer']])} ${b.mode === 'page' ? inlineSelect('direction','loadMode','onTimeout','position','waitForClick', b.direction || 'down', [['down','le'],['up','fel'],['top','tetejére'],['bottom','aljára'],['untilText','szövegig']]) + (b.direction === 'untilText' ? inlineInput('searchText', b.searchText || '', 'keresett szöveg') : inlineNumber('amount', b.amount || 500, 'px')) : inlineTargetSource(b) + (b.targetMode && b.targetMode !== 'manual' ? '' : inlinePick(b))}`;
+  if (b.type === 'scroll') return `${inlineSelect('mode', b.mode || 'element', [['element','elemhez'],['page','oldal/konténer']])} ${b.mode === 'page' ? inlineSelect('direction', b.direction || 'down', [['down','le'],['up','fel'],['top','tetejére'],['bottom','aljára'],['untilText','szövegig']]) + (b.direction === 'untilText' ? inlineInput('searchText', b.searchText || '', 'keresett szöveg') : inlineNumber('amount', b.amount || 500, 'px')) : inlineTargetSource(b) + (b.targetMode && b.targetMode !== 'manual' ? '' : inlinePick(b))}`;
   if (b.type === 'keyPress') return `${inlinePick(b, 'Cél opcionális')} ${inlineInput('key', b.key || 'Enter', 'billentyű')} ${inlineCheck('ctrl', Boolean(b.ctrl), 'Ctrl')} ${inlineCheck('shift', Boolean(b.shift), 'Shift')}`;
   if (b.type === 'clipboardRead') return inlineInput('resultName', b.resultName || 'clipboard', 'eredmény');
   if (b.type === 'openUrl') return `${inlineInput('url', b.url || '', 'URL', 'wide')} ${inlineSelect('mode', b.mode || 'newTab', [['sameTab','aktuális tab'],['newTab','új tab'],['newWindow','új ablak']])}`;
@@ -792,7 +801,7 @@ function bindBlockEvents() {
       const block = findBlock(blockEl?.dataset.block)?.block;
       if (!block) return;
       const field = input.dataset.inlineField;
-      block[field] = ['timeoutMs','ms','maxUrlLength','repeatCount','maxRows','keepStart','keepEnd','keepFirstLines','keepLastLines','throttleSec','intervalSec','intervalMinutes','charStart','charEnd','lineNumber','group','columnIndex','rowIndex','maxItems','attempts','delayMs','amount','volume','stableMs','maxOptionScrolls','matchIndex'].includes(field) ? Number(input.value) : input.value;
+      block[field] = normalizeFieldValue(field, input.value);
       markDirty();
       renderVariables();
     };
@@ -1126,7 +1135,7 @@ function renderInspector() {
   if (b.type === 'fieldByLabel') html += textField('labelText','Mező címkéje / aria / data név', b.labelText || '') + selectField('matchMode','Egyezés', b.matchMode || 'contains', [['contains','Tartalmazza'],['equals','Pontosan egyezik']]) + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive)) + checkboxField('shadowSearch','Shadow DOM keresés', b.shadowSearch !== false) + textField('resultName','Eredmény érték változó', b.resultName || 'mezo_ertek') + textField('selectorName','Selector változó', b.selectorName || 'mezo_selector') + textField('xpathName','XPath változó', b.xpathName || 'mezo_xpath') + textField('elementName','Elemhivatkozás változó', b.elementName || 'mezo_elem');
   if (b.type === 'tableExtract') html += selectField('rowMode','Sor kiválasztása', b.rowMode || 'first', [['first','Első'],['last','Utolsó'],['nth','N. sor'],['contains','Tartalmazza']]) + (b.rowMode === 'nth' ? numberField('rowIndex','N. sor száma', b.rowIndex || 1) : '') + textField('rowContains','Sor tartalmazza', b.rowContains || '') + checkboxField('includeHeader','Fejlécsort is beleszámolja', Boolean(b.includeHeader)) + checkboxField('skipEmptyRows','Üres sorokat kihagyja', b.skipEmptyRows !== false) + checkboxField('virtualSearch','Virtualizált lista/tábla: görgetéssel keressen tovább', Boolean(b.virtualSearch)) + numberField('maxScrolls','Max görgetési próbálkozás', b.maxScrolls || 10) + numberField('scrollAmount','Görgetés mértéke px', b.scrollAmount || 600) + selectField('missingRowMode','Ha nincs ilyen sor', b.missingRowMode || 'empty', [['empty','Üres érték'],['error','Hiba']]) + selectField('columnMode','Oszlop kiválasztása', b.columnMode || 'index', [['index','Oszlop száma'],['header','Fejlécnév alapján']]) + (b.columnMode === 'header' ? textField('columnHeader','Fejléc neve', b.columnHeader || '') : numberField('columnIndex','Oszlop száma', b.columnIndex || 1)) + textField('resultName','Eredmény változó', b.resultName || 'tabla_adat') + `<div class="status">Virtualizált SNOW/React/Vue tábláknál a DOM-ban gyakran csak a látható sorok vannak jelen. A görgetéses keresés ilyenkor több körben újraolvassa a sorokat.</div>`;
   if (b.type === 'elementLoop') html += textField('selector','Selector opcionális', b.selector || '') + textField('itemVar','Elem szöveg változó', b.itemVar || 'elem_szoveg') + textField('indexVar','Index változó', b.indexVar || 'elem_index') + numberField('maxItems','Maximum elem', b.maxItems || 20);
-  if (b.type === 'scroll') html += selectField('mode','Görgetés módja', b.mode || 'element', [['element','Elemhez görget'],['page','Oldal/konténer görgetése']]) + selectField('scrollTarget','Görgetési cél', b.scrollTarget || 'auto', [['auto','Automatikus'],['page','Teljes oldal'],['nearest','Cél elem legközelebbi görgethető konténere / nagy belső lista'],['container','Kézzel kiválasztott görgethető konténer']]) + (b.scrollTarget === 'container' ? '<div class="field"><label>Görgethető konténer</label><button class="btn pick-btn" data-pick="scrollContainer">Elem kiválasztása</button></div>' : '') + selectField('align','Elem igazítása', b.align || 'center', [['center','Középre'],['top','Felülre'],['bottom','Alulra']]) + selectField('direction','loadMode','onTimeout','position','waitForClick','Irány', b.direction || 'down', [['down','Le'],['up','Fel'],['top','Tetejére'],['bottom','Aljára'],['untilText','Görgetés szövegig']]) + (b.direction === 'untilText' ? textField('searchText','Keresett szöveg görgetés közben', b.searchText || '') + numberField('maxScrolls','Max görgetési próbálkozás', b.maxScrolls || 25) + numberField('scrollDelayMs','Várakozás görgetés után ms', b.scrollDelayMs || 250) : numberField('amount','Mennyiség px', b.amount || 500)) + '<div class="status">Automatikus módban a blokk megkeresi a cél elem vagy dinamikus találat legjobb belső görgethető konténerét, és azt görgeti, nem feltétlenül az egész oldalt.</div>';
+  if (b.type === 'scroll') html += selectField('mode','Görgetés módja', b.mode || 'element', [['element','Elemhez görget'],['page','Oldal/konténer görgetése']]) + selectField('scrollTarget','Görgetési cél', b.scrollTarget || 'auto', [['auto','Automatikus'],['page','Teljes oldal'],['nearest','Cél elem legközelebbi görgethető konténere / nagy belső lista'],['container','Kézzel kiválasztott görgethető konténer']]) + (b.scrollTarget === 'container' ? '<div class="field"><label>Görgethető konténer</label><button class="btn pick-btn" data-pick="scrollContainer">Elem kiválasztása</button></div>' : '') + selectField('align','Elem igazítása', b.align || 'center', [['center','Középre'],['top','Felülre'],['bottom','Alulra']]) + selectField('direction','Irány', b.direction || 'down', [['down','Le'],['up','Fel'],['top','Tetejére'],['bottom','Aljára'],['untilText','Görgetés szövegig']]) + (b.direction === 'untilText' ? textField('searchText','Keresett szöveg görgetés közben', b.searchText || '') + numberField('maxScrolls','Max görgetési próbálkozás', b.maxScrolls || 25) + numberField('scrollDelayMs','Várakozás görgetés után ms', b.scrollDelayMs || 250) : numberField('amount','Mennyiség px', b.amount || 500)) + '<div class="status">Automatikus módban a blokk megkeresi a cél elem vagy dinamikus találat legjobb belső görgethető konténerét, és azt görgeti, nem feltétlenül az egész oldalt.</div>';
   if (b.type === 'waitUntil') html += selectField('conditionMode','Feltétel', b.conditionMode || 'textExists', [['textExists','Szöveg megjelenik'],['elementExists','Elem megjelenik'],['elementVisible','Elem látható'],['elementHidden','Elem eltűnik'],['elementClickable','Elem kattintható'],['valueContains','Mezőérték tartalmazza'],['valueChanges','Mezőérték megváltozik'],['urlContains','URL tartalmazza'],['urlChanges','URL megváltozik'],['spinnerGone','Spinner/betöltés eltűnik'],['domStable','DOM stabil']]) + textField('text','Szöveg', b.text || '') + textField('value','Érték', b.value || '') + textField('spinnerSelector','Spinner selector opcionális', b.spinnerSelector || '') + numberField('stableMs','DOM stabil idő ms', b.stableMs || 800) + numberField('timeoutMs','Timeout ms', b.timeoutMs || 10000);
   if (b.type === 'waitLoad') html += selectField('loadMode','Betöltés típusa', b.loadMode || 'auto', [['auto','Automatikus'],['pageReady','Oldal betöltődött'],['domStable','DOM stabil'],['spinnerGone','Spinner/betöltés eltűnt'],['elementVisible','Kiválasztott elem megjelent'],['elementClickable','Kiválasztott elem kattintható']]) + textField('spinnerSelector','Spinner selector opcionális', b.spinnerSelector || '') + numberField('stableMs','DOM stabil idő ms', b.stableMs || 800) + numberField('timeoutMs','Timeout ms', b.timeoutMs || 15000) + selectField('onTimeout','Timeout esetén', b.onTimeout || 'error', [['error','Hibával álljon meg'],['continue','Folytassa']]) + `<div class="status">Tipp: kattintás vagy URL megnyitása után tedd be ezt a blokkot, majd utána jöhet az adatkinyerés.</div>`;
   if (b.type === 'openUrl') html += textField('url','URL', b.url || '') + selectField('mode','Megnyitás', b.mode || 'newTab', [['sameTab','Aktuális tab'],['newTab','Új tab'],['newWindow','Új ablak']]);
@@ -1211,12 +1220,12 @@ function checkboxField(field,label,value){ return `<label class="check"><input d
 function textArea(field,label,value){ return `<div class="field"><label>${label}</label><textarea data-field="${field}">${escapeHtml(value)}</textarea></div>`; }
 function selectField(field,label,value,options){
   const opts = Array.isArray(options) ? options : [];
-  return `<div class="field"><label>${label}</label><select data-field="${field}">${opts.map(([v,l])=>`<option value="${escapeAttr(v)}" ${v===value?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select></div>`;
+  return `<div class="field"><label>${label}</label><select data-field="${field}">${opts.map(([v,l])=>`<option value="${escapeAttr(v)}" ${String(v)===String(value)?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select></div>`;
 }
 function updateField(field, value) {
   const b = findBlock(selectedBlockId)?.block;
   if (!b) return;
-  b[field] = ['timeoutMs','ms','maxUrlLength','repeatCount','maxRows','keepStart','keepEnd','keepFirstLines','keepLastLines','throttleSec','intervalSec','intervalMinutes','charStart','charEnd','lineNumber','group','columnIndex','rowIndex','maxItems','attempts','delayMs','amount','volume','stableMs','maxOptionScrolls','matchIndex'].includes(field) ? Number(value) : value;
+  b[field] = normalizeFieldValue(field, value);
   markDirty();
   renderBlocks();
   renderVariables();
@@ -1229,7 +1238,17 @@ function renderVariables() {
   const refs = BF.collectVariableRefs ? BF.collectVariableRefs(activeWorkflow) : [];
   const all = [...new Set([...defs, ...refs])];
   $('#variables').innerHTML = all.length ? all.map(v => `<button class="var-chip ${defs.includes(v)?'':'var-warn'}" type="button" data-var="${v}" title="Másolás vágólapra: {{${v}}}">{{${v}}}</button>`).join('') : '<div class="muted">Még nincs változó.</div>';
-  document.querySelectorAll('[data-var]').forEach(chip => chip.onclick = async () => { await navigator.clipboard.writeText(`{{${chip.dataset.var}}}`); chip.classList.add('copied'); setTimeout(()=>chip.classList.remove('copied'), 800); $('#log').textContent = `Változó vágólapra másolva: {{${chip.dataset.var}}}`; });
+  document.querySelectorAll('[data-var]').forEach(chip => chip.onclick = async () => {
+    const token = `{{${chip.dataset.var}}}`;
+    try {
+      await navigator.clipboard.writeText(token);
+      chip.classList.add('copied');
+      setTimeout(()=>chip.classList.remove('copied'), 800);
+      $('#log').textContent = `Változó vágólapra másolva: ${token}`;
+    } catch (err) {
+      $('#log').textContent = `Vágólap másolás sikertelen: ${err?.message || err}. Másold kézzel: ${token}`;
+    }
+  });
 }
 
 function renderLiveVariables(vars) {
@@ -1293,10 +1312,15 @@ function reidBlocks(blocks) {
   }
 }
 
-async function saveCurrent(){
+async function saveCurrent({ force = true } = {}){
+  if (!activeWorkflow) return;
   normalizeWorkflow(activeWorkflow);
   activeWorkflow.name = $('#workflowName').value || 'Névtelen automatizmus';
   workflows = workflows.map(w => w.id === activeWorkflow.id ? activeWorkflow : w);
+  if (!force && !isDirty) {
+    renderSaveState();
+    return;
+  }
   await BF.saveWorkflow(activeWorkflow);
   await syncTriggerWatchersFromBlocks(activeWorkflow);
   await syncSchedulesForWorkflow(activeWorkflow);

@@ -595,6 +595,9 @@ const BF = (() => {
       if (b.type === 'textSearch') { ['resultName','countName','contextName','placeName','selectorName','xpathName','elementName','rowSelectorName','clickableSelectorName','parentSelectorName','nearButtonSelectorName'].forEach(k => { if (b[k]) vars.add(b[k]); }); vars.add('szoveg_talalat_lista'); }
       if (b.type === 'errorSearch') { ['resultName','textName','selectorName','countName'].forEach(k => { if (b[k]) vars.add(b[k]); }); }
       if (b.type === 'fieldByLabel') { ['resultName','selectorName','xpathName','elementName'].forEach(k => { if (b[k]) vars.add(b[k]); }); }
+      if (b.type === 'pageButton') { vars.add(b.resultName || 'button_clicked'); vars.add('button_clicked_at'); }
+      if (b.type === 'pdfSave') vars.add('pdf_file_name');
+      if (b.type === 'docxSave') vars.add('docx_file_name');
       if (b.type === 'popupWindowWait' && b.resultName) vars.add(b.resultName);
     });
     return [...vars];
@@ -626,6 +629,9 @@ const BF = (() => {
       if (b.type === 'textSearch') { ['resultName','countName','contextName','placeName','selectorName','xpathName','elementName','rowSelectorName','clickableSelectorName','parentSelectorName','nearButtonSelectorName'].forEach(k => { if (b[k]) defined.add(b[k]); }); defined.add('szoveg_talalat_lista'); }
       if (b.type === 'errorSearch') { ['resultName','textName','selectorName','countName'].forEach(k => { if (b[k]) defined.add(b[k]); }); }
       if (b.type === 'fieldByLabel') { ['resultName','selectorName','xpathName','elementName'].forEach(k => { if (b[k]) defined.add(b[k]); }); }
+      if (b.type === 'pageButton') { defined.add(b.resultName || 'button_clicked'); defined.add('button_clicked_at'); }
+      if (b.type === 'pdfSave') defined.add('pdf_file_name');
+      if (b.type === 'docxSave') defined.add('docx_file_name');
     });
     let starterCount = 0;
     walkBlocks(workflow.blocks || [], b => {
@@ -659,6 +665,13 @@ const BF = (() => {
       if (b.type === 'mask' && !String(b.source||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Maszkolás blokk: hiányzik a forrás szöveg vagy változó.' });
       if (b.type === 'mask' && !String(b.resultName||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Maszkolás blokk: hiányzik az eredmény változó neve.' });
       if (b.type === 'openEmail' && !String(b.draftName||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Email megnyitása: hiányzik a draft változó neve.' });
+      if (b.type === 'openUrl' && !String(b.url||'').trim()) issues.push({ level:'error', blockId:b.id, text:'URL megnyitása: hiányzik az URL.' });
+      if (b.type === 'selectOption' && !String(b.optionText||'').trim()) issues.push({ level:'warning', blockId:b.id, text:'Legördülő opció: üres opciószöveg.' });
+      if (b.type === 'scroll' && (b.mode || 'element') === 'element' && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:'Görgetés elemhez: hiányzik a cél elem vagy dinamikus cél változó.' });
+      if (b.type === 'scroll' && b.direction === 'untilText' && !String(b.searchText||'').trim()) issues.push({ level:'warning', blockId:b.id, text:'Görgetés szövegig: üres keresett szöveg.' });
+      if (b.type === 'waitLoad' && ['elementVisible','elementClickable'].includes(b.loadMode || '') && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:'Várj betöltésre: elem módhoz hiányzik a cél elem.' });
+      if (b.type === 'preflight' && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:'Elem ellenőrzése: hiányzik a cél elem.' });
+      if (b.type === 'pageButton' && ['afterTarget','beforeTarget'].includes(b.position || '') && !b.target) issues.push({ level:'error', blockId:b.id, text:'Oldalba illesztett gomb: elem elé/után elhelyezéshez hiányzik a cél elem.' });
       if (b.type === 'click' && /delete|remove|send|submit|pay|confirm|order|törl|küld|fizet|rendel|végleges/i.test(`${b.target?.label || ''} ${b.target?.text || ''}`)) issues.push({ level:'warning', blockId:b.id, text:`Kockázatos kattintás lehet: ${b.target?.label || 'cél elem'}.` });
     });
     for (const ref of collectVariableRefs(workflow)) {

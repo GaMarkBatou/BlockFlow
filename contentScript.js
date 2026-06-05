@@ -766,6 +766,14 @@
       vars.last_xpath = vars[block.xpathName || 'szoveg_talalat_xpath'] || '';
       vars.last_element = vars[elementName] || '';
     }
+    if (block.type === 'fieldByLabel') {
+      vars.last_result = vars[block.resultName || 'mezo_ertek'] || '';
+      vars.last_value = vars.last_result;
+      vars.last_text = vars.last_result;
+      vars.last_selector = vars[block.selectorName || 'mezo_selector'] || '';
+      vars.last_xpath = vars[block.xpathName || 'mezo_xpath'] || '';
+      vars.last_element = vars[block.elementName || 'mezo_elem'] || '';
+    }
     if (block.type === 'screenshot') { const name = block.resultName || 'screenshot_data_url'; vars.last_screenshot = vars[name] || vars.last_screenshot || ''; vars.last_result = vars.last_screenshot; }
     if (block.type === 'findElements') { vars.last_result = vars[block.countName || 'talalat_db'] || ''; }
     if (block.type === 'errorSearch') { vars.last_result = vars[block.resultName || 'hiba_van'] || ''; vars.last_text = vars[block.textName || 'hiba_szoveg'] || ''; vars.last_selector = vars[block.selectorName || 'hiba_selector'] || ''; }
@@ -1016,6 +1024,11 @@
       const key = `${selector}|${place}|${String(value).slice(0, 180)}`;
       if (seen.has(key)) return;
       seen.add(key);
+      const row = closestRow(el);
+      const clickable = closestClickable(el);
+      const panel = closestPanel(el);
+      const nearButton = firstNearbyButton(el);
+      const selectorFor = node => node ? (node.getAttribute('id') ? '#' + CSS.escape(node.id) : cssPath(node)) : '';
       hits.push({
         element: el || document.body,
         value: String(value),
@@ -1023,10 +1036,10 @@
         selector,
         xpath: el ? xpathFor(el) : '/html/body',
         context: shortContext(value, needle, caseSensitive),
-        rowSelector: closestRow(el)?.getAttribute('id') ? '#' + CSS.escape(closestRow(el).id) : (closestRow(el) ? cssPath(closestRow(el)) : ''),
-        clickableSelector: closestClickable(el)?.getAttribute('id') ? '#' + CSS.escape(closestClickable(el).id) : (closestClickable(el) ? cssPath(closestClickable(el)) : ''),
-        parentSelector: closestPanel(el)?.getAttribute('id') ? '#' + CSS.escape(closestPanel(el).id) : (closestPanel(el) ? cssPath(closestPanel(el)) : ''),
-        nearButtonSelector: firstNearbyButton(el)?.getAttribute('id') ? '#' + CSS.escape(firstNearbyButton(el).id) : (firstNearbyButton(el) ? cssPath(firstNearbyButton(el)) : '')
+        rowSelector: selectorFor(row),
+        clickableSelector: selectorFor(clickable),
+        parentSelector: selectorFor(panel),
+        nearButtonSelector: selectorFor(nearButton)
       });
     }
 
