@@ -14,56 +14,101 @@
     if (!workflow?.publicLogEnabled || options?.silentPublicLog) {
       return { append(){}, done(){}, error(){} };
     }
-    const width = Math.max(220, Math.min(420, Number(workflow.publicLogWidth || 280)));
-    const opacity = Math.max(0.35, Math.min(1, Number(workflow.publicLogOpacity ?? 0.82)));
+    const width = Math.max(220, Math.min(520, Number(workflow.publicLogWidth || 300)));
+    const opacity = Math.max(0.35, Math.min(1, Number(workflow.publicLogOpacity ?? 0.86)));
     const lines = [];
-    let root = document.getElementById('bf-public-run-log');
-    if (root) root.remove();
-    root = document.createElement('div');
-    root.id = 'bf-public-run-log';
-    root.innerHTML = `<div class="bf-public-log-head"><b>BlockFlow napló</b><button type="button" data-bf-log-download>TXT</button><button type="button" data-bf-log-close>×</button></div><div class="bf-public-log-title"></div><div class="bf-public-log-body"></div>`;
-    Object.assign(root.style, {
-      position: 'fixed', top: '12px', right: '12px', width: width + 'px', maxHeight: 'calc(100vh - 24px)',
-      zIndex: '2147483647', background: `rgba(15, 23, 42, ${opacity})`, color: '#f8fafc', border: '1px solid rgba(255,255,255,.25)',
-      borderRadius: '14px', boxShadow: '0 20px 60px rgba(0,0,0,.35)', font: '12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-      overflow: 'hidden', backdropFilter: 'blur(8px)'
+    let host = document.getElementById('bf-public-run-log');
+    if (host) host.remove();
+    host = document.createElement('div');
+    host.id = 'bf-public-run-log';
+    Object.assign(host.style, {
+      all: 'initial',
+      position: 'fixed',
+      top: '12px',
+      right: '12px',
+      width: width + 'px',
+      minHeight: '140px',
+      maxHeight: 'calc(100vh - 24px)',
+      zIndex: '2147483647',
+      display: 'block',
+      pointerEvents: 'auto'
     });
-    const style = document.createElement('style');
-    style.textContent = `#bf-public-run-log .bf-public-log-head{display:flex;gap:6px;align-items:center;padding:8px 10px;background:rgba(255,255,255,.10)}#bf-public-run-log .bf-public-log-head b{flex:1;font-family:system-ui,sans-serif;font-size:12px}#bf-public-run-log button{border:0;border-radius:8px;padding:3px 7px;font-weight:700;cursor:pointer;background:#dbeafe;color:#0f172a}#bf-public-run-log .bf-public-log-title{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.14);font-family:system-ui,sans-serif;font-weight:700}#bf-public-run-log .bf-public-log-body{padding:8px 10px;overflow:auto;max-height:calc(100vh - 112px);white-space:pre-wrap}#bf-public-run-log .bf-line{padding:3px 0;border-bottom:1px dashed rgba(255,255,255,.10)}#bf-public-run-log .bf-ok{color:#bbf7d0}#bf-public-run-log .bf-err{color:#fecaca}#bf-public-run-log .bf-muted{color:#cbd5e1}`;
-    root.prepend(style);
-    document.documentElement.appendChild(root);
-    const title = root.querySelector('.bf-public-log-title');
-    const body = root.querySelector('.bf-public-log-body');
-    title.textContent = workflow.name || 'Automatizmus futása';
+    const mount = document.body || document.documentElement;
+    mount.appendChild(host);
+
+    let root = host;
+    try {
+      root = host.attachShadow({ mode: 'open' });
+    } catch (_) {
+      root = host;
+    }
+
+    const html = `
+      <style>
+        :host{all:initial;position:fixed!important;top:12px!important;right:12px!important;width:${width}px!important;z-index:2147483647!important;display:block!important;pointer-events:auto!important;color-scheme:light dark;}
+        *{box-sizing:border-box;}
+        .panel{width:100%;min-height:140px;max-height:calc(100vh - 24px);display:flex;flex-direction:column;overflow:hidden;border-radius:14px;border:1px solid rgba(255,255,255,.28);background:rgba(15,23,42,${opacity});color:#f8fafc;box-shadow:0 20px 60px rgba(0,0,0,.38);font:12px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;backdrop-filter:blur(8px);}
+        .head{display:flex;gap:6px;align-items:center;padding:8px 10px;background:rgba(255,255,255,.12);border-bottom:1px solid rgba(255,255,255,.14);}
+        .head b{flex:1;font:700 12px/1.2 system-ui,-apple-system,Segoe UI,sans-serif;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        button{appearance:none;border:0;border-radius:8px;padding:4px 8px;font:700 11px/1 system-ui,-apple-system,Segoe UI,sans-serif;cursor:pointer;background:#dbeafe;color:#0f172a;}
+        button:hover{filter:brightness(.96);}
+        .title{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.14);font:700 12px/1.25 system-ui,-apple-system,Segoe UI,sans-serif;color:#e0f2fe;word-break:break-word;}
+        .body{padding:8px 10px;overflow:auto;max-height:calc(100vh - 122px);white-space:pre-wrap;word-break:break-word;scrollbar-width:thin;}
+        .line{padding:4px 0;border-bottom:1px dashed rgba(255,255,255,.10);color:#f8fafc;}
+        .ok{color:#bbf7d0;}
+        .err{color:#fecaca;}
+        .muted{color:#cbd5e1;}
+        .empty{color:#cbd5e1;font-style:italic;}
+      </style>
+      <div class="panel" role="log" aria-live="polite">
+        <div class="head"><b>BlockFlow napló</b><button type="button" data-download>TXT</button><button type="button" data-close>×</button></div>
+        <div class="title"></div>
+        <div class="body"><div class="empty">Futási napló indul...</div></div>
+      </div>`;
+    root.innerHTML = html;
+
+    const title = root.querySelector('.title');
+    const body = root.querySelector('.body');
+    const empty = root.querySelector('.empty');
+    if (title) title.textContent = workflow.name || 'Automatizmus futása';
+
     const append = (text, cls = '') => {
-      const line = `[${new Date().toLocaleTimeString()}] ${String(text || '')}`;
+      const line = `[${new Date().toLocaleTimeString()}] ${String(text ?? '')}`;
       lines.push(line);
+      if (!body) return;
+      if (empty && empty.isConnected) empty.remove();
       const div = document.createElement('div');
-      div.className = `bf-line ${cls}`;
+      div.className = `line ${cls || ''}`.trim();
       div.textContent = line;
       body.appendChild(div);
-      while (body.children.length > 350) body.firstChild.remove();
+      while (body.children.length > 350) body.firstElementChild?.remove();
       body.scrollTop = body.scrollHeight;
     };
-    root.querySelector('[data-bf-log-close]').onclick = () => root.remove();
-    root.querySelector('[data-bf-log-download]').onclick = () => {
+
+    const closeBtn = root.querySelector('[data-close]');
+    if (closeBtn) closeBtn.onclick = () => host.remove();
+    const downloadBtn = root.querySelector('[data-download]');
+    if (downloadBtn) downloadBtn.onclick = () => {
       const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain;charset=utf-8' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = `${(workflow.name || 'blockflow').toLowerCase().replace(/[^a-z0-9_-]+/gi,'-')}-debug-log.txt`;
+      a.style.display = 'none';
+      (document.body || document.documentElement).appendChild(a);
       a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     };
-    append('Futás indult. URL: ' + location.href, 'bf-muted');
+
+    append('Futás indult. URL: ' + location.href, 'muted');
     return {
       append,
       done(vars) {
-        append('Futás befejeződött.', 'bf-ok');
+        append('Futás befejeződött.', 'ok');
         const keys = Object.keys(vars || {}).filter(k => /^last_|_file_name$|result|talalat|hiba|button|docx|pdf/i.test(k)).slice(0, 20);
-        if (keys.length) append('Fontos változók: ' + keys.map(k => `${k}=${String(vars[k]).slice(0,80)}`).join(' | '), 'bf-muted');
-        if (workflow.publicLogDownload) append('A TXT gombbal letölthető a futási napló.', 'bf-muted');
+        if (keys.length) append('Fontos változók: ' + keys.map(k => `${k}=${String(vars[k]).slice(0,80)}`).join(' | '), 'muted');
+        if (workflow.publicLogDownload) append('A TXT gombbal letölthető a futási napló.', 'muted');
       },
-      error(err) { append('HIBA: ' + String(err?.message || err), 'bf-err'); }
+      error(err) { append('HIBA: ' + String(err?.message || err), 'err'); }
     };
   }
 
