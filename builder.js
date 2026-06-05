@@ -955,7 +955,7 @@ function removeBlock(id) {
   const found = findBlock(id);
   if (!found) return null;
   if (isStarterBlock(found.block) && starterCount() <= 1) {
-    alert('Legalább egy indító blokk szükséges: Indítás vagy Figyelő trigger.');
+    alert(BF.t('builder.atLeastOneStarter'));
     return null;
   }
   return found.list.splice(found.index, 1)[0];
@@ -976,7 +976,7 @@ function moveInto(id, containerId) {
     const realContainerId = String(containerId).startsWith('else:') ? String(containerId).slice(5) : containerId;
     const target = findBlock(realContainerId)?.block;
     if (!target || !CONTAINERS.has(target.type)) return;
-    if (id === realContainerId || isDescendant(id, realContainerId)) return alert('Egy blokk nem húzható saját maga alá.');
+    if (id === realContainerId || isDescendant(id, realContainerId)) return alert(BF.t('builder.cannotMoveBlockIntoItself'));
   }
   const found = findBlock(id);
   if (!found) return;
@@ -1006,7 +1006,7 @@ function moveBefore(id, beforeId) {
     renderAll();
     return;
   }
-  if (isDescendant(id, beforeId)) return alert('Egy konténer nem húzható saját gyermekblokkja elé.');
+  if (isDescendant(id, beforeId)) return alert(BF.t('builder.cannotMoveContainerBeforeChild'));
   const found = findBlock(id);
   if (!found) return;
   const containerId = before.parent?.id || (before.list === activeWorkflow.blocks ? 'root' : null);
@@ -1384,7 +1384,7 @@ async function testBlock(b) {
   await refreshTarget();
   if (['textSearch','fieldByLabel','errorSearch','findElements','tableExtract'].includes(b.type)) {
     const res = await BF.sendToTarget({ type: 'BF_TEST_BLOCK', block: b }, targetTabId);
-    $('#log').textContent = res.response?.ok ? `Blokk teszt OK:\n${JSON.stringify(res.response.result, null, 2)}` : `Blokk teszt hiba: ${res.response?.error || res.error || 'ismeretlen'}`;
+    $('#log').textContent = res.response?.ok ? `${BF.t('builder.blockTestOk')}:\n${JSON.stringify(res.response.result, null, 2)}` : `${BF.t('builder.blockTestError')}: ${res.response?.error || res.error || BF.t('status.unknown')}`;
     return;
   }
   if (b.target) {
@@ -1909,7 +1909,7 @@ async function exportMiniExtension() {
   const dependencyGraph = collectWorkflowDependencyGraph(wf, workflows);
   if (dependencyGraph.missing.length) {
     const details = dependencyGraph.missing.map(m => `${m.fromName}: ${m.ref || '(üres hivatkozás)'}`).join('\n');
-    alert('A mini extension export nem folytatható, mert hiányzó meghívott automatizmus van:\n' + details);
+    alert(BF.t('miniExport.missingCalledWorkflow') + '\n' + details);
     return;
   }
   const exportedWorkflows = dependencyGraph.workflows.length ? dependencyGraph.workflows : [wf];
@@ -1946,7 +1946,7 @@ async function exportMiniExtension() {
     content_scripts: [{ matches: ['<all_urls>'], js: ['contentScript.js'], css: ['contentScript.css'], run_at: 'document_idle' }],
     icons: { '16':'icons/icon16.png', '48':'icons/icon48.png', '128':'icons/icon128.png' }
   };
-  const readme = `# ${name || wf.name}\n\nBlockFlow-ból generált, Builder nélküli mini Chrome extension.\n\nTelepítés: chrome://extensions → Developer mode → Load unpacked → válaszd ki a kicsomagolt mappát.\n\nMűködés: ikonra kattintva futtat, a figyelők/időzítők pedig automatikusan regisztrálódnak.\n`;
+  const readme = `# ${name || wf.name}\n\n${BF.t('miniExport.readmeDescription')}\n\n${BF.t('miniExport.readmeInstall')}\n\n${BF.t('miniExport.readmeUsage')}\n`;
   const files = [
     { name:'manifest.json', content: JSON.stringify(manifest, null, 2) },
     { name:'background.js', content: makeStandaloneBackground(wf, exportedWorkflows, watchers, schedules, bg) },
@@ -2025,6 +2025,6 @@ $('#importFile').onchange = async e => {
 function escapeHtml(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function escapeAttr(s){return escapeHtml(s).replace(/'/g,'&#39;');}
 function safeFile(s){return String(s||'automation').toLowerCase().replace(/[^a-z0-9_-]+/g,'-').replace(/^-|-$/g,'') || 'automation';}
-function safeHost(url){ try { return new URL(url).hostname; } catch { return url || 'ismeretlen'; } }
+function safeHost(url){ try { return new URL(url).hostname; } catch { return url || BF.t('status.unknown'); } }
 
 init();

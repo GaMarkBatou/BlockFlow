@@ -226,7 +226,7 @@
   "workflowList.searchPlaceholder": "Search automations...",
   "workflowList.active": "Active",
   "workflowList.empty": "No results.",
-  "workflowList.open": "Open automation list",
+  "workflowList.open": "Open",
   "workflowList.close": "Collapse automation list",
   "common.yes": "yes",
   "common.no": "no",

@@ -481,7 +481,7 @@
 
   function startPicker(context) {
     stopPicker();
-    showBadge('BlockFlow elemkiválasztás aktív. Kattints egy elemre. ESC: megszakítás.');
+    showBadge(rt('runtime.pickerActive'));
     const overlay = document.createElement('div');
     overlay.dataset.bfOverlay = '1';
     overlay.className = 'bf-picker-overlay-box';
@@ -883,8 +883,8 @@
     const raw = String(value || '').trim();
     if (!raw) return null;
     if (raw.startsWith('{')) { try { return JSON.parse(raw); } catch (_) {} }
-    if (raw.startsWith('/') || raw.startsWith('(')) return { xpath: raw, label: 'XPath változó' };
-    return { css: raw, label: 'Selector változó' };
+    if (raw.startsWith('/') || raw.startsWith('(')) return { xpath: raw, label: rt('runtime.xpathVariable') };
+    return { css: raw, label: rt('runtime.selectorVariable') };
   }
 
   function targetForBlock(block, vars = {}) {
@@ -965,7 +965,7 @@
 
     const response = await safeRuntimeSend({ type: 'BF_CLIPBOARD_READ' });
     if (response?.ok) return String(response.text || '');
-    throw new Error(response?.error || 'Vágólap beolvasása sikertelen.');
+    throw new Error(response?.error || rt('runtime.clipboardReadFailed'));
   }
 
   function findPopup() {
@@ -1187,7 +1187,7 @@
     }
 
     if (scope === 'visible') {
-      addHit(document.body, document.body.innerText || '', 'látható oldal szöveg');
+      addHit(document.body, document.body.innerText || '', rt('runtime.visiblePageText'));
       return hits;
     }
 
@@ -1197,18 +1197,18 @@
     for (const el of elements) {
       if (scope === 'dom') {
         if (!el.children.length || ['INPUT','TEXTAREA','SELECT','OPTION','BUTTON','A'].includes(el.tagName)) {
-          addHit(el, el.textContent || '', 'DOM szöveg');
+          addHit(el, el.textContent || '', rt('runtime.domText'));
         }
       } else {
         if (!el.children.length || ['BUTTON','A','LABEL','OPTION','SUMMARY'].includes(el.tagName)) {
-          addHit(el, el.innerText || el.textContent || '', 'oldal szöveg');
+          addHit(el, el.innerText || el.textContent || '', rt('runtime.pageText'));
         }
       }
       if (includeValues && ['INPUT','TEXTAREA','SELECT'].includes(el.tagName)) addHit(el, getElementValue(el, 'auto'), `${el.tagName.toLowerCase()} value`);
       if (includeAttributes) {
         for (const attr of ['title','aria-label','placeholder','alt','value','name','data-testid','data-test-id','data-field','data-name','role']) {
           const val = el.getAttribute?.(attr);
-          if (val) addHit(el, val, `attribútum: ${attr}`);
+          if (val) addHit(el, val, rt('runtime.attributeHit', { attr }));
         }
       }
     }
@@ -1292,7 +1292,7 @@
       row = rows[n - 1];
     } else row = rows[0];
     if (!row) {
-      if (block.missingRowMode === 'error') throw new Error('Táblázatból kinyerés: nincs ilyen sor.');
+      if (block.missingRowMode === 'error') throw new Error(rt('runtime.tableRowNotFound'));
       return '';
     }
     const cells = [...row.querySelectorAll('td,th,[role="cell"],[role="gridcell"],input,textarea,select')];
@@ -1348,19 +1348,19 @@
       title,
       message,
       mode,
-      buttonText: block.buttonText || 'Folytatás',
-      cancelText: block.cancelText || 'Megszakítás',
+      buttonText: block.buttonText || rt('button.continue'),
+      cancelText: block.cancelText || rt('button.cancel'),
       feedbackStyle: block.feedbackStyle || 'default',
       accent: block.accent || 'blue',
       windowSize: block.windowSize || 'normal'
     });
 
     if (!response || response.ok === false) {
-      const errText = String(response?.error || 'Nem sikerült megnyitni a felhasználói üzenet ablakot.');
+      const errText = String(response?.error || rt('runtime.userPromptOpenFailed'));
       throw new Error(errText);
     }
     if (response.action === 'cancel' || response.action === 'closed') {
-      throw Object.assign(new Error('Felhasználó megszakította a futást.'), { userCancelled: true });
+      throw Object.assign(new Error(rt('runtime.userCancelledRun')), { userCancelled: true });
     }
     return { action: response.action || 'continue' };
   }
@@ -1379,13 +1379,13 @@
       defaultValue: interpolate(block.defaultValue || '', vars),
       options: String(block.options || '').split(/\r?\n/).map(x => interpolate(x.trim(), vars)).filter(Boolean),
       buttonText: 'OK',
-      cancelText: 'Mégse',
+      cancelText: rt('button.cancel'),
       feedbackStyle: block.feedbackStyle || 'default',
       accent: block.accent || 'blue',
       windowSize: block.windowSize || 'normal'
     });
-    if (!response || response.ok === false) throw new Error(response?.error || 'Felhasználói ablak hiba.');
-    if (['cancel','closed'].includes(response.action)) throw Object.assign(new Error('Felhasználó megszakította a futást.'), { userCancelled: true });
+    if (!response || response.ok === false) throw new Error(response?.error || rt('runtime.userWindowError'));
+    if (['cancel','closed'].includes(response.action)) throw Object.assign(new Error(rt('runtime.userCancelledRun')), { userCancelled: true });
     return response;
   }
 
@@ -1457,7 +1457,7 @@
           resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: canvas.width, height: canvas.height });
         } catch (err) { reject(err); }
       };
-      img.onerror = () => reject(new Error('Screenshot kép nem tölthető be PDF-hez.'));
+      img.onerror = () => reject(new Error(rt('runtime.screenshotImageLoadFailed'))) ;
       img.src = dataUrl;
     });
   }
@@ -1467,7 +1467,7 @@
     if ((block.source || 'current') === 'last') return vars[block.dataVar || 'screenshot_data_url'] || '';
     if ((block.source || 'current') === 'variable') return vars[block.dataVar || 'screenshot_data_url'] || '';
     const res = await safeRuntimeSend({ type: 'BF_CAPTURE_VISIBLE_TAB', openPreview: false, restoreFocus: true });
-    if (!res?.ok) throw new Error(res?.error || 'PDF screenshot készítése sikertelen.');
+    if (!res?.ok) throw new Error(res?.error || rt('runtime.pdfScreenshotFailed'));
     vars[block.dataVar || 'screenshot_data_url'] = res.dataUrl || '';
     return res.dataUrl || '';
   }
@@ -1711,7 +1711,7 @@
   }
 
   async function showPageButton(block, vars = {}, dryRun = false) {
-    const label = interpolate(block.label || 'Folytatás', vars) || 'Folytatás';
+    const label = interpolate(block.label || rt('button.continue'), vars) || rt('button.continue');
     const tooltip = interpolate(block.tooltip || '', vars);
     const waitForClick = true;
     const timeoutMs = Math.max(0, Number(block.timeoutSec || 300) * 1000);
@@ -1802,7 +1802,7 @@
         if (!el) throw new Error(`Nem jelent meg az elem: ${block.target.label || block.target.css}`);
       } else if (block.waitMode === 'text') {
         const ok = await waitForText(interpolate(block.text || '', vars), Number(block.timeoutMs || 5000), false);
-        if (!ok) throw new Error(`Nem jelent meg a szöveg: ${block.text || ''}`);
+        if (!ok) throw new Error(rt('runtime.textDidNotAppear', { text: block.text || '' }));
       } else {
         await sleep(Number(block.ms || 1000));
       }
@@ -1811,7 +1811,7 @@
     if (block.type === 'click') {
       const target = targetForBlock(block, vars);
       const el = await waitForElement(target, Number(block.timeoutMs || 5000), { shadowSearch: block.shadowSearch !== false });
-      if (!el) throw new Error(`Nem található kattintási cél: ${target?.label || block.target?.label || 'nincs megadva'}`);
+      if (!el) throw new Error(rt('runtime.clickTargetLabelNotFound', { label: target?.label || block.target?.label || rt('runtime.notSpecified') }));
       if (block.autoScroll !== false) await scrollElementIntoViewSmart(el, { block, align: 'center' });
       el.classList.add('bf-run-outline');
       await sleep(100);
@@ -1851,7 +1851,7 @@
     if (block.type === 'fill') {
       const target = targetForBlock(block, vars);
       const el = await waitForElement(target, Number(block.timeoutMs || 5000), { shadowSearch: block.shadowSearch !== false });
-      if (!el) throw new Error(`Nem található mező: ${target?.label || block.target?.label || 'nincs megadva'}`);
+      if (!el) throw new Error(rt('runtime.fieldNotFound', { label: target?.label || block.target?.label || rt('runtime.notSpecified') }));
       const value = interpolate(block.value || '', vars);
       await scrollElementIntoViewSmart(el, { block, align: 'center' });
       el.classList.add('bf-run-outline');
@@ -1862,7 +1862,7 @@
     if (block.type === 'selectOption') {
       const target = targetForBlock(block, vars);
       const root = await waitForElement(target, Number(block.timeoutMs || 5000), { requireVisible: true, shadowSearch: block.shadowSearch !== false });
-      if (!root) throw new Error(`Nem található legördülő: ${target?.label || block.target?.label || 'nincs megadva'}`);
+      if (!root) throw new Error(rt('runtime.dropdownNotFound', { label: target?.label || block.target?.label || rt('runtime.notSpecified') }));
       const optionText = interpolate(block.optionText || '', vars);
       if (!dryRun) root.click();
       await sleep(Number(block.openDelayMs || 250));
@@ -1891,7 +1891,7 @@
           if (after === before) break;
         }
       }
-      if (!opt) throw new Error(`Nem található legördülő opció: ${optionText}`);
+      if (!opt) throw new Error(rt('runtime.dropdownOptionNotFound', { option: optionText }));
       await scrollElementIntoViewSmart(opt, { block, align: 'center' });
       opt.classList.add('bf-run-outline');
       if (!dryRun) opt.click();
@@ -1902,7 +1902,7 @@
       const requireVisible = (block.searchScope || 'dom') === 'visible' || block.allowHidden === false;
       const target = targetForBlock(block, vars);
       const el = await waitForElement(target, Number(block.timeoutMs || 5000), { requireVisible, shadowSearch: block.shadowSearch !== false });
-      if (!el) throw new Error(`Nem található kinyerendő elem: ${target?.label || block.target?.label || 'nincs megadva'}`);
+      if (!el) throw new Error(rt('runtime.extractElementNotFound', { label: target?.label || block.target?.label || rt('runtime.notSpecified') }));
       const val = getElementValue(el, block.extractMode || 'auto', block.attributeName || 'title');
       vars[block.varName || 'adat'] = val;
       return { ok: true, value: val };
@@ -1916,13 +1916,13 @@
     }
     if (block.type === 'popupExtract') {
       const val = extractPopup(block.extractMode || 'text');
-      if (!val) throw new Error('Nem sikerült popup adatot kinyerni.');
+      if (!val) throw new Error(rt('runtime.popupExtractFailed'));
       vars[block.varName || 'popup_szoveg'] = val;
       return { ok: true, value: val };
     }
     if (block.type === 'popupClick') {
       const btn = findPopupButton(interpolate(block.buttonText || '', vars));
-      if (!btn) throw new Error(`Nem található popup gomb: ${block.buttonText || ''}`);
+      if (!btn) throw new Error(rt('runtime.popupButtonNotFound', { label: block.buttonText || '' }));
       btn.classList.add('bf-run-outline');
       if (!dryRun) btn.click();
       setTimeout(() => btn.classList.remove('bf-run-outline'), 700);
@@ -1950,7 +1950,7 @@
         const re = new RegExp(block.pattern || '', block.flags || 'i');
         if (block.allMatches) value = [...src.matchAll(new RegExp(block.pattern || '', (block.flags || 'i').includes('g') ? block.flags : (block.flags || 'i') + 'g'))].map(m => m[Number(block.group || 0)] || '').join('\n');
         else { const m = src.match(re); value = m ? (m[Number(block.group || 0)] || '') : ''; }
-      } catch (err) { throw new Error('Hibás regex minta: ' + err.message); }
+      } catch (err) { throw new Error(rt('runtime.invalidRegex') + ': ' + err.message); }
       vars[block.resultName || 'regex_talalat'] = value;
       return { ok: true, value };
     }
@@ -1984,7 +1984,7 @@
     }
     if (block.type === 'fieldByLabel') {
       const el = findFieldByLabelText(interpolate(block.labelText || '', vars), block);
-      if (!el) throw new Error(`Nem található mező címke alapján: ${block.labelText || ''}`);
+      if (!el) throw new Error(rt('runtime.fieldByLabelNotFound', { label: block.labelText || '' }));
       const val = getElementValue(el, 'auto');
       vars[block.resultName || 'mezo_ertek'] = val;
       vars[block.selectorName || 'mezo_selector'] = cssPath(el);
@@ -2005,7 +2005,7 @@
     }
     if (block.type === 'tableExtract') {
       const el = await waitForElement(block.target, Number(block.timeoutMs || 5000), { requireVisible: false });
-      if (!el) throw new Error(`Nem található táblázat/lista: ${block.target?.label || ''}`);
+      if (!el) throw new Error(rt('runtime.tableNotFound', { label: block.target?.label || '' }));
       const value = await tableCellValueWithVirtualScroll(el, block, vars);
       vars[block.resultName || 'tabla_adat'] = value;
       return { ok: true, value };
@@ -2014,7 +2014,7 @@
       if (dryRun) return { ok: true, dryRun };
       const ok = await waitForLoadBlock(block, vars);
       if (!ok && block.onTimeout === 'continue') return { ok: true, timeout: true };
-      if (!ok) throw new Error('Várj betöltésre: timeout, a betöltés nem fejeződött be.');
+      if (!ok) throw new Error(rt('runtime.waitLoadTimeout'));
       return { ok: true };
     }
 
@@ -2045,7 +2045,7 @@
         if (ok) break;
         await sleep(200);
       }
-      if (!ok) throw new Error('Várj amíg: timeout, feltétel nem teljesült.');
+      if (!ok) throw new Error(rt('runtime.waitUntilTimeout'));
       return { ok: true };
     }
     if (block.type === 'scroll') {
@@ -2063,7 +2063,7 @@
           const hits = await scanWithScrolling(() => findTextOccurrences(searchBlock, vars), searchBlock);
           const first = hits[0];
           if (first?.element) await scrollElementIntoViewSmart(first.element, { block, align: block.align || 'center' });
-          if (!first) throw new Error(`Görgetés szövegig: nem található: ${block.searchText || ''}`);
+          if (!first) throw new Error(rt('runtime.scrollTextNotFound', { text: block.searchText || '' }));
         } else {
           let container = null;
           if (block.scrollTarget === 'container' && block.scrollContainer) container = findElement(block.scrollContainer, { requireVisible: false, shadowSearch: block.shadowSearch !== false });
@@ -2084,7 +2084,7 @@
       } else {
         const target = targetForBlock(block, vars);
         const el = await waitForElement(target, 5000, { requireVisible: false, shadowSearch: block.shadowSearch !== false });
-        if (!el) throw new Error('Nem található görgetési cél.');
+        if (!el) throw new Error(rt('runtime.scrollTargetNotFound'));
         if (!dryRun) await scrollElementIntoViewSmart(el, { block, align: block.align || 'center' });
       }
       return { ok: true, dryRun };
@@ -2129,7 +2129,7 @@
         openPreview: mode === 'preview',
         restoreFocus: mode !== 'preview'
       });
-      if (!dryRun && !res?.ok) throw new Error(res?.error || 'Képernyőkép készítése sikertelen.');
+      if (!dryRun && !res?.ok) throw new Error(res?.error || rt('runtime.screenshotFailed'));
       const dataUrl = res?.dataUrl || '';
       vars[block.resultName || 'screenshot_data_url'] = dataUrl;
       if (!dryRun && mode === 'download' && dataUrl) {
@@ -2175,7 +2175,7 @@
     }
     if (block.type === 'pdfSave') {
       const pdf = ensurePdf(vars, {});
-      if (!pdf.items.length) throw new Error('PDF mentés: nincs PDF tartalom.' );
+      if (!pdf.items.length) throw new Error(rt('runtime.pdfNoContent'));
       const fileName = interpolate(block.fileName || pdf.options.fileName || 'blockflow-riport.pdf', vars);
       if (!dryRun) {
         const blob = await buildPdfBlob(pdf, vars);
@@ -2211,7 +2211,7 @@
     }
     if (block.type === 'docxSave') {
       const docx = ensureDocx(vars, {});
-      if (!docx.items.length) throw new Error('DOCX mentés: nincs DOCX tartalom.' );
+      if (!docx.items.length) throw new Error(rt('runtime.docxNoContent'));
       // If the save block still has its factory/default filename, prefer the
       // filename configured on DOCX indítása. This makes the document start
       // block the primary place for naming, matching the PDF/DOCX flow UX.
@@ -2229,8 +2229,8 @@
     if (block.type === 'preflight') {
       const target = targetForBlock(block, vars);
       const ok = Boolean(findElement(target, { requireVisible: Boolean(block.requireVisible) }));
-      if (!ok && block.onFail === 'stop') throw new Error(`Elem ellenőrzés sikertelen: ${target?.label || block.target?.label || ''}`);
-      if (!ok && block.onFail === 'notify' && !dryRun) await safeRuntimeSend({ type: 'BF_SYSTEM_NOTIFICATION', title: 'BlockFlow ellenőrzés', message: `Nem található elem: ${target?.label || block.target?.label || ''}` });
+      if (!ok && block.onFail === 'stop') throw new Error(rt('runtime.preflightFailed', { label: target?.label || block.target?.label || '' }));
+      if (!ok && block.onFail === 'notify' && !dryRun) await safeRuntimeSend({ type: 'BF_SYSTEM_NOTIFICATION', title: rt('runtime.preflightNotificationTitle'), message: rt('runtime.elementNotFound', { label: target?.label || block.target?.label || '' }) });
       return { ok };
     }
     if (block.type === 'localSet') {
@@ -2269,19 +2269,19 @@
     }
     if (block.type === 'emailPreview') {
       const draft = vars[block.draftName || 'email_draft'];
-      if (!draft) throw new Error('Nincs email draft az előnézethez.');
-      const res = await safeRuntimeSend({ type: 'BF_USER_PROMPT', promptType: 'emailPreview', title: draft.subject || 'Email előnézet', message: `Címzett: ${draft.to}\n\n${draft.body}`, mode: 'wait', options: ['Megnyitás levelezőben','Törzs vágólapra','Megszakítás'], buttonText: 'OK', cancelText: 'Megszakítás', feedbackStyle: block.feedbackStyle || 'default', accent: block.accent || 'blue', windowSize: block.windowSize || 'large' });
+      if (!draft) throw new Error(rt('runtime.noEmailDraftForPreview'));
+      const res = await safeRuntimeSend({ type: 'BF_USER_PROMPT', promptType: 'emailPreview', title: draft.subject || rt('runtime.emailPreviewTitle'), message: rt('runtime.emailPreviewMessage', { to: draft.to, body: draft.body }), mode: 'wait', options: [rt('runtime.emailOpenClient'),rt('runtime.emailBodyToClipboard'),rt('button.cancel')], buttonText: 'OK', cancelText: 'Megszakítás', feedbackStyle: block.feedbackStyle || 'default', accent: block.accent || 'blue', windowSize: block.windowSize || 'large' });
       const action = res?.value || res?.action || '';
       vars[block.resultName || 'email_preview_action'] = action;
-      if (!dryRun && action === 'Megnyitás levelezőben') await executeBlock({ type:'openEmail', draftName: block.draftName || 'email_draft', maxUrlLength: 1800 }, vars, options);
-      if (!dryRun && action === 'Törzs vágólapra') await copyText(draft.body || '');
-      if (action === 'Megszakítás' || res?.action === 'cancel') throw new Error('Email előnézet megszakítva.');
+      if (!dryRun && action === rt('runtime.emailOpenClient')) await executeBlock({ type:'openEmail', draftName: block.draftName || 'email_draft', maxUrlLength: 1800 }, vars, options);
+      if (!dryRun && action === rt('runtime.emailBodyToClipboard')) await copyText(draft.body || '');
+      if (action === rt('button.cancel') || res?.action === 'cancel') throw new Error(rt('runtime.emailPreviewCancelled'));
       return { ok: true, action };
     }
     if (block.type === 'validateData') {
       const value = interpolate(block.source || '', vars);
       const ok = validateValue(value, block.validation || 'notEmpty', interpolate(block.pattern || '', vars));
-      if (!ok && (block.onFail || 'stop') === 'stop') throw new Error(`Validálás sikertelen: ${block.validation || 'notEmpty'}`);
+      if (!ok && (block.onFail || 'stop') === 'stop') throw new Error(rt('runtime.validationFailed', { validation: block.validation || 'notEmpty' }));
       return { ok };
     }
     if (block.type === 'comment') return { ok: true, skipped: true };
@@ -2289,7 +2289,7 @@
       vars[block.resultName || 'result'] = interpolate(block.value || '', vars);
       return { ok: true };
     }
-    if (block.type === 'stopRun') throw new Error(interpolate(block.message || 'Futás leállítva.', vars));
+    if (block.type === 'stopRun') throw new Error(interpolate(block.message || rt('runtime.runStopped'), vars));
     if (block.type === 'sound') {
       if (!dryRun) {
         const repeat = Math.max(1, Math.min(10, Number(block.repeatCount || 1)));
@@ -2318,7 +2318,7 @@
     }
     if (block.type === 'popupWindowWait') {
       const res = dryRun ? { tabId: 'dry-run' } : await safeRuntimeSend({ type: 'BF_WAIT_FOR_TAB', matchMode: block.matchMode || 'urlContains', value: interpolate(block.value || '', vars), timeoutMs: Number(block.timeoutMs || 15000) });
-      if (!res?.ok && !dryRun) throw new Error(res?.error || 'Nem jelent meg új ablak/tab.');
+      if (!res?.ok && !dryRun) throw new Error(res?.error || rt('runtime.popupWindowNotFound'));
       vars[block.resultName || 'popup_tab_id'] = String(res?.tabId || '');
       return { ok: true };
     }
@@ -2329,7 +2329,7 @@
     if (block.type === 'popupWindowExtract') {
       const tabId = Number(vars[block.tabVar || 'popup_tab_id']);
       const res = dryRun ? null : await safeRuntimeSend({ type: 'BF_EXTRACT_FROM_TAB', tabId, target: block.target, extractMode: block.extractMode || 'auto', attributeName: block.attributeName || 'title', timeoutMs: Number(block.timeoutMs || 5000) });
-      if (!dryRun && !res?.ok) throw new Error(res?.error || 'Popup/tab adatkinyerés hiba.');
+      if (!dryRun && !res?.ok) throw new Error(res?.error || rt('runtime.popupWindowExtractError'));
       vars[block.varName || 'popup_adat'] = res?.value || '';
       return { ok: true };
     }
@@ -2367,14 +2367,14 @@
     }
     if (block.type === 'openEmail') {
       const draft = vars[block.draftName || 'email_draft'];
-      if (!draft) throw new Error('Nincs email draft. Tegyél elé Email összeállítása blokkot.');
+      if (!draft) throw new Error(rt('runtime.noEmailDraft'));
       const full = `mailto:${encodeURIComponent(draft.to)}?subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(draft.body)}`;
       if (!dryRun) {
         if (full.length > Number(block.maxUrlLength || 1800)) {
           await copyText(draft.body);
           const shortUrl = `mailto:${encodeURIComponent(draft.to)}?subject=${encodeURIComponent(draft.subject)}`;
           await safeRuntimeSend({ type: 'OPEN_MAILTO', url: shortUrl, preserveFocus: true });
-          alert('Az email törzse túl hosszú volt a mailto linkhez, ezért vágólapra került. Illeszd be a megnyíló emailbe.');
+          alert(rt('runtime.emailBodyCopiedBecauseMailtoTooLong'));
         } else {
           await safeRuntimeSend({ type: 'OPEN_MAILTO', url: full, preserveFocus: true });
         }
@@ -2680,7 +2680,7 @@
     if (watcherInterval) { clearInterval(watcherInterval); watcherInterval = null; }
     if (watcherTimer) { clearTimeout(watcherTimer); watcherTimer = null; }
     if (watcherClickHandler) { try { document.removeEventListener('click', watcherClickHandler, true); } catch (_) {} watcherClickHandler = null; }
-    if (reason) console.info('BlockFlow figyelők leállítva:', reason);
+    if (reason) console.info('BlockFlow watchers stopped:', reason);
   }
 
   async function safeStorageGet(keys) {
@@ -2886,9 +2886,9 @@
         const workflow = workflows.find(x => x.id === w.workflowId);
         if (!workflow) continue;
         if (!watcherBlockStillActive(w, workflow)) { firedWatchers.delete(w.id); continue; }
-        showBadge(`BlockFlow kattintás trigger indítja: ${workflow.name || 'workflow'}`);
+        showBadge(rt('runtime.clickTriggerStarting', { name: workflow.name || 'workflow' }));
         setTimeout(removeBadge, 2000);
-        runWorkflow(workflow, { dryRun: false, triggeredByWatcher: true, triggeredByClick: true }).catch(err => console.warn('BlockFlow kattintás trigger hiba', err));
+        runWorkflow(workflow, { dryRun: false, triggeredByWatcher: true, triggeredByClick: true }).catch(err => console.warn('BlockFlow click trigger error', err));
         if (w.runOnce) {
           const data = await safeStorageGet('watchers');
           if (!data) continue;
@@ -2896,7 +2896,7 @@
           const ww = all.find(x => x.id === w.id);
           if (ww) { ww.enabled = false; await safeStorageSet({ watchers: all }); }
         }
-      } catch (err) { console.warn('BlockFlow kattintás trigger ellenőrzési hiba', err); }
+      } catch (err) { console.warn('BlockFlow click trigger check error', err); }
     }
   }
 
@@ -2907,7 +2907,7 @@
       ({ watchers, workflows } = await loadWatchersAndWorkflows());
     } catch (err) {
       if (isContextInvalidatedError(err)) return;
-      console.warn('BlockFlow figyelők betöltési hiba', err);
+      console.warn('BlockFlow watcher load error', err);
       return;
     }
     const active = watchers.filter(w => w.enabled !== false && watcherScopeMatches(w));
@@ -2930,9 +2930,9 @@
           // Stale watcher védelem: a mentett watcher rekord csak akkor indíthat,
           // ha a hozzá tartozó figyelő blokk még létezik és aktív a workflow-ban.
           if (!watcherBlockStillActive(w, workflow)) { firedWatchers.delete(w.id); continue; }
-          showBadge(`BlockFlow figyelő indítja: ${workflow.name || 'workflow'}`);
+          showBadge(rt('runtime.watcherStarting', { name: workflow.name || 'workflow' }));
           setTimeout(removeBadge, 2000);
-          runWorkflow(workflow, { dryRun: false, triggeredByWatcher: true }).catch(err => console.warn('BlockFlow figyelő hiba', err));
+          runWorkflow(workflow, { dryRun: false, triggeredByWatcher: true }).catch(err => console.warn('BlockFlow watcher error', err));
           if (w.runOnce) {
             const data = await safeStorageGet('watchers');
             if (!data) continue;
@@ -2941,7 +2941,7 @@
             if (ww) { ww.enabled = false; await safeStorageSet({ watchers: all }); }
           }
         }
-      } catch (err) { console.warn('BlockFlow figyelő ellenőrzési hiba', err); }
+      } catch (err) { console.warn('BlockFlow watcher check error', err); }
     }
   }
 
@@ -2958,7 +2958,7 @@
     try {
       watcherObserver.observe(document.documentElement || document.body, { childList: true, subtree: true, characterData: true, attributes: true });
     } catch (err) {
-      console.warn('BlockFlow figyelő observer hiba', err);
+      console.warn('BlockFlow watcher observer error', err);
     }
     let minInterval = 2;
     try {
@@ -3025,9 +3025,9 @@
   }
 
   function pauseRecorder(paused) {
-    if (!recorder?.active) return { ok:false, error:'Nincs aktív record.' };
+    if (!recorder?.active) return { ok:false, error: rt('runtime.noActiveRecord') };
     recorder.paused = Boolean(paused);
-    showBadge(recorder.paused ? 'BlockFlow Record szünetel' : 'BlockFlow Record fut');
+    showBadge(recorder.paused ? rt('runtime.recordPaused') : rt('runtime.recordRunning'));
     return { ok:true, paused: recorder.paused };
   }
 
@@ -3064,7 +3064,7 @@
       if (msg?.type === 'BF_TEST_POPUP') { const p = findPopup(); sendResponse({ ok: Boolean(p), text: p ? (p.innerText || '').slice(0, 500) : '' }); return; }
       if (msg?.type === 'BF_EXTRACT_ONCE') {
         const el = await waitForElement(msg.target, Number(msg.timeoutMs || 5000), { requireVisible: false });
-        if (!el) { sendResponse({ ok: false, error: 'Nem található kinyerendő elem.' }); return; }
+        if (!el) { sendResponse({ ok: false, error: rt('runtime.extractTargetNotFound') }); return; }
         sendResponse({ ok: true, value: getElementValue(el, msg.extractMode || 'auto', msg.attributeName || 'title') });
         return;
       }

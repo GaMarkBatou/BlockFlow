@@ -750,3 +750,16 @@ Az extension támogatja a gyökérkönyvtárban található `default.json` fájl
 - Automatikus módban a böngésző nyelve alapján választ nyelvet, fallback nyelvként magyar használható.
 - A belső workflow struktúra, blokk `type` értékek, változónevek, import/export és `default.json` kompatibilitás változatlan maradt.
 - Új nyelv hozzáadásához a `languages.json` bővítése és egy új nyelvi JSON fájl hozzáadása szükséges.
+
+
+## v0.62.0 - i18n coverage sweep
+
+- Popup sidebar errors now use locale keys instead of hardcoded Hungarian strings.
+- Added `popup.sidebarErrorNormalPage` and matching HU/EN translations.
+- Added localized popup fallback errors for unavailable Chrome sidePanel API and unknown runtime errors.
+- Translated the remaining Hungarian block descriptions in `locales/en.json`.
+- Moved validation warnings/errors in `common.js` behind `validation.*` locale keys.
+- Moved major runtime/user-facing errors in `contentScript.js` behind `runtime.*` locale keys.
+- Localized the clipboard reader window (`clipboard.html` / `clipboard.js`).
+- Localized mini extension export errors and generated README fallback text.
+- Manifest version bumped to `0.62.0`.

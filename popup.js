@@ -41,11 +41,11 @@ $('#openBuilder').onclick = async () => {
 $('#openSide').onclick = async () => {
   $('#status').textContent = BF.t('status.openingSidebar');
   try {
-    if (!chrome.sidePanel?.open) throw new Error('A Chrome sidePanel API nem elérhető ebben a böngészőben. Friss Chrome szükséges.');
+    if (!chrome.sidePanel?.open) throw new Error(BF.t('popup.sidePanelApiUnavailable'));
 
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const tab = tabs.find(t => t?.id && t.url && /^https?:|^file:/.test(t.url));
-    if (!tab?.id) throw new Error('Nyiss meg egy normál weboldalt, majd onnan nyisd meg a sidebart. Chrome belső oldalakon nem futtatható.');
+    if (!tab?.id) throw new Error(BF.t('popup.sidebarErrorNormalPage'));
 
     await chrome.storage.local.set({ lastActiveTabId: tab.id, lastActiveTabUrl: tab.url });
     if (chrome.sidePanel?.setOptions) {
@@ -57,7 +57,7 @@ $('#openSide').onclick = async () => {
     await chrome.sidePanel.open({ tabId: tab.id });
     $('#status').textContent = BF.t('status.sidebarOpened');
   } catch (err) {
-    $('#status').textContent = `Sidebar hiba: ${err?.message || err || 'ismeretlen hiba'}`;
+    $('#status').textContent = BF.t('popup.sidebarErrorWithMessage', { message: err?.message || err || BF.t('status.unknownError') });
   }
 };
 
@@ -71,6 +71,6 @@ $('#run').onclick = async () => {
   if (workflow.verified === false && !confirm(BF.t('confirm.unverifiedWorkflow'))) return;
   $('#status').textContent=BF.t('status.running');
   const res = await BF.sendToTarget({ type:'BF_RUN_WORKFLOW', workflow, options: { dryRun: false } });
-  $('#status').textContent = res?.response?.ok ? (res.response.result?.skipped ? BF.t('status.notStarted') : BF.t('status.done')) : `${BF.t('status.error')}: ${res?.response?.error || res?.error || 'ismeretlen'}`;
+  $('#status').textContent = res?.response?.ok ? (res.response.result?.skipped ? BF.t('status.notStarted') : BF.t('status.done')) : `${BF.t('status.error')}: ${res?.response?.error || res?.error || BF.t('status.unknown')}`;
 };
 init();

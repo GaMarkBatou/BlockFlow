@@ -714,29 +714,29 @@ const BF = (() => {
       if (b.type === 'clickTrigger' && b.triggerEnabled !== false) starterCount++;
       if (b.type === 'scheduledTrigger' && b.triggerEnabled !== false) starterCount++;
     });
-    if (!starterCount) issues.push({ level:'error', blockId:null, text:'Hiányzik az aktív indító blokk. Legalább egy szükséges: Indítás, aktív Figyelő trigger, Kattintás trigger vagy Időzített indítás.' });
+    if (!starterCount) issues.push({ level:'error', blockId:null, text:t('validation.missingStarter') });
 
     const needsTarget = ['click','fill','selectOption','extract','rowLoop'];
     function hasDynamicTarget(b) { return b && b.targetMode && b.targetMode !== 'manual' && String(b.targetVar || '').trim(); }
     walkBlocks(workflow.blocks || [], b => {
-      if (needsTarget.includes(b.type) && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:`${BLOCKS[b.type]?.name || b.type}: hiányzik a cél elem.` });
-      if (b.type === 'triggerGroup' && b.triggerEnabled !== false && !(b.children || []).length) issues.push({ level:'error', blockId:b.id, text:'Figyelő trigger: legalább egy feltétel szükséges.' });
-      if (b.type === 'clickTrigger' && b.triggerEnabled !== false && !b.target) issues.push({ level:'error', blockId:b.id, text:'Kattintás trigger: hiányzik a figyelt cél elem.' });
-      if ((b.type === 'conditionElement' || b.type === 'conditionField' || b.type === 'conditionChange') && !b.target) issues.push({ level:'error', blockId:b.id, text:`${BLOCKS[b.type]?.name || b.type}: hiányzik a cél elem.` });
-      if (b.type === 'wait' && b.waitMode === 'element' && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:'Várakozás elemre: hiányzik a cél elem.' });
-      if (b.type === 'ifBlock' && ['elementExists','valueContains'].includes(b.conditionMode) && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:'Ha blokk: hiányzik a cél elem.' });
-      if (b.type === 'ifBlock' && b.conditionMode === 'textExists' && !String(b.text||'').trim()) issues.push({ level:'warning', blockId:b.id, text:'Ha blokk: üres keresett szöveg.' });
-      if (b.type === 'conditionText' && !String(b.text||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Szöveg feltétel: üres figyelt szöveg.' });
-      if (b.type === 'conditionUrl' && !['empty','notEmpty'].includes(b.operator || 'contains') && !String(b.value||'').trim()) issues.push({ level:'error', blockId:b.id, text:'URL feltétel: hiányzik az ellenőrzött érték.' });
+      if (needsTarget.includes(b.type) && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:t('validation.blockMissingTarget', { block: BLOCKS[b.type]?.name || b.type }) });
+      if (b.type === 'triggerGroup' && b.triggerEnabled !== false && !(b.children || []).length) issues.push({ level:'error', blockId:b.id, text:t('validation.watcherNeedsCondition') });
+      if (b.type === 'clickTrigger' && b.triggerEnabled !== false && !b.target) issues.push({ level:'error', blockId:b.id, text:t('validation.clickTriggerMissingTarget') });
+      if ((b.type === 'conditionElement' || b.type === 'conditionField' || b.type === 'conditionChange') && !b.target) issues.push({ level:'error', blockId:b.id, text:t('validation.blockMissingTarget', { block: BLOCKS[b.type]?.name || b.type }) });
+      if (b.type === 'wait' && b.waitMode === 'element' && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:t('validation.waitElementMissingTarget') });
+      if (b.type === 'ifBlock' && ['elementExists','valueContains'].includes(b.conditionMode) && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:t('validation.ifMissingTarget') });
+      if (b.type === 'ifBlock' && b.conditionMode === 'textExists' && !String(b.text||'').trim()) issues.push({ level:'warning', blockId:b.id, text:t('validation.ifEmptySearchText') });
+      if (b.type === 'conditionText' && !String(b.text||'').trim()) issues.push({ level:'error', blockId:b.id, text:t('validation.conditionTextEmpty') });
+      if (b.type === 'conditionUrl' && !['empty','notEmpty'].includes(b.operator || 'contains') && !String(b.value||'').trim()) issues.push({ level:'error', blockId:b.id, text:t('validation.conditionUrlMissingValue') });
       if (b.type === 'conditionChange') {
         const mode = b.changeMode || 'fromTo';
-        if ((mode === 'fromTo' || mode === 'anyTo') && !String(b.toValue||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Érték változik feltétel: hiányzik a célérték.' });
-        if ((mode === 'fromTo' || mode === 'fromAny') && !String(b.fromValue||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Érték változik feltétel: hiányzik a kiinduló érték.' });
+        if ((mode === 'fromTo' || mode === 'anyTo') && !String(b.toValue||'').trim()) issues.push({ level:'error', blockId:b.id, text:t('validation.conditionChangeMissingTargetValue') });
+        if ((mode === 'fromTo' || mode === 'fromAny') && !String(b.fromValue||'').trim()) issues.push({ level:'error', blockId:b.id, text:t('validation.conditionChangeMissingSourceValue') });
       }
-      if (b.type === 'email' && !String(b.to||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Email blokk: hiányzik a címzett.' });
-      if (b.type === 'textSearch' && !String(b.query||'').trim()) issues.push({ level:'warning', blockId:b.id, text:'Szöveg keresése: üres keresett szöveg.' });
-      if (b.type === 'fieldByLabel' && !String(b.labelText||'').trim()) issues.push({ level:'warning', blockId:b.id, text:'Mező keresése címke alapján: üres címke.' });
-      if (b.type === 'mask' && !String(b.source||'').trim()) issues.push({ level:'error', blockId:b.id, text:'Maszkolás blokk: hiányzik a forrás szöveg vagy változó.' });
+      if (b.type === 'email' && !String(b.to||'').trim()) issues.push({ level:'error', blockId:b.id, text:t('validation.emailMissingRecipient') });
+      if (b.type === 'textSearch' && !String(b.query||'').trim()) issues.push({ level:'warning', blockId:b.id, text:t('validation.textSearchEmpty') });
+      if (b.type === 'fieldByLabel' && !String(b.labelText||'').trim()) issues.push({ level:'warning', blockId:b.id, text:t('validation.fieldByLabelEmpty') });
+      if (b.type === 'mask' && !String(b.source||'').trim()) issues.push({ level:'error', blockId:b.id, text:t('validation.maskMissingSource') });
       if (b.type === 'mask' && !String(b.resultName||'').trim()) issues.push({ level:'error', blockId:b.id, text:t('validation.maskMissingResult') });
       if (b.type === 'openEmail' && !String(b.draftName||'').trim()) issues.push({ level:'error', blockId:b.id, text:t('validation.emailMissingDraft') });
       if (b.type === 'openUrl' && !String(b.url||'').trim()) issues.push({ level:'error', blockId:b.id, text:t('validation.openUrlMissingUrl') });
