@@ -1,5 +1,5 @@
 const BF = (() => {
-  const SCHEMA_VERSION = 18;
+  const SCHEMA_VERSION = 19;
 
   const DEFAULT_WORKFLOW = () => ({
     id: crypto.randomUUID(),
@@ -50,6 +50,7 @@ const BF = (() => {
     tableExtract: { name: 'Táblázatból kinyerés', desc: 'Sor/oszlop alapján adatot nyer ki táblázatból vagy listából.' },
     elementLoop: { name: 'Minden találatra...', desc: 'Több megtalált elemre futtatja a behúzott blokkokat.' },
     waitUntil: { name: 'Várj amíg...', desc: 'Feltétel teljesüléséig vár, timeouttal.' },
+    waitLoad: { name: 'Várj betöltésre', desc: 'Kattintás, URL-váltás vagy SPA frissülés után megvárja, amíg az oldal/panel betöltődött.' },
     scroll: { name: 'Görgetés', desc: 'Oldalt vagy kijelölt elemet görget nézetbe.' },
     keyPress: { name: 'Billentyű lenyomása', desc: 'Enter, Tab, Escape, Ctrl+A/C/V vagy saját billentyűkombináció.' },
     clipboardRead: { name: 'Vágólapról beolvasás', desc: 'Vágólap szövegét változóba menti.' },
@@ -139,6 +140,7 @@ const BF = (() => {
     { cat: 'Logika', type: 'ifBlock' },
     { cat: 'Logika', type: 'repeatBlock' },
     { cat: 'Logika', type: 'waitUntil' },
+    { cat: 'Logika', type: 'waitLoad' },
     { cat: 'Logika', type: 'retryBlock' },
     { cat: 'Logika', type: 'tryBlock' },
     { cat: 'Logika', type: 'preflight' },
@@ -213,6 +215,7 @@ const BF = (() => {
     if (type === 'tableExtract') return { id, type, target: null, rowMode: 'first', rowIndex: 1, rowContains: '', rowColumnIndex: 0, columnMode: 'index', columnIndex: 1, columnHeader: '', includeHeader: false, skipEmptyRows: true, missingRowMode: 'empty', virtualSearch: false, maxScrolls: 10, scrollAmount: 600, resultName: 'tabla_adat', timeoutMs: 5000 };
     if (type === 'elementLoop') return { id, type, target: null, selector: '', itemVar: 'elem_szoveg', indexVar: 'elem_index', maxItems: 20, children: [] };
     if (type === 'waitUntil') return { id, type, conditionMode: 'textExists', text: '', target: null, operator: 'contains', value: '', timeoutMs: 10000, stableMs: 800, spinnerSelector: '' };
+    if (type === 'waitLoad') return { id, type, loadMode: 'auto', target: null, spinnerSelector: '', stableMs: 800, timeoutMs: 15000, onTimeout: 'error' }; 
     if (type === 'scroll') return { id, type, mode: 'element', target: null, targetMode: 'manual', targetVar: '', scrollTarget: 'auto', scrollContainer: null, direction: 'down', amount: 500, align: 'center' };
     if (type === 'keyPress') return { id, type, target: null, key: 'Enter', ctrl: false, alt: false, shift: false, meta: false };
     if (type === 'clipboardRead') return { id, type, resultName: 'clipboard' };
@@ -295,6 +298,7 @@ const BF = (() => {
     if (block.type === 'tableExtract') return `Táblázatból kinyerés → {{${block.resultName || 'tabla_adat'}}}`;
     if (block.type === 'elementLoop') return `Minden találatra: {{${block.itemVar || 'elem_szoveg'}}}`;
     if (block.type === 'waitUntil') return `Várj amíg: ${conditionLabel(block)}`;
+    if (block.type === 'waitLoad') return `Várj betöltésre: ${loadModeLabel(block.loadMode || 'auto')}`;
     if (block.type === 'scroll') return `Görgetés: ${block.mode || 'element'}`;
     if (block.type === 'keyPress') return `Billentyű: ${block.key || 'Enter'}`;
     if (block.type === 'clipboardRead') return `Vágólap beolvasása → {{${block.resultName || 'clipboard'}}}`;
@@ -361,6 +365,10 @@ const BF = (() => {
     return `${from} → ${to}`;
   }
 
+  function loadModeLabel(mode) {
+    return ({ auto:'automatikus', pageReady:'oldal betöltődött', domStable:'DOM stabil', spinnerGone:'spinner eltűnt', elementVisible:'elem megjelent', elementClickable:'elem kattintható' })[mode || 'auto'] || mode;
+  }
+
   function operatorLabel(op) {
     return ({ contains:'tartalmazza', notContains:'nem tartalmazza', equals:'pontosan ez', notEquals:'nem pontosan ez', empty:'üres', notEmpty:'nem üres', startsWith:'ezzel kezdődik', endsWith:'ezzel végződik' })[op || 'contains'] || op;
   }
@@ -404,6 +412,7 @@ const BF = (() => {
     if (block.type === 'fieldByLabel') return `${block.matchMode === 'equals' ? 'pontos címke' : 'címke tartalmazza'} · selector: {{${block.selectorName || 'mezo_selector'}}}`;
     if (['transform','textSlice','regex','setVar','compare','math','validateData'].includes(block.type)) return `Forrás: ${short(block.source || block.left || block.value || '')}`;
     if (['comment','groupBlock'].includes(block.type)) return short(block.note || block.title || '');
+    if (block.type === 'waitLoad') return `${loadModeLabel(block.loadMode || 'auto')} · timeout ${block.timeoutMs || 15000} ms · stabil ${block.stableMs || 800} ms`;
     if (block.type === 'scheduledTrigger') return block.triggerEnabled === false ? 'inaktív' : 'mentés után automatikus időzítőként aktív';
     return (BLOCKS[block.type] || {}).desc || '';
   }

@@ -580,6 +580,50 @@
     });
   }
 
+  async function waitForLoadBlock(block, vars = {}) {
+    const mode = block.loadMode || 'auto';
+    const timeout = Number(block.timeoutMs || 15000);
+    const stableMs = Number(block.stableMs || 800);
+    const start = Date.now();
+    async function waitReady() {
+      while (Date.now() - start < timeout) {
+        if (document.readyState === 'complete' || document.readyState === 'interactive') return true;
+        await sleep(100);
+      }
+      return false;
+    }
+    async function waitSpinnersGone() {
+      while (Date.now() - start < timeout) {
+        if (spinnerCandidates(block.spinnerSelector || '').length === 0) return true;
+        await sleep(150);
+      }
+      return false;
+    }
+    async function waitElement(kind) {
+      while (Date.now() - start < timeout) {
+        const el = findElement(block.target, { requireVisible: true, shadowSearch: block.shadowSearch !== false });
+        if (kind === 'visible' && el) return true;
+        if (kind === 'clickable' && el && closestClickable(el)) return true;
+        await sleep(150);
+      }
+      return false;
+    }
+    let ok = false;
+    if (mode === 'pageReady') ok = await waitReady();
+    else if (mode === 'domStable') ok = await waitDomStable(stableMs, timeout);
+    else if (mode === 'spinnerGone') ok = await waitSpinnersGone();
+    else if (mode === 'elementVisible') ok = await waitElement('visible');
+    else if (mode === 'elementClickable') ok = await waitElement('clickable');
+    else {
+      await waitReady();
+      await waitSpinnersGone();
+      const remain = Math.max(250, timeout - (Date.now() - start));
+      ok = await waitDomStable(stableMs, remain);
+      if (!ok && Date.now() - start < timeout) ok = spinnerCandidates(block.spinnerSelector || '').length === 0;
+    }
+    return ok;
+  }
+
   async function waitForElement(target, timeoutMs = 5000, options = {}) {
     const start = Date.now();
     const minWait = Math.max(150, Number(timeoutMs || 0));
@@ -1697,6 +1741,14 @@
       vars[block.resultName || 'tabla_adat'] = value;
       return { ok: true, value };
     }
+    if (block.type === 'waitLoad') {
+      if (dryRun) return { ok: true, dryRun };
+      const ok = await waitForLoadBlock(block, vars);
+      if (!ok && block.onTimeout === 'continue') return { ok: true, timeout: true };
+      if (!ok) throw new Error('Várj betöltésre: timeout, a betöltés nem fejeződött be.');
+      return { ok: true };
+    }
+
     if (block.type === 'waitUntil') {
       const start = Date.now();
       const timeout = Number(block.timeoutMs || 10000);

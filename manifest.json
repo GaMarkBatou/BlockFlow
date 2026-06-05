@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "BlockFlow Automation MVP 0.50",
+  "name": "BlockFlow Automation MVP 0.52",
   "description": "Local browser automation builder with watcher triggers, smart scrolling, SNOW/framework compatibility, mini export, PDF/DOCX, Record mode and robust reporting.",
-  "version": "0.50.0",
+  "version": "0.52.0",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",
