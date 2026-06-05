@@ -1523,6 +1523,103 @@
   }
   function downloadDocxBlob(blob, fileName){ const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=makeDocxName(fileName); document.documentElement.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url), 60000); }
 
+
+  function positionBlockFlowButton(host, position) {
+    const st = host.style;
+    st.position = 'fixed';
+    st.zIndex = '2147483647';
+    st.fontFamily = 'Arial, sans-serif';
+    st.pointerEvents = 'auto';
+    st.maxWidth = 'calc(100vw - 32px)';
+    if (position === 'bottomLeft') { st.left = '16px'; st.bottom = '16px'; }
+    else if (position === 'topRight') { st.right = '16px'; st.top = '16px'; }
+    else if (position === 'topLeft') { st.left = '16px'; st.top = '16px'; }
+    else if (position === 'bottomCenter') { st.left = '50%'; st.bottom = '16px'; st.transform = 'translateX(-50%)'; }
+    else { st.right = '16px'; st.bottom = '16px'; }
+  }
+
+  async function showPageButton(block, vars = {}, dryRun = false) {
+    const label = interpolate(block.label || 'Folytatás', vars) || 'Folytatás';
+    const tooltip = interpolate(block.tooltip || '', vars);
+    const waitForClick = block.waitForClick !== false && String(block.waitForClick) !== 'false';
+    const timeoutMs = Math.max(0, Number(block.timeoutSec || 300) * 1000);
+    const resultName = block.resultName || 'button_clicked';
+    if (dryRun) {
+      vars[resultName] = waitForClick ? 'dry-run' : 'shown';
+      vars.button_clicked_at = '';
+      return { ok: true, dryRun: true };
+    }
+
+    const id = `bf-page-button-${block.id || Math.random().toString(36).slice(2)}`;
+    document.getElementById(id)?.remove();
+
+    const host = document.createElement('div');
+    host.id = id;
+    host.setAttribute('data-blockflow-page-button', '1');
+    const shadow = host.attachShadow ? host.attachShadow({ mode: 'open' }) : host;
+    const style = document.createElement('style');
+    style.textContent = `
+      :host{all:initial} .wrap{all:initial;font-family:Arial,sans-serif} button{all:initial;box-sizing:border-box;display:inline-flex;align-items:center;gap:8px;min-height:38px;padding:9px 14px;border-radius:999px;background:#2563eb;color:#fff;font:600 14px Arial,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.25);cursor:pointer;border:1px solid rgba(255,255,255,.25)} button:hover{background:#1d4ed8} button:active{transform:translateY(1px)} .dot{width:8px;height:8px;border-radius:50%;background:#93c5fd;display:inline-block}
+    `;
+    const wrap = document.createElement('div');
+    wrap.className = 'wrap';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.title = tooltip;
+    btn.innerHTML = `<span class="dot"></span><span></span>`;
+    btn.querySelector('span:last-child').textContent = label;
+    wrap.appendChild(btn);
+    shadow.appendChild(style);
+    shadow.appendChild(wrap);
+
+    const pos = block.position || 'bottomRight';
+    if (pos === 'afterTarget' || pos === 'beforeTarget') {
+      const target = findElement(block.target, { requireVisible: false, shadowSearch: true });
+      if (target && target.parentNode) {
+        host.style.margin = '6px';
+        if (pos === 'beforeTarget') target.parentNode.insertBefore(host, target);
+        else target.parentNode.insertBefore(host, target.nextSibling);
+      } else {
+        positionBlockFlowButton(host, 'bottomRight');
+        document.body.appendChild(host);
+      }
+    } else {
+      positionBlockFlowButton(host, pos);
+      document.body.appendChild(host);
+    }
+
+    if (!waitForClick) {
+      vars[resultName] = 'shown';
+      vars.button_clicked_at = '';
+      return { ok: true, shown: true };
+    }
+
+    return await new Promise((resolve, reject) => {
+      let done = false;
+      const cleanup = () => {
+        done = true;
+        if (timer) clearTimeout(timer);
+        if (block.removeAfterClick !== false) host.remove();
+      };
+      const timer = timeoutMs ? setTimeout(() => {
+        if (done) return;
+        vars[resultName] = 'false';
+        vars.button_clicked_at = '';
+        cleanup();
+        if ((block.onTimeout || 'stop') === 'continue') resolve({ ok: true, timeout: true });
+        else reject(new Error('Oldalba illesztett gomb timeout.'));
+      }, timeoutMs) : null;
+      btn.addEventListener('click', () => {
+        if (done) return;
+        const at = new Date().toISOString();
+        vars[resultName] = 'true';
+        vars.button_clicked_at = at;
+        cleanup();
+        resolve({ ok: true, clicked: true, clickedAt: at });
+      }, { once: true });
+    });
+  }
+
   async function executeBlock(block, vars, options = {}) {
     const dryRun = Boolean(options.dryRun);
     if (block.type === 'trigger' || block.type === 'triggerGroup' || block.type === 'clickTrigger' || block.type === 'scheduledTrigger' || String(block.type || '').startsWith('condition')) return { skipped: true };
@@ -2068,6 +2165,9 @@
       const result = await showUserPrompt(block, vars, dryRun);
       if (block.resultName) vars[block.resultName] = result.action || 'continue';
       return { ok: true, action: result.action, dryRun };
+    }
+    if (block.type === 'pageButton') {
+      return await showPageButton(block, vars, dryRun);
     }
     if (block.type === 'systemNotify') {
       const title = interpolate(block.title || 'BlockFlow', vars);
