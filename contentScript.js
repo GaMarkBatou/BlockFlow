@@ -10,7 +10,49 @@
   function rootDocument(root = getSearchRoot()) { return root && root.nodeType === 9 ? root : document; }
 
 
-  const BF_I18N = { loaded:false, selected:'auto', active:'hu', fallback:'hu', languages:[], dict:{}, fallbackDict:{} };
+  const BF_RUNTIME_FALLBACKS = {
+    hu: {
+      'publicLog.title': 'BlockFlow napló',
+      'publicLog.txt': 'TXT',
+      'publicLog.starting': 'Futási napló indul...',
+      'publicLog.workflowRun': 'Automatizmus futása',
+      'publicLog.downloadHint': 'A TXT gombbal letölthető a futási napló.',
+      'runtime.runStarted': 'Futás indult. URL: {{url}}',
+      'runtime.runFinished': 'Futás befejeződött.',
+      'runtime.autoSubRunGate': 'Automatikus/alworkflow futás: indítófeltételek nem kerülnek újraellenőrzésre.',
+      'runtime.forceRunGate': 'Kényszerített futtatás: az indítófeltételek kihagyva.',
+      'runtime.blockStep': '{{label}} · {{index}}: {{type}}{{dry}}',
+      'runtime.output': 'Átadás: {{type}}{{details}}',
+      'runtime.importantVars': 'Fontos változók: {{values}}',
+      'runtime.errorPrefix': 'HIBA',
+      'runtime.detailValue': 'érték',
+      'runtime.detailCount': 'db',
+      'runtime.detailFile': 'fájl',
+      'runtime.doneWord': 'kész',
+      'button.cancel': 'Mégsem'
+    },
+    en: {
+      'publicLog.title': 'BlockFlow log',
+      'publicLog.txt': 'TXT',
+      'publicLog.starting': 'Run log starting...',
+      'publicLog.workflowRun': 'Automation run',
+      'publicLog.downloadHint': 'Use the TXT button to download the run log.',
+      'runtime.runStarted': 'Run started. URL: {{url}}',
+      'runtime.runFinished': 'Run finished.',
+      'runtime.autoSubRunGate': 'Automatic/sub-workflow run: start conditions are not checked again.',
+      'runtime.forceRunGate': 'Force run: start conditions skipped.',
+      'runtime.blockStep': '{{label}} · {{index}}: {{type}}{{dry}}',
+      'runtime.output': 'Output: {{type}}{{details}}',
+      'runtime.importantVars': 'Important variables: {{values}}',
+      'runtime.errorPrefix': 'ERROR',
+      'runtime.detailValue': 'value',
+      'runtime.detailCount': 'count',
+      'runtime.detailFile': 'file',
+      'runtime.doneWord': 'done',
+      'button.cancel': 'Cancel'
+    }
+  };
+  const BF_I18N = { loaded:false, selected:'auto', active:'hu', fallback:'hu', languages:[], dict:{}, fallbackDict:BF_RUNTIME_FALLBACKS.hu };
   async function bfFetchJson(path, fallback = {}) {
     try {
       const res = await fetch(chrome.runtime.getURL(path));
@@ -37,8 +79,12 @@
     BF_I18N.active = bfResolveLang(selected, BF_I18N.languages);
     const activeInfo = BF_I18N.languages.find(l => l.code === BF_I18N.active) || { file: BF_I18N.active + '.json' };
     const fallbackInfo = BF_I18N.languages.find(l => l.code === BF_I18N.fallback) || { file: BF_I18N.fallback + '.json' };
-    BF_I18N.fallbackDict = await bfFetchJson('locales/' + (fallbackInfo.file || (BF_I18N.fallback + '.json')), {});
-    BF_I18N.dict = BF_I18N.active === BF_I18N.fallback ? BF_I18N.fallbackDict : await bfFetchJson('locales/' + (activeInfo.file || (BF_I18N.active + '.json')), {});
+    const builtInFallback = BF_RUNTIME_FALLBACKS[BF_I18N.fallback] || BF_RUNTIME_FALLBACKS.hu || {};
+    const builtInActive = BF_RUNTIME_FALLBACKS[BF_I18N.active] || builtInFallback;
+    const fetchedFallback = await bfFetchJson('locales/' + (fallbackInfo.file || (BF_I18N.fallback + '.json')), {});
+    BF_I18N.fallbackDict = { ...builtInFallback, ...fetchedFallback };
+    const fetchedActive = BF_I18N.active === BF_I18N.fallback ? {} : await bfFetchJson('locales/' + (activeInfo.file || (BF_I18N.active + '.json')), {});
+    BF_I18N.dict = BF_I18N.active === BF_I18N.fallback ? BF_I18N.fallbackDict : { ...builtInActive, ...fetchedActive };
     BF_I18N.loaded = true;
     return BF_I18N;
   }
@@ -2270,7 +2316,7 @@
     if (block.type === 'emailPreview') {
       const draft = vars[block.draftName || 'email_draft'];
       if (!draft) throw new Error(rt('runtime.noEmailDraftForPreview'));
-      const res = await safeRuntimeSend({ type: 'BF_USER_PROMPT', promptType: 'emailPreview', title: draft.subject || rt('runtime.emailPreviewTitle'), message: rt('runtime.emailPreviewMessage', { to: draft.to, body: draft.body }), mode: 'wait', options: [rt('runtime.emailOpenClient'),rt('runtime.emailBodyToClipboard'),rt('button.cancel')], buttonText: 'OK', cancelText: 'Megszakítás', feedbackStyle: block.feedbackStyle || 'default', accent: block.accent || 'blue', windowSize: block.windowSize || 'large' });
+      const res = await safeRuntimeSend({ type: 'BF_USER_PROMPT', promptType: 'emailPreview', title: draft.subject || rt('runtime.emailPreviewTitle'), message: rt('runtime.emailPreviewMessage', { to: draft.to, body: draft.body }), mode: 'wait', options: [rt('runtime.emailOpenClient'),rt('runtime.emailBodyToClipboard'),rt('button.cancel')], buttonText: 'OK', cancelText: rt('button.cancel'), feedbackStyle: block.feedbackStyle || 'default', accent: block.accent || 'blue', windowSize: block.windowSize || 'large' });
       const action = res?.value || res?.action || '';
       vars[block.resultName || 'email_preview_action'] = action;
       if (!dryRun && action === rt('runtime.emailOpenClient')) await executeBlock({ type:'openEmail', draftName: block.draftName || 'email_draft', maxUrlLength: 1800 }, vars, options);

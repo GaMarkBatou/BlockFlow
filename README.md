@@ -763,3 +763,10 @@ Az extension támogatja a gyökérkönyvtárban található `default.json` fájl
 - Localized the clipboard reader window (`clipboard.html` / `clipboard.js`).
 - Localized mini extension export errors and generated README fallback text.
 - Manifest version bumped to `0.62.0`.
+
+
+## v0.62.1 public log i18n hotfix
+
+- Javítva: a content script runtime fordításai nem töltődtek be megbízhatóan a weboldali public logban, ezért kulcsok jelentek meg a tényleges szövegek helyett.
+- Hozzáadva: `web_accessible_resources` a `locales/*.json` fájlokra, hogy a content script biztonságosan be tudja tölteni a fordításokat.
+- Hozzáadva: minimális beépített runtime fallback szótár HU/EN nyelven, hogy betöltési hiba esetén se jelenjen meg nyers i18n kulcs a public logban.

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "BlockFlow Automation MVP 0.62",
-  "description": "Local browser automation builder with improved i18n coverage for UI, errors, logs and mini export fallbacks.",
-  "version": "0.62.0",
+  "name": "BlockFlow Automation MVP 0.62.1",
+  "description": "Local browser automation builder with fixed runtime i18n loading for public logs and content-script messages.",
+  "version": "0.62.1",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",
@@ -47,5 +47,15 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "locales/*.json"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
 }
