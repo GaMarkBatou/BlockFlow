@@ -1,8 +1,34 @@
-# BlockFlow Automation MVP 0.57
+# BlockFlow Automation MVP 0.62.2
 
 BlockFlow egy lokális Chrome extension, amellyel általános weboldalakon lehet böngészőautomatizmusokat összeállítani vizuális, blokkos felületen. A cél az, hogy a gyakori adminisztrációs, adatgyűjtési, email-előkészítési, figyelési és riportkészítési folyamatokat programozás nélkül lehessen felépíteni.
 
 Az extension nem használ AI-t, és nem küld adatot külső szolgáltatásnak. A workflow-k, sablonok, lokális adatok és beállítások a Chrome extension storage-ban maradnak.
+
+
+## v0.62.2 fő újdonságok
+
+- **Futási lock / sorosított triggerfuttatás**: ugyanaz a workflow ugyanazon a tabon nem indulhat párhuzamosan. A `runOnce=false` továbbra is engedi az ismételt indítást, de csak akkor, ha az előző futás már lezárult.
+- **Műveletcsoport / Action Group**: névvel hívható blokkcsoport. Nem fut automatikusan a fő workflow-ban, hanem például oldalpanel gomb indítja.
+- **Oldalba illesztett vezérlőpanel**: többgombos panel szúrható be a céloldalba. Minden gomb külön Action Groupot futtat.
+- **Tabhoz kötött munkamenet**: a panel gombjai között megmaradhatnak a változók, DOCX/PDF állapotok és gyűjtött adatok. Export/lezárás jellegű Action Groupnál bekapcsolható a munkamenet törlése.
+
+Példa interaktív screenshot-riporthoz:
+
+```text
+Figyelő trigger
+  URL tartalmazza: céloldal
+
+Oldalba illesztett vezérlőpanel
+  Screenshot | add_screenshot
+  Letöltés / Lezárás | export_report
+
+Műveletcsoport: add_screenshot
+  DOCX screenshot / kép hozzáadása
+
+Műveletcsoport: export_report
+  DOCX mentése
+  Munkamenet törlése futás után: bekapcsolva
+```
 
 ## Mire hasznos?
 

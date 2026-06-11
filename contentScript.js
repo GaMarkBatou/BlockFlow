@@ -6,6 +6,10 @@
   let stopRequested = false;
   let recorder = null;
   let bfRootStack = [];
+  const runningWorkflowLocks = new Set();
+  const activePanelWorkflowLocks = new Set();
+  const runningActionLocks = new Set();
+  const workflowSessions = new Map();
   function getSearchRoot() { return bfRootStack.length ? bfRootStack[bfRootStack.length - 1] : document; }
   function rootDocument(root = getSearchRoot()) { return root && root.nodeType === 9 ? root : document; }
 
@@ -29,7 +33,18 @@
       'runtime.detailCount': 'db',
       'runtime.detailFile': 'fájl',
       'runtime.doneWord': 'kész',
-      'button.cancel': 'Mégsem'
+      'button.cancel': 'Mégsem',
+      'runtime.workflowAlreadyRunning': 'Ez az automatizmus már fut ezen az oldalon.',
+      'runtime.actionAlreadyRunning': 'A művelet már fut: {{action}}',
+      'runtime.actionStarted': 'Művelet indult: {{action}}',
+      'runtime.actionFinished': 'Művelet befejezve: {{action}}',
+      'runtime.actionRunning': 'Fut: {{action}}',
+      'runtime.actionDone': 'Kész: {{action}}',
+      'runtime.actionFailed': 'Hiba: {{action}} - {{error}}',
+      'runtime.actionGroupMissing': 'Nem található műveletcsoport ehhez a kulcshoz: {{action}}',
+      'runtime.sessionCleared': 'Munkamenet törölve.',
+      'runtime.panelReady': 'Panel kész.',
+      'runtime.panelNoButtons': 'Nincs beállított gomb.'
     },
     en: {
       'publicLog.title': 'BlockFlow log',
@@ -49,7 +64,18 @@
       'runtime.detailCount': 'count',
       'runtime.detailFile': 'file',
       'runtime.doneWord': 'done',
-      'button.cancel': 'Cancel'
+      'button.cancel': 'Cancel',
+      'runtime.workflowAlreadyRunning': 'This automation is already running on this page.',
+      'runtime.actionAlreadyRunning': 'The action is already running: {{action}}',
+      'runtime.actionStarted': 'Action started: {{action}}',
+      'runtime.actionFinished': 'Action finished: {{action}}',
+      'runtime.actionRunning': 'Running: {{action}}',
+      'runtime.actionDone': 'Done: {{action}}',
+      'runtime.actionFailed': 'Error: {{action}} - {{error}}',
+      'runtime.actionGroupMissing': 'No action group found for key: {{action}}',
+      'runtime.sessionCleared': 'Session cleared.',
+      'runtime.panelReady': 'Panel ready.',
+      'runtime.panelNoButtons': 'No buttons configured.'
     }
   };
   const BF_I18N = { loaded:false, selected:'auto', active:'hu', fallback:'hu', languages:[], dict:{}, fallbackDict:BF_RUNTIME_FALLBACKS.hu };
@@ -1840,7 +1866,7 @@
 
   async function executeBlock(block, vars, options = {}) {
     const dryRun = Boolean(options.dryRun);
-    if (block.type === 'trigger' || block.type === 'triggerGroup' || block.type === 'clickTrigger' || block.type === 'scheduledTrigger' || String(block.type || '').startsWith('condition')) return { skipped: true };
+    if (block.type === 'trigger' || block.type === 'triggerGroup' || block.type === 'clickTrigger' || block.type === 'scheduledTrigger' || block.type === 'actionGroup' || block.type === 'pageControlPanel' || String(block.type || '').startsWith('condition')) return { skipped: true };
 
     if (block.type === 'wait') {
       if (block.waitMode === 'element' && block.target) {
@@ -2440,10 +2466,49 @@
     return document.body.innerText.toLowerCase().includes(interpolate(block.text || '', vars).toLowerCase());
   }
 
+  function workflowSessionKey(workflow) {
+    return `${workflow?.id || 'workflow'}:${location.origin || location.hostname || 'page'}`;
+  }
+
+  function getWorkflowSession(workflow) {
+    const key = workflowSessionKey(workflow);
+    if (!workflowSessions.has(key)) workflowSessions.set(key, { key, vars: {} });
+    return workflowSessions.get(key);
+  }
+
+  function freshBaseVars() {
+    return { current_url: location.href, today: new Date().toISOString().slice(0, 10), selected_text: String(getSelection?.() || ''), last_result: '', last_text: '', last_value: '', last_selector: '', last_xpath: '', last_element: '', last_screenshot: '' };
+  }
+
+  function resetSessionVars(vars) {
+    for (const key of Object.keys(vars || {})) delete vars[key];
+    Object.assign(vars, freshBaseVars());
+    return vars;
+  }
+
+  function cssSafeId(value) {
+    return String(value || '').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'main';
+  }
+
+  function parsePanelButtons(text) {
+    return String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean).map((line, index) => {
+      const parts = line.split('|');
+      const label = (parts.shift() || '').trim() || `Gomb ${index + 1}`;
+      const actionKey = (parts.join('|') || label).trim();
+      return { label, actionKey };
+    });
+  }
+
   async function runWorkflow(workflow, options = {}) {
     await ensureRuntimeI18n();
     stopRequested = false;
-    const vars = { current_url: location.href, today: new Date().toISOString().slice(0, 10), selected_text: String(getSelection?.() || ''), last_result: '', last_text: '', last_value: '', last_selector: '', last_xpath: '', last_element: '', last_screenshot: '' };
+    const session = getWorkflowSession(workflow);
+    const vars = session.vars || {};
+    Object.assign(vars, freshBaseVars(), vars);
+    vars.current_url = location.href;
+    vars.today = new Date().toISOString().slice(0, 10);
+    vars.selected_text = String(getSelection?.() || '');
+    session.vars = vars;
     const log = [];
     const publicLogger = makePublicRunLogger(workflow, options);
     const rawLogPush = log.push.bind(log);
@@ -2462,6 +2527,109 @@
         collectBlocks(block.elseChildren || [], predicate, out);
       }
       return out;
+    }
+
+    const actionGroups = collectBlocks(rootBlocks, b => b.type === 'actionGroup');
+
+    function findActionGroup(actionKey) {
+      const key = String(actionKey || '').trim();
+      return actionGroups.find(g => String(g.actionKey || '').trim() === key || String(g.id || '') === key || String(g.title || '').trim() === key);
+    }
+
+    function setPanelStatus(root, text, cls = '') {
+      const el = root?.querySelector?.('[data-status]');
+      if (!el) return;
+      el.className = `status ${cls || ''}`.trim();
+      el.textContent = text || '';
+    }
+
+    async function runActionGroupFromPanel(group, root, buttonDef) {
+      const actionKey = String(group?.actionKey || group?.id || buttonDef?.actionKey || 'action');
+      const lockKey = `${workflow.id || 'workflow'}:${actionKey}`;
+      if (runningActionLocks.has(lockKey)) {
+        setPanelStatus(root, rt('runtime.actionAlreadyRunning', { action: actionKey }), 'warn');
+        return { skipped: true, locked: true };
+      }
+      runningActionLocks.add(lockKey);
+      try {
+        log.push(rt('runtime.actionStarted', { action: group.title || actionKey }));
+        await runList(Array.isArray(group.children) ? group.children : [], `action:${actionKey}`);
+        if (group.clearSessionAfterRun) {
+          resetSessionVars(vars);
+          log.push(rt('runtime.sessionCleared'));
+        }
+        log.push(rt('runtime.actionFinished', { action: group.title || actionKey }));
+        return { ok: true };
+      } finally {
+        runningActionLocks.delete(lockKey);
+      }
+    }
+
+    async function showPageControlPanel(block) {
+      if (options.dryRun) return { ok: true, dryRun: true };
+      const panelId = cssSafeId(`${workflow.id || 'workflow'}-${block.id || block.panelId || 'panel'}-${interpolate(block.panelId || 'main', vars)}`);
+      const domId = `bf-page-control-panel-${panelId}`;
+      const existing = document.getElementById(domId);
+      const workflowKey = workflowRunLockKey(workflow);
+      if (existing && (block.duplicateMode || 'keep') === 'keep') {
+        activePanelWorkflowLocks.add(workflowKey);
+        return { ok: true, existing: true };
+      }
+      if (existing) existing.remove();
+      activePanelWorkflowLocks.add(workflowKey);
+
+      const buttons = parsePanelButtons(interpolate(block.buttonsText || '', vars));
+      const host = document.createElement('div');
+      host.id = domId;
+      host.setAttribute('data-blockflow-control-panel', '1');
+      const root = host.attachShadow ? host.attachShadow({ mode: 'open' }) : host;
+      const width = Math.max(180, Math.min(520, Number(block.width || 260)));
+      root.innerHTML = `
+        <style>
+          :host{all:initial} *{box-sizing:border-box} .panel{width:${width}px;max-width:calc(100vw - 32px);border-radius:16px;background:rgba(15,23,42,.94);color:#f8fafc;border:1px solid rgba(255,255,255,.20);box-shadow:0 18px 50px rgba(0,0,0,.32);font:13px/1.35 system-ui,-apple-system,Segoe UI,Arial,sans-serif;overflow:hidden} .head{display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(255,255,255,.10);border-bottom:1px solid rgba(255,255,255,.12)} .head b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:800}.close{all:unset;cursor:pointer;border-radius:8px;padding:2px 8px;background:rgba(255,255,255,.10);font-weight:800}.body{display:flex;flex-direction:column;gap:8px;padding:10px}.bf-btn{all:unset;display:flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:8px 11px;border-radius:10px;background:#2563eb;color:#fff;font-weight:800;text-align:center;cursor:pointer;box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)}.bf-btn:hover{background:#1d4ed8}.bf-btn:disabled{opacity:.55;cursor:wait}.status{padding:8px 10px;border-top:1px solid rgba(255,255,255,.10);color:#cbd5e1;font-size:12px;min-height:30px}.status.ok{color:#bbf7d0}.status.err{color:#fecaca}.status.warn{color:#fde68a}.empty{padding:10px;color:#fecaca}
+        </style>
+        <div class="panel">
+          <div class="head"><b></b>${block.closeButton === false ? '' : '<button type="button" class="close" title="Close">×</button>'}</div>
+          <div class="body"></div>
+          ${block.showStatus === false ? '' : '<div class="status" data-status></div>'}
+        </div>`;
+      root.querySelector('.head b').textContent = interpolate(block.title || 'BlockFlow', vars);
+      const body = root.querySelector('.body');
+      if (!buttons.length) {
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = rt('runtime.panelNoButtons');
+        body.appendChild(empty);
+      }
+      for (const btnDef of buttons) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'bf-btn';
+        btn.textContent = btnDef.label;
+        btn.title = btnDef.actionKey;
+        btn.addEventListener('click', async () => {
+          const group = findActionGroup(btnDef.actionKey);
+          if (!group) { setPanelStatus(root, rt('runtime.actionGroupMissing', { action: btnDef.actionKey }), 'err'); return; }
+          btn.disabled = true;
+          setPanelStatus(root, rt('runtime.actionRunning', { action: btnDef.label }), 'warn');
+          try {
+            await runActionGroupFromPanel(group, root, btnDef);
+            setPanelStatus(root, rt('runtime.actionDone', { action: btnDef.label }), 'ok');
+          } catch (err) {
+            console.warn('BlockFlow action group error', err);
+            setPanelStatus(root, rt('runtime.actionFailed', { action: btnDef.label, error: String(err?.message || err) }), 'err');
+          } finally {
+            btn.disabled = false;
+          }
+        });
+        body.appendChild(btn);
+      }
+      const close = root.querySelector('.close');
+      if (close) close.addEventListener('click', () => { activePanelWorkflowLocks.delete(workflowKey); host.remove(); });
+      positionBlockFlowButton(host, block.position || 'bottomRight', block);
+      document.body.appendChild(host);
+      setPanelStatus(root, rt('runtime.panelReady'), 'ok');
+      return { ok: true, buttons: buttons.length };
     }
 
     function watcherFromTriggerBlock(block) {
@@ -2532,6 +2700,14 @@
         log.push(rt('runtime.blockStep', { label, index: i + 1, type: b.type, dry: options.dryRun ? ' [dry-run]' : '' }));
 
         if (b.type === 'trigger' || b.type === 'triggerGroup' || b.type === 'clickTrigger' || b.type === 'scheduledTrigger' || String(b.type || '').startsWith('condition')) { i++; continue; }
+        if (b.type === 'actionGroup') { i++; continue; }
+        if (b.type === 'pageControlPanel') {
+          const res = await showPageControlPanel(b);
+          updateLastOutput(vars, b, res);
+          log.push(rt('runtime.output', { type: b.type, details: ' · ' + rt('runtime.doneWord') }));
+          i++;
+          continue;
+        }
 
         if (b.type === 'ifBlock') {
           const ok = await conditionPass(b, vars);
@@ -2691,6 +2867,31 @@
       throw err;
     }
   }
+
+  function workflowRunLockKey(workflow) {
+    return String(workflow?.id || workflow?.name || 'workflow');
+  }
+
+  function isWorkflowRunning(workflow) {
+    const key = workflowRunLockKey(workflow);
+    return runningWorkflowLocks.has(key) || activePanelWorkflowLocks.has(key);
+  }
+
+  async function runWorkflowLocked(workflow, options = {}) {
+    await ensureRuntimeI18n();
+    if (options.allowParallelRuns === true) return runWorkflow(workflow, options);
+    const key = workflowRunLockKey(workflow);
+    if (runningWorkflowLocks.has(key) || activePanelWorkflowLocks.has(key)) {
+      return { skipped: true, locked: true, reason: rt('runtime.workflowAlreadyRunning') };
+    }
+    runningWorkflowLocks.add(key);
+    try {
+      return await runWorkflow(workflow, options);
+    } finally {
+      runningWorkflowLocks.delete(key);
+    }
+  }
+
 
   function pageSummary() {
     const elements = [...document.querySelectorAll('input,textarea,select,button,a,[role="button"],[role="dialog"],[aria-modal="true"]')].filter(isVisible).slice(0, 250).map(descriptor);
@@ -2932,9 +3133,10 @@
         const workflow = workflows.find(x => x.id === w.workflowId);
         if (!workflow) continue;
         if (!watcherBlockStillActive(w, workflow)) { firedWatchers.delete(w.id); continue; }
+        if (isWorkflowRunning(workflow)) continue;
         showBadge(rt('runtime.clickTriggerStarting', { name: workflow.name || 'workflow' }));
         setTimeout(removeBadge, 2000);
-        runWorkflow(workflow, { dryRun: false, triggeredByWatcher: true, triggeredByClick: true }).catch(err => console.warn('BlockFlow click trigger error', err));
+        runWorkflowLocked(workflow, { dryRun: false, triggeredByWatcher: true, triggeredByClick: true }).catch(err => console.warn('BlockFlow click trigger error', err));
         if (w.runOnce) {
           const data = await safeStorageGet('watchers');
           if (!data) continue;
@@ -2976,9 +3178,10 @@
           // Stale watcher védelem: a mentett watcher rekord csak akkor indíthat,
           // ha a hozzá tartozó figyelő blokk még létezik és aktív a workflow-ban.
           if (!watcherBlockStillActive(w, workflow)) { firedWatchers.delete(w.id); continue; }
+          if (isWorkflowRunning(workflow)) continue;
           showBadge(rt('runtime.watcherStarting', { name: workflow.name || 'workflow' }));
           setTimeout(removeBadge, 2000);
-          runWorkflow(workflow, { dryRun: false, triggeredByWatcher: true }).catch(err => console.warn('BlockFlow watcher error', err));
+          runWorkflowLocked(workflow, { dryRun: false, triggeredByWatcher: true }).catch(err => console.warn('BlockFlow watcher error', err));
           if (w.runOnce) {
             const data = await safeStorageGet('watchers');
             if (!data) continue;
@@ -3105,7 +3308,7 @@
           sendResponse({ ok:false, error:'Ehhez a blokkhoz nincs teszt handler.' }); return;
         } catch (err) { sendResponse({ ok:false, error:String(err?.message || err) }); return; }
       }
-      if (msg?.type === 'BF_RUN_WORKFLOW') { try { const result = await runWorkflow(msg.workflow, msg.options || {}); sendResponse({ ok: true, result }); } catch (err) { sendResponse({ ok: false, error: String(err.message || err), blockId: err.blockId || null, vars: err.partialVars || null, log: err.partialLog || [] }); } return; }
+      if (msg?.type === 'BF_RUN_WORKFLOW') { try { const result = await runWorkflowLocked(msg.workflow, msg.options || {}); sendResponse({ ok: true, result }); } catch (err) { sendResponse({ ok: false, error: String(err.message || err), blockId: err.blockId || null, vars: err.partialVars || null, log: err.partialLog || [] }); } return; }
       if (msg?.type === 'BF_STOP_RUN') { stopRequested = true; sendResponse({ ok: true }); return; }
       if (msg?.type === 'BF_TEST_POPUP') { const p = findPopup(); sendResponse({ ok: Boolean(p), text: p ? (p.innerText || '').slice(0, 500) : '' }); return; }
       if (msg?.type === 'BF_EXTRACT_ONCE') {

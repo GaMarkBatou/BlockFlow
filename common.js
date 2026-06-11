@@ -1,5 +1,5 @@
 const BF = (() => {
-  const SCHEMA_VERSION = 21;
+  const SCHEMA_VERSION = 22;
 
   const DEFAULT_WORKFLOW = () => ({
     id: crypto.randomUUID(),
@@ -42,6 +42,8 @@ const BF = (() => {
     mask: { name: 'Maszkolás', desc: 'Kinyert adat maszkolása karakterek vagy sorok alapján.' },
     userPrompt: { name: 'Felhasználói üzenet', desc: 'Futás közben felugró ablakot mutat, opcionálisan visszajelzésre vár.' },
     pageButton: { name: 'Oldalba illesztett gomb', desc: 'Gombot szúr be az aktuális oldalba, és kattintásig vár.' },
+    pageControlPanel: { name: 'Oldalba illesztett vezérlőpanel', desc: 'Több gombos panelt szúr be az oldalba. A gombok műveletcsoportokat indítanak.' },
+    actionGroup: { name: 'Műveletcsoport', desc: 'Névvel hívható blokkcsoport. Nem fut automatikusan, panelgomb vagy későbbi hívás indítja.' },
 
     transform: { name: 'Adat átalakítása', desc: 'Szöveg tisztítása, kis/nagybetű, számok/betűk megtartása.' },
     textSlice: { name: 'Szövegrész kinyerése', desc: 'Szöveget vág ki kezdő/záró minta, sor vagy karakter alapján.' },
@@ -151,6 +153,8 @@ const BF = (() => {
     { cat: 'Logika', type: 'returnResult' },
     { cat: 'Felhasználó', type: 'userPrompt' },
     { cat: 'Felhasználó', type: 'pageButton' },
+    { cat: 'Felhasználó', type: 'pageControlPanel' },
+    { cat: 'Logika', type: 'actionGroup' },
     { cat: 'Felhasználó', type: 'userInput' },
     { cat: 'Felhasználó', type: 'userChoice' },
     { cat: 'Felhasználó', type: 'systemNotify' },
@@ -217,6 +221,8 @@ const BF = (() => {
     if (type === 'fieldByLabel') return { id, type, labelText: '', matchMode: 'contains', caseSensitive: false, shadowSearch: true, resultName: 'mezo_ertek', selectorName: 'mezo_selector', xpathName: 'mezo_xpath', elementName: 'mezo_elem' };
     if (type === 'setVar') return { id, type, varName: 'valtozo', value: '' };
     if (type === 'pageButton') return { id, type, label: 'Folytatás', tooltip: 'Kattints a BlockFlow folytatásához', waitForClick: true, position: 'bottomRight', target: null, placement: 'floating', customRight: 24, customBottom: 24, customUnit: 'px', customZIndex: 2147483647, timeoutSec: 300, onTimeout: 'stop', removeAfterClick: true, resultName: 'button_clicked' };
+    if (type === 'pageControlPanel') return { id, type, title: 'BlockFlow vezérlő', panelId: 'main', position: 'bottomRight', customRight: 24, customBottom: 24, customUnit: 'px', customZIndex: 2147483647, width: 260, buttonsText: 'Screenshot | add_screenshot\nLetöltés / Lezárás | export_report', duplicateMode: 'keep', showStatus: true, closeButton: true };
+    if (type === 'actionGroup') return { id, type, title: 'Műveletcsoport', actionKey: 'action_' + String(id).slice(0, 6), clearSessionAfterRun: false, children: [] };
     if (type === 'userInput') return { id, type, title: 'Adat bekérése', message: 'Adj meg egy értéket:', inputType: 'text', placeholder: '', defaultValue: '', resultName: 'user_input', feedbackStyle: 'default', accent: 'blue', windowSize: 'normal' };
     if (type === 'userChoice') return { id, type, title: 'Választás', message: 'Válassz egy opciót:', options: 'Igen\nNem', resultName: 'valasztas', feedbackStyle: 'default', accent: 'blue', windowSize: 'normal' };
     if (type === 'tableExtract') return { id, type, target: null, rowMode: 'first', rowIndex: 1, rowContains: '', rowColumnIndex: 0, columnMode: 'index', columnIndex: 1, columnHeader: '', includeHeader: false, skipEmptyRows: true, missingRowMode: 'empty', virtualSearch: false, maxScrolls: 10, scrollAmount: 600, resultName: 'tabla_adat', timeoutMs: 5000 };
@@ -301,6 +307,8 @@ const BF = (() => {
     if (block.type === 'setVar') return `Változó: {{${block.varName || 'valtozo'}}}`;
     if (block.type === 'userInput') return `Adat bekérése → {{${block.resultName || 'user_input'}}}`;
     if (block.type === 'userChoice') return `Választás → {{${block.resultName || 'valasztas'}}}`;
+    if (block.type === 'pageControlPanel') return `Vezérlőpanel: ${short(block.title || 'BlockFlow')}`;
+    if (block.type === 'actionGroup') return `Műveletcsoport: ${short(block.actionKey || block.title || '')}`;
     if (block.type === 'selectOption') return 'Legördülő opció: ' + (block.optionText || 'nincs opció');
     if (block.type === 'tableExtract') return `Táblázatból kinyerés → {{${block.resultName || 'tabla_adat'}}}`;
     if (block.type === 'elementLoop') return `Minden találatra: {{${block.itemVar || 'elem_szoveg'}}}`;
@@ -413,6 +421,8 @@ const BF = (() => {
     if (block.type === 'rowLoop') return `Max sor: ${block.maxRows || 20} · gyermek blokkok: ${(block.children||[]).length}`;
     if (block.type === 'email') return `Címzett: ${block.to || ''} | Tárgy: ${short(block.subject || '')}`;
     if (block.type === 'copy') return short(block.value || '');
+    if (block.type === 'pageControlPanel') return `${String(block.buttonsText || '').split(/\r?\n/).filter(Boolean).length} gomb · ${block.duplicateMode || 'keep'}`;
+    if (block.type === 'actionGroup') return `${(block.children || []).length} blokk${block.clearSessionAfterRun ? ' · munkamenet törlése futás után' : ''}`;
     if (block.type === 'mask') return `${block.maskMode === 'lines' ? 'Soralapú' : 'Karakteralapú'}${block.invertMask ? ' · invert' : ''}${block.clearTrim ? ' · clear/trim' : ''} · Forrás: ${short(block.source || '')}`;
     if (block.type === 'textSearch') return `${block.searchScope === 'visible' ? 'látható szöveg' : block.searchScope === 'dom' ? 'teljes DOM' : 'teljes oldal'} · selector: {{${block.selectorName || 'szoveg_talalat_selector'}}} · sor: {{${block.rowSelectorName || 'szoveg_talalat_sor_selector'}}}`;
     if (block.type === 'errorSearch') return `alert/error/invalid keresés · szöveg: {{${block.textName || 'hiba_szoveg'}}}`;
@@ -630,6 +640,7 @@ const BF = (() => {
     userInput: { outputs: ['text:value'] },
     userChoice: { outputs: ['text:value'] },
     pageButton: { outputs: ['boolean:clicked', 'time:clickedAt'] },
+    pageControlPanel: { outputs: ['ui:panel'] },
     errorSearch: { outputs: ['boolean:found', 'text:errorText', 'selector:selector', 'number:count'] },
     compare: { outputs: ['boolean:result'] },
     math: { outputs: ['number:result'] },
@@ -646,7 +657,7 @@ const BF = (() => {
     clipboardRead: ['clipboardRead'], copy: ['clipboardWrite'], openEmail: ['tabs','mailto','clipboardWrite'], openUrl: ['tabs'],
     triggerGroup: ['watcher','storage'], clickTrigger: ['clickWatcher','storage'], scheduledTrigger: ['alarms','storage'],
     userPrompt: ['feedbackWindow'], userInput: ['feedbackWindow'], userChoice: ['feedbackWindow'], emailPreview: ['feedbackWindow'],
-    pageButton: ['pageOverlay'], sound: ['audio'], localSet: ['storage'], localGet: ['storage']
+    pageButton: ['pageOverlay'], pageControlPanel: ['pageOverlay','actionGroups','session'], actionGroup: ['actionGroups','session'], sound: ['audio'], localSet: ['storage'], localGet: ['storage']
   };
 
   function blockOutputSpec(block) {
@@ -676,9 +687,9 @@ const BF = (() => {
       blockCapabilities(b).forEach(x => capabilities.add(x));
       const out = blockOutputSpec(b);
       if (out.length) outputs.push({ blockId: b.id, type: b.type, outputs: out });
-      if (['click','fill','selectOption','extract','scroll','waitUntil','waitLoad','preflight','pageButton','tableExtract','fieldByLabel'].includes(b.type)) elementBlocks++;
+      if (['click','fill','selectOption','extract','scroll','waitUntil','waitLoad','preflight','pageButton','pageControlPanel','tableExtract','fieldByLabel'].includes(b.type)) elementBlocks++;
       if (b.targetMode && b.targetMode !== 'manual') dynamicTargets++;
-      if (['userPrompt','userInput','userChoice','emailPreview','pageButton'].includes(b.type)) feedbackBlocks++;
+      if (['userPrompt','userInput','userChoice','emailPreview','pageButton','pageControlPanel'].includes(b.type)) feedbackBlocks++;
     });
     const recommendations = [];
     if (capabilities.has('watcher') || capabilities.has('clickWatcher')) recommendations.push('Figyelőknél érdemes domain/path scope-ot használni a felesleges DOM-ellenőrzés csökkentésére.');
@@ -716,6 +727,15 @@ const BF = (() => {
     });
     if (!starterCount) issues.push({ level:'error', blockId:null, text:t('validation.missingStarter') });
 
+    const actionKeys = new Map();
+    walkBlocks(workflow.blocks || [], b => {
+      if (b.type !== 'actionGroup') return;
+      const key = String(b.actionKey || '').trim();
+      if (!key) issues.push({ level:'error', blockId:b.id, text:t('validation.actionGroupMissingKey') });
+      else if (actionKeys.has(key)) issues.push({ level:'error', blockId:b.id, text:t('validation.actionGroupDuplicateKey', { key }) });
+      else actionKeys.set(key, b.id);
+    });
+
     const needsTarget = ['click','fill','selectOption','extract','rowLoop'];
     function hasDynamicTarget(b) { return b && b.targetMode && b.targetMode !== 'manual' && String(b.targetVar || '').trim(); }
     walkBlocks(workflow.blocks || [], b => {
@@ -746,6 +766,7 @@ const BF = (() => {
       if (b.type === 'waitLoad' && ['elementVisible','elementClickable'].includes(b.loadMode || '') && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:t('validation.waitLoadMissingTarget') });
       if (b.type === 'preflight' && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:t('validation.preflightMissingTarget') });
       if (b.type === 'pageButton' && ['afterTarget','beforeTarget'].includes(b.position || '') && !b.target) issues.push({ level:'error', blockId:b.id, text:t('validation.pageButtonMissingTarget') });
+      if (b.type === 'pageControlPanel' && !String(b.buttonsText || '').trim()) issues.push({ level:'error', blockId:b.id, text:t('validation.pageControlPanelMissingButtons') });
       if (b.type === 'click' && /delete|remove|send|submit|pay|confirm|order|törl|küld|fizet|rendel|végleges/i.test(`${b.target?.label || ''} ${b.target?.text || ''}`)) issues.push({ level:'warning', blockId:b.id, text:t('validation.riskyClick', { label: b.target?.label || t('validation.targetElement') }) });
     });
     for (const ref of collectVariableRefs(workflow)) {

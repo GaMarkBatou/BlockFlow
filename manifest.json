@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "BlockFlow Automation MVP 0.62.1",
-  "description": "Local browser automation builder with fixed runtime i18n loading for public logs and content-script messages.",
-  "version": "0.62.1",
+  "name": "BlockFlow Automation MVP 0.62.2",
+  "description": "Local browser automation builder with workflow run locks and reusable page control panels with action groups.",
+  "version": "0.62.2",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",
