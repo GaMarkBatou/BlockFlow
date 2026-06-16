@@ -1951,7 +1951,8 @@ async function exportMiniExtension() {
     action: { default_title: name || wf.name || 'Automatizmus futtatása' },
     background: { service_worker: 'background.js' },
     content_scripts: [{ matches: ['<all_urls>'], js: ['contentScript.js'], css: ['contentScript.css'], run_at: 'document_idle' }],
-    icons: { '16':'icons/icon16.png', '48':'icons/icon48.png', '128':'icons/icon128.png' }
+    icons: { '16':'icons/icon16.png', '48':'icons/icon48.png', '128':'icons/icon128.png' },
+    web_accessible_resources: [{ resources: ['locales/*.json'], matches: ['<all_urls>'] }]
   };
   const readme = `# ${name || wf.name}\n\n${BF.t('miniExport.readmeDescription')}\n\n${BF.t('miniExport.readmeInstall')}\n\n${BF.t('miniExport.readmeUsage')}\n`;
   const files = [

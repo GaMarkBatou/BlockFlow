@@ -13,6 +13,11 @@
   function getSearchRoot() { return bfRootStack.length ? bfRootStack[bfRootStack.length - 1] : document; }
   function rootDocument(root = getSearchRoot()) { return root && root.nodeType === 9 ? root : document; }
 
+  const BF_SNOW_HOST_SELECTOR = 'now-input,now-textarea,now-select,now-record-picker,sn-record-picker,now-rich-text-editor,now-rich-text-area,now-html-editor,now-combobox,now-dropdown';
+  const BF_NATIVE_FIELD_SELECTOR = 'input,textarea,select,[contenteditable],[role="textbox"],[role="combobox"],[role="searchbox"],[aria-multiline="true"],.ql-editor,.tox-edit-area iframe';
+  const BF_FIELD_CONTROL_SELECTOR = `${BF_NATIVE_FIELD_SELECTOR},${BF_SNOW_HOST_SELECTOR}`;
+  const BF_SNOW_ATTRS = ['name','field','field-name','data-field','data-field-name','data-name','data-column','data-property','data-record-field','data-testid','data-test-id','data-test','data-qa','data-cy','component-id','sys-id','table','data-table','aria-label','label','data-label','data-label-text','placeholder','title'];
+
 
   const BF_RUNTIME_FALLBACKS = {
     hu: {
@@ -244,13 +249,57 @@
     return parts.join(' > ');
   }
 
+  function cssPathDeep(el) {
+    if (!el || el.nodeType !== 1) return '';
+    const parts = [];
+    let node = el;
+    const seen = new Set();
+    while (node && node.nodeType === 1 && !seen.has(node)) {
+      seen.add(node);
+      parts.unshift(cssPath(node));
+      const root = node.getRootNode?.();
+      if (root && root.host && root.host.nodeType === 1) node = root.host;
+      else break;
+    }
+    return parts.filter(Boolean).join(' >>> ');
+  }
+
+  function elementByShadowCss(path) {
+    const parts = String(path || '').split(/\s*>>>\s*/).map(x => x.trim()).filter(Boolean);
+    if (!parts.length) return null;
+    let root = document;
+    let current = null;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      try {
+        current = root?.querySelector?.(part) || null;
+      } catch (_) { current = null; }
+      if (!current && root === document) current = querySelectorAllDeep(part, true, document, 1)[0] || null;
+      if (!current) return null;
+      if (i < parts.length - 1) root = current.shadowRoot || current;
+    }
+    return current && current.nodeType === 1 ? current : null;
+  }
+
   function elementByXPath(xpath) {
     if (!xpath) return null;
+    const roots = [document];
     try {
-      const doc = rootDocument(); const res = doc.evaluate(String(xpath), doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-      return res.singleNodeValue && res.singleNodeValue.nodeType === 1 ? res.singleNodeValue : null;
-    } catch (_) { return null; }
+      for (const el of allElementsDeep(document, true, 20000)) {
+        if (el.shadowRoot) roots.push(el.shadowRoot);
+      }
+    } catch (_) {}
+    for (const root of roots) {
+      try {
+        const doc = root.ownerDocument || document;
+        const res = doc.evaluate(String(xpath), root, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+        if (res.singleNodeValue && res.singleNodeValue.nodeType === 1) return res.singleNodeValue;
+      } catch (_) {}
+    }
+    return null;
   }
+
+
 
 
   function allElementsDeep(root = getSearchRoot(), includeShadow = true, limit = 20000) {
@@ -261,9 +310,23 @@
       seen.add(el);
       out.push(el);
       if (includeShadow && el.shadowRoot) walk(el.shadowRoot);
+      if (includeShadow && el.tagName === 'SLOT' && typeof el.assignedElements === 'function') {
+        for (const assigned of el.assignedElements({ flatten: true })) {
+          add(assigned);
+          walk(assigned);
+          if (out.length >= limit) break;
+        }
+      }
     }
     function walk(node) {
       if (!node || out.length >= limit) return;
+      if (includeShadow && node.nodeType === 1 && node.tagName === 'SLOT' && typeof node.assignedElements === 'function') {
+        for (const assigned of node.assignedElements({ flatten: true })) {
+          add(assigned);
+          walk(assigned);
+          if (out.length >= limit) break;
+        }
+      }
       const children = node.children ? Array.from(node.children) : [];
       for (const child of children) {
         add(child);
@@ -275,7 +338,8 @@
       add(document.documentElement);
       walk(document);
     } else {
-      add(root.host || root);
+      if (root.nodeType === 1) add(root);
+      else if (root.host) add(root.host);
       walk(root);
     }
     return out;
@@ -309,6 +373,106 @@
     return '';
   }
 
+  function getPropertyAny(el, names) {
+    for (const name of names) {
+      try {
+        const value = el?.[name];
+        if (value !== undefined && value !== null && String(value) !== '') return value;
+      } catch (_) {}
+    }
+    return '';
+  }
+
+  function getAttrOrPropAny(el, names) {
+    return getAttrAny(el, names) || getPropertyAny(el, names);
+  }
+
+  function isServiceNowHostName(hostname = location.hostname) {
+    const h = String(hostname || '').toLowerCase();
+    return h.includes('service-now') || h.includes('servicenow') || h.endsWith('.now.com');
+  }
+
+  function hasServiceNowDomHint() {
+    try {
+      if (window.NOW || window.g_form || window.NOW_UI) return true;
+    } catch (_) {}
+    try {
+      if (document.querySelector('now-record-form,now-workspace,now-input,now-textarea,now-select,now-record-picker,sn-record-picker')) return true;
+    } catch (_) {}
+    return false;
+  }
+
+  function isServiceNowContext() {
+    const path = String(location.pathname || '').toLowerCase();
+    return isServiceNowHostName() || path.startsWith('/now/') || path.includes('/now/cwf/agent/') || hasServiceNowDomHint();
+  }
+
+  function isServiceNowFieldHost(el) {
+    if (!el || el.nodeType !== 1) return false;
+    const tag = el.tagName?.toLowerCase?.() || '';
+    return /^(now-input|now-textarea|now-select|now-record-picker|sn-record-picker|now-rich-text-editor|now-rich-text-area|now-html-editor|now-combobox|now-dropdown)$/.test(tag);
+  }
+
+  function isServiceNowElement(el) {
+    if (!el || el.nodeType !== 1) return false;
+    const tag = el.tagName?.toLowerCase?.() || '';
+    return tag.startsWith('now-') || tag.startsWith('sn-') || Boolean(el.closest?.('now-record-form,now-workspace,now-input,now-textarea,now-select,now-record-picker,sn-record-picker'));
+  }
+
+  function shadowHostFor(el) {
+    try {
+      const root = el?.getRootNode?.();
+      return root && root.host && root.host.nodeType === 1 ? root.host : null;
+    } catch (_) { return null; }
+  }
+
+  function snowFieldHostFor(el) {
+    let node = el;
+    for (let i = 0; node && i < 8; i++) {
+      if (isServiceNowFieldHost(node)) return node;
+      const host = shadowHostFor(node);
+      if (host) { node = host; continue; }
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function uniqueElements(list) {
+    const out = [];
+    const seen = new Set();
+    for (const el of list || []) {
+      if (el && el.nodeType === 1 && !seen.has(el)) { seen.add(el); out.push(el); }
+    }
+    return out;
+  }
+
+  function fieldSelectorForChildren() {
+    return 'input,textarea,select,[contenteditable],[role="textbox"],[role="combobox"],[role="searchbox"],[aria-multiline="true"],.ql-editor';
+  }
+
+  function elementTextAndAttrs(el) {
+    if (!el) return '';
+    const values = [
+      el.innerText,
+      el.textContent,
+      getAttrOrPropAny(el, ['aria-label','label','data-label','data-label-text','placeholder','title','name','field','field-name','data-field','data-field-name','data-name','data-column','data-property','displayValue','display-value','value'])
+    ];
+    const host = shadowHostFor(el);
+    if (host) values.push(elementTextAndAttrs(host));
+    return values.filter(Boolean).map(v => String(v).trim()).filter(Boolean).join(' ');
+  }
+
+  function getSnowComparableAttrs(el) {
+    const host = snowFieldHostFor(el) || shadowHostFor(el);
+    const parent = el?.parentElement || null;
+    const out = {};
+    for (const attr of BF_SNOW_ATTRS) {
+      const value = getAttrOrPropAny(el, [attr]) || getAttrOrPropAny(host, [attr]) || getAttrOrPropAny(parent, [attr]);
+      if (value) out[attr] = String(value);
+    }
+    return out;
+  }
+
   function notifySpaNavigation() {
     try { window.dispatchEvent(new CustomEvent('BF_SPA_NAVIGATION', { detail: { href: location.href } })); } catch (_) {}
   }
@@ -339,22 +503,33 @@
 
   function labelFor(el) {
     if (!el) return '';
-    if (el.id) {
-      const label = rootDocument().querySelector(`label[for="${CSS.escape(el.id)}"]`);
-      if (label) return (label.innerText || label.textContent || '').trim();
+    const host = snowFieldHostFor(el) || shadowHostFor(el);
+    const candidates = uniqueElements([el, host, el.parentElement, host?.parentElement, el.closest?.('[aria-label],[label],[data-label],[data-label-text],[title],[placeholder]')]);
+    for (const item of candidates) {
+      const direct = getAttrOrPropAny(item, ['aria-label','label','data-label','data-label-text','data-field-label','placeholder','title','name','field','field-name','data-field','data-field-name','data-name']);
+      if (direct) return String(direct).trim();
     }
-    const wrapping = el.closest('label');
+    if (el.id) {
+      try {
+        const labels = querySelectorAllDeep(`label[for="${CSS.escape(el.id)}"]`, true, document, 10);
+        const label = labels.find(Boolean);
+        if (label) return (label.innerText || label.textContent || '').trim();
+      } catch (_) {}
+    }
+    const wrapping = el.closest?.('label');
     if (wrapping) return (wrapping.innerText || wrapping.textContent || '').trim();
-    const aria = el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('placeholder') || '';
-    if (aria) return aria.trim();
-    const nearby = (el.parentElement?.innerText || el.parentElement?.textContent || '').trim();
+    const hostLabel = host ? (host.innerText || host.textContent || '') : '';
+    if (hostLabel && hostLabel.trim().length <= 160) return hostLabel.trim();
+    const nearby = (el.parentElement?.innerText || el.parentElement?.textContent || host?.parentElement?.innerText || host?.parentElement?.textContent || '').trim();
     return nearby ? nearby.slice(0, 120) : '';
   }
+
+
 
   function pickableElement(raw) {
     if (!raw || raw.nodeType !== 1) return raw;
     if (raw.dataset?.bfBadge || raw.dataset?.bfOverlay) return null;
-    const direct = raw.closest('button,a,input,textarea,select,[role="button"],[role="link"],[contenteditable="true"],summary,label');
+    const direct = raw.closest(`button,a,${BF_FIELD_CONTROL_SELECTOR},[role="button"],[role="link"],summary,label,now-button`);
     if (direct && direct !== document.documentElement && direct !== document.body) return direct;
     let node = raw;
     while (node && node !== document.body && node !== document.documentElement) {
@@ -368,36 +543,42 @@
 
   function descriptor(el) {
     const rect = el.getBoundingClientRect();
-    const container = el.closest('[arid],[ardbn],[artype],.df,.Panel') || el.parentElement;
+    const host = snowFieldHostFor(el) || shadowHostFor(el);
+    const container = el.closest?.('[arid],[ardbn],[artype],.df,.Panel,[data-field],[data-name],[data-column],now-record-form,now-workspace') || host?.closest?.('[arid],[ardbn],[artype],.df,.Panel,[data-field],[data-name],[data-column],now-record-form,now-workspace') || host?.parentElement || el.parentElement;
     const label = labelFor(el);
-    const text = (el.innerText || el.value || el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('title') || '').trim();
+    const text = (el.innerText || el.value || el.textContent || getAttrOrPropAny(el, ['aria-label','placeholder','title','label']) || getAttrOrPropAny(host, ['aria-label','placeholder','title','label']) || '').trim();
+    const attrFromAny = names => getAttrAny(el, names) || getAttrAny(host, names) || getAttrAny(container, names);
     return {
-      label: label || text.slice(0, 80) || el.name || el.id || el.tagName.toLowerCase(),
+      label: label || text.slice(0, 80) || el.name || el.id || host?.id || el.tagName.toLowerCase(),
       tag: el.tagName.toLowerCase(),
+      hostTag: host?.tagName?.toLowerCase?.() || '',
       type: el.getAttribute('type') || '',
-      id: el.id || '',
-      name: el.getAttribute('name') || '',
-      role: el.getAttribute('role') || '',
-      dataTestId: getAttrAny(el, ['data-testid','data-test-id','data-test','data-qa','data-cy','data-component-id']),
-      dataField: getAttrAny(el, ['data-field','data-field-name','data-name','data-column','data-property','name']),
-      snName: getAttrAny(el, ['data-field','data-name','data-testid','data-type','component-id']),
-      ariaLabel: el.getAttribute('aria-label') || '',
-      placeholder: el.getAttribute('placeholder') || '',
-      title: el.getAttribute('title') || '',
+      id: el.id || host?.id || '',
+      name: attrFromAny(['name','field','field-name']),
+      role: el.getAttribute('role') || host?.getAttribute?.('role') || '',
+      dataTestId: attrFromAny(['data-testid','data-test-id','data-test','data-qa','data-cy','data-component-id','component-id']),
+      dataField: attrFromAny(['data-field','data-field-name','data-name','data-column','data-property','data-record-field','field','field-name','name']),
+      snName: attrFromAny(['data-field','data-field-name','data-name','data-column','data-property','field','field-name','name','component-id','sys-id']),
+      ariaLabel: attrFromAny(['aria-label','label','data-label','data-label-text']),
+      placeholder: attrFromAny(['placeholder']),
+      title: attrFromAny(['title']),
       text: text.slice(0, 220),
-      href: el.getAttribute('href') || '',
+      href: el.getAttribute('href') || host?.getAttribute?.('href') || '',
       css: cssPath(el),
+      shadowCss: cssPathDeep(el),
       xpath: xpathFor(el),
-      arid: el.getAttribute('arid') || container?.getAttribute('arid') || '',
-      ardbn: el.getAttribute('ardbn') || container?.getAttribute('ardbn') || '',
-      artype: el.getAttribute('artype') || container?.getAttribute('artype') || '',
+      arid: el.getAttribute('arid') || host?.getAttribute?.('arid') || container?.getAttribute?.('arid') || '',
+      ardbn: el.getAttribute('ardbn') || host?.getAttribute?.('ardbn') || container?.getAttribute?.('ardbn') || '',
+      artype: el.getAttribute('artype') || host?.getAttribute?.('artype') || container?.getAttribute?.('artype') || '',
       containerId: container?.id || '',
-      containerArid: container?.getAttribute('arid') || '',
-      containerArdbn: container?.getAttribute('ardbn') || '',
-      labelFor: el.id && rootDocument().querySelector(`label[for="${CSS.escape(el.id)}"]`) ? el.id : '',
+      containerArid: container?.getAttribute?.('arid') || '',
+      containerArdbn: container?.getAttribute?.('ardbn') || '',
+      labelFor: el.id && querySelectorAllDeep(`label[for="${CSS.escape(el.id)}"]`, true, document, 1)[0] ? el.id : '',
       rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) }
     };
   }
+
+
 
   function attrEq(name, value) {
     return `[${name}="${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`;
@@ -406,25 +587,44 @@
   function candidateSelectors(d) {
     const out = [];
     if (!d) return out;
-    if (d.id) out.push({ selector: `#${CSS.escape(d.id)}`, weight: 80 });
-    if (d.containerId) out.push({ selector: `#${CSS.escape(d.containerId)} input, #${CSS.escape(d.containerId)} textarea, #${CSS.escape(d.containerId)} select, #${CSS.escape(d.containerId)} [contenteditable="true"]`, weight: 76 });
-    if (d.ardbn) out.push({ selector: `${attrEq('ardbn', d.ardbn)} input, ${attrEq('ardbn', d.ardbn)} textarea, ${attrEq('ardbn', d.ardbn)} select, ${attrEq('ardbn', d.ardbn)}`, weight: 72 });
-    if (d.arid) out.push({ selector: `${attrEq('arid', d.arid)} input, ${attrEq('arid', d.arid)} textarea, ${attrEq('arid', d.arid)} select, ${attrEq('arid', d.arid)}`, weight: 70 });
-    if (d.containerArdbn) out.push({ selector: `${attrEq('ardbn', d.containerArdbn)} input, ${attrEq('ardbn', d.containerArdbn)} textarea, ${attrEq('ardbn', d.containerArdbn)} select`, weight: 68 });
-    if (d.containerArid) out.push({ selector: `${attrEq('arid', d.containerArid)} input, ${attrEq('arid', d.containerArid)} textarea, ${attrEq('arid', d.containerArid)} select`, weight: 66 });
-    if (d.name) out.push({ selector: `${d.tag || ''}${attrEq('name', d.name)}`, weight: 45 });
+    const controls = BF_FIELD_CONTROL_SELECTOR;
+    const addAttr = (attr, value, weight, tag = '') => { if (value) out.push({ selector: `${tag || ''}${attrEq(attr, value)}`, weight }); };
+    if (d.shadowCss) out.push({ selector: d.shadowCss, weight: 96, shadowPath: true });
+    if (d.id) {
+      out.push({ selector: `#${CSS.escape(d.id)}`, weight: 86 });
+      out.push({ selector: `#${CSS.escape(d.id)} ${controls}`, weight: 84 });
+    }
+    if (d.containerId) out.push({ selector: `#${CSS.escape(d.containerId)} ${controls}`, weight: 78 });
+    if (d.ardbn) out.push({ selector: `${attrEq('ardbn', d.ardbn)} ${controls}, ${attrEq('ardbn', d.ardbn)}`, weight: 74 });
+    if (d.arid) out.push({ selector: `${attrEq('arid', d.arid)} ${controls}, ${attrEq('arid', d.arid)}`, weight: 72 });
+    if (d.containerArdbn) out.push({ selector: `${attrEq('ardbn', d.containerArdbn)} ${controls}`, weight: 68 });
+    if (d.containerArid) out.push({ selector: `${attrEq('arid', d.containerArid)} ${controls}`, weight: 66 });
+    if (d.name) {
+      for (const a of ['name','field','field-name','data-field','data-field-name','data-name']) addAttr(a, d.name, 50, d.tag || '');
+      for (const a of ['name','field','field-name','data-field','data-field-name','data-name']) addAttr(a, d.name, 49);
+    }
     if (d.dataTestId) {
-      for (const a of ['data-testid','data-test-id','data-test','data-qa','data-cy','data-component-id']) out.push({ selector: `${d.tag || ''}${attrEq(a, d.dataTestId)}`, weight: 44 });
+      for (const a of ['data-testid','data-test-id','data-test','data-qa','data-cy','data-component-id','component-id']) addAttr(a, d.dataTestId, 46, d.tag || '');
+      for (const a of ['data-testid','data-test-id','data-test','data-qa','data-cy','data-component-id','component-id']) addAttr(a, d.dataTestId, 45);
     }
     if (d.dataField) {
-      for (const a of ['data-field','data-field-name','data-name','data-column','data-property','name']) out.push({ selector: `${d.tag || ''}${attrEq(a, d.dataField)}`, weight: 42 });
+      for (const a of ['data-field','data-field-name','data-name','data-column','data-property','data-record-field','field','field-name','name']) addAttr(a, d.dataField, 44, d.tag || '');
+      for (const a of ['data-field','data-field-name','data-name','data-column','data-property','data-record-field','field','field-name','name']) addAttr(a, d.dataField, 43);
     }
-    if (d.ariaLabel) out.push({ selector: `${d.tag || ''}${attrEq('aria-label', d.ariaLabel)}`, weight: 40 });
-    if (d.placeholder) out.push({ selector: `${d.tag || ''}${attrEq('placeholder', d.placeholder)}`, weight: 35 });
-    if (d.title) out.push({ selector: `${d.tag || ''}${attrEq('title', d.title)}`, weight: 30 });
+    if (d.snName) {
+      for (const a of ['data-field','data-field-name','data-name','data-column','data-property','data-record-field','field','field-name','name','component-id','sys-id']) addAttr(a, d.snName, 44);
+    }
+    if (d.ariaLabel) {
+      for (const a of ['aria-label','label','data-label','data-label-text']) addAttr(a, d.ariaLabel, 42, d.tag || '');
+      for (const a of ['aria-label','label','data-label','data-label-text']) addAttr(a, d.ariaLabel, 41);
+    }
+    if (d.placeholder) { addAttr('placeholder', d.placeholder, 35, d.tag || ''); addAttr('placeholder', d.placeholder, 34); }
+    if (d.title) { addAttr('title', d.title, 30, d.tag || ''); addAttr('title', d.title, 29); }
     if (d.css) out.push({ selector: d.css, weight: 20 });
     return out.filter(x => x.selector);
   }
+
+
 
   function normalizeText(value) {
     return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -432,15 +632,25 @@
 
   function fieldControlIn(el) {
     if (!el || el.nodeType !== 1) return null;
-    const selector = 'input,textarea,select,[contenteditable="true"],[role="textbox"],[role="combobox"],[role="searchbox"],[aria-multiline="true"]';
-    if (el.matches(selector)) return el;
-    return querySelectorAllDeep(selector, true, el, 1)[0] || el;
+    if (isServiceNowFieldHost(el)) {
+      const inner = querySelectorAllDeep(fieldSelectorForChildren(), true, el.shadowRoot || el, 8).find(x => x !== el);
+      return inner || el;
+    }
+    const host = snowFieldHostFor(el);
+    if (host && host !== el) {
+      const inner = querySelectorAllDeep(fieldSelectorForChildren(), true, host.shadowRoot || host, 8).find(x => x !== host) || el;
+      return inner;
+    }
+    if (el.matches?.(BF_FIELD_CONTROL_SELECTOR)) return el;
+    return querySelectorAllDeep(BF_FIELD_CONTROL_SELECTOR, true, el, 8)[0] || el;
   }
+
+
 
   function scoreElement(el, d, base = 0, options = {}) {
     if (!el || !d) return -999;
     const requireVisible = options.requireVisible !== false;
-    if (requireVisible && !isVisible(el)) return -999;
+    if (requireVisible && !isVisible(el) && !isVisible(snowFieldHostFor(el))) return -999;
     let score = base;
     const control = fieldControlIn(el) || el;
     const container = control.closest('[arid],[ardbn],[artype],.df,.Panel') || el.closest('[arid],[ardbn],[artype],.df,.Panel') || el;
@@ -456,7 +666,12 @@
     if (d.ariaLabel && control.getAttribute('aria-label') === d.ariaLabel) score += 20;
     if (d.placeholder && control.getAttribute('placeholder') === d.placeholder) score += 20;
     if (d.title && control.getAttribute('title') === d.title) score += 14;
-    const t = normalizeText(control.innerText || control.value || control.textContent || control.getAttribute('title') || '');
+    const snowAttrs = getSnowComparableAttrs(control);
+    if (d.dataField && Object.values(snowAttrs).includes(String(d.dataField))) score += 24;
+    if (d.snName && Object.values(snowAttrs).includes(String(d.snName))) score += 24;
+    if (d.dataTestId && Object.values(snowAttrs).includes(String(d.dataTestId))) score += 18;
+    if (d.hostTag && (snowFieldHostFor(control)?.tagName?.toLowerCase?.() === d.hostTag || control.tagName?.toLowerCase?.() === d.hostTag)) score += 12;
+    const t = normalizeText(elementTextAndAttrs(control));
     const dt = normalizeText(d.text || '');
     if (dt && t) {
       if (t === dt) score += 24;
@@ -468,43 +683,52 @@
       if (lab === dl) score += 30;
       else if (lab.includes(dl) || dl.includes(lab)) score += 18;
     }
-    if (d.rect && isVisible(control)) {
+    if (d.rect && (isVisible(control) || isVisible(snowFieldHostFor(control)))) {
       const r = control.getBoundingClientRect();
       const dist = Math.abs(r.x - d.rect.x) + Math.abs(r.y - d.rect.y);
       if (dist < 50) score += 8;
       else if (dist < 160) score += 3;
     }
-    if (!isVisible(control)) score -= 3;
+    if (!isVisible(control) && !isVisible(snowFieldHostFor(control))) score -= 3;
     return score;
   }
 
   function controlsNearLabel(labelEl) {
     const out = [];
-    const forId = labelEl.getAttribute('for');
+    const forId = labelEl.getAttribute?.('for');
     if (forId) {
-      const byFor = document.getElementById(forId);
-      if (byFor) out.push(byFor);
+      try { out.push(...querySelectorAllDeep(`#${CSS.escape(forId)}`, true, document, 5)); } catch (_) {}
     }
-    const container = labelEl.closest('[arid],[ardbn],[artype],.df,.Panel,div,td,li,section') || labelEl.parentElement;
-    if (container) out.push(...querySelectorAllDeep('input,textarea,select,[contenteditable="true"],[role="textbox"],[role="combobox"]', true, container, 50));
+    if (isServiceNowFieldHost(labelEl)) out.push(labelEl);
+    const container = labelEl.closest?.('[arid],[ardbn],[artype],.df,.Panel,[data-field],[data-name],[data-column],now-record-form,now-workspace,div,td,li,section') || labelEl.parentElement || shadowHostFor(labelEl)?.parentElement;
+    if (container) out.push(...querySelectorAllDeep(BF_FIELD_CONTROL_SELECTOR, true, container, 80));
+    const host = shadowHostFor(labelEl);
+    if (host) out.push(...querySelectorAllDeep(BF_FIELD_CONTROL_SELECTOR, true, host, 80));
     let sib = labelEl.nextElementSibling;
-    for (let i = 0; sib && i < 4; i++, sib = sib.nextElementSibling) {
-      if (sib.matches?.('input,textarea,select,[contenteditable="true"]')) out.push(sib);
-      out.push(...querySelectorAllDeep('input,textarea,select,[contenteditable="true"],[role="textbox"],[role="combobox"]', true, sib, 50));
+    for (let i = 0; sib && i < 6; i++, sib = sib.nextElementSibling) {
+      if (sib.matches?.(BF_FIELD_CONTROL_SELECTOR)) out.push(sib);
+      out.push(...querySelectorAllDeep(BF_FIELD_CONTROL_SELECTOR, true, sib, 80));
     }
-    return [...new Set(out)];
+    return uniqueElements(out).map(fieldControlIn).filter(Boolean);
   }
 
+
+
   function findElement(target, options = {}) {
+    if (!target) return null;
     const requireVisible = options.requireVisible !== false;
-    if (target?.xpath) { const xel = elementByXPath(target.xpath); if (xel && (!requireVisible || isVisible(xel))) return fieldControlIn(xel) || xel; }
+    if (target?.shadowCss) {
+      const sh = elementByShadowCss(target.shadowCss);
+      if (sh && (!requireVisible || isVisible(sh) || isVisible(snowFieldHostFor(sh)))) return fieldControlIn(sh) || sh;
+    }
+    if (target?.xpath) { const xel = elementByXPath(target.xpath); if (xel && (!requireVisible || isVisible(xel) || isVisible(snowFieldHostFor(xel)))) return fieldControlIn(xel) || xel; }
     const requireClickable = Boolean(options.requireClickable);
     let best = null;
     let bestScore = -999;
     for (const c of candidateSelectors(target)) {
       try {
-        const els = querySelectorAllDeep(c.selector, options.shadowSearch !== false, document, 60);
-        for (const raw of els) {
+        const rawEls = c.shadowPath ? [elementByShadowCss(c.selector)].filter(Boolean) : querySelectorAllDeep(c.selector, options.shadowSearch !== false, document, 80);
+        for (const raw of rawEls) {
           const el = fieldControlIn(raw);
           const score = scoreElement(el, target, c.weight, { requireVisible });
           if (score > bestScore) { best = el; bestScore = score; }
@@ -513,12 +737,12 @@
     }
     if (target?.label) {
       const needle = normalizeText(target.label).slice(0, 120);
-      const labels = querySelectorAllDeep('label,[aria-label],[title],[data-field],[data-testid],[data-test-id]', options.shadowSearch !== false, document, 3000);
+      const labels = querySelectorAllDeep('label,[aria-label],[label],[data-label],[data-label-text],[title],[placeholder],[data-field],[data-field-name],[data-name],[data-column],[data-testid],[data-test-id],now-input,now-textarea,now-select,now-record-picker,sn-record-picker', options.shadowSearch !== false, document, 6000);
       for (const lab of labels) {
-        const txt = normalizeText(lab.innerText || lab.textContent || lab.getAttribute('aria-label') || lab.getAttribute('title') || '');
+        const txt = normalizeText(elementTextAndAttrs(lab));
         if (needle && (txt === needle || txt.includes(needle) || needle.includes(txt))) {
           for (const el of controlsNearLabel(lab)) {
-            const score = scoreElement(el, target, 26, { requireVisible });
+            const score = scoreElement(el, target, 28, { requireVisible });
             if (score > bestScore) { best = el; bestScore = score; }
           }
         }
@@ -526,20 +750,24 @@
     }
     if (target?.text || target?.label) {
       const needle = normalizeText(target.text || target.label || '').slice(0, 100);
-      const poolSelector = 'button,a,input,textarea,select,[role="button"],[role="link"],[role="textbox"],[role="combobox"],label,div,span,[contenteditable="true"]';
-      let all = querySelectorAllDeep(poolSelector, options.shadowSearch !== false, document, 5000);
-      if (requireVisible) all = all.filter(isVisible);
+      const poolSelector = `button,a,${BF_FIELD_CONTROL_SELECTOR},[role="button"],[role="link"],label,div,span,now-button`;
+      let all = querySelectorAllDeep(poolSelector, options.shadowSearch !== false, document, 8000);
+      if (requireVisible) all = all.filter(el => isVisible(el) || isVisible(snowFieldHostFor(el)));
       for (const raw of all) {
         const el = fieldControlIn(raw);
-        const hay = normalizeText(el.innerText || el.value || el.textContent || labelFor(el) || el.getAttribute('title') || '');
+        const hay = normalizeText(elementTextAndAttrs(el) || labelFor(el));
         if (needle && hay.includes(needle)) {
           const score = scoreElement(el, target, 18, { requireVisible });
           if (score > bestScore) { best = el; bestScore = score; }
         }
       }
     }
-    return bestScore >= (requireVisible ? 20 : 15) ? best : null;
+    const threshold = isServiceNowContext() ? (requireVisible ? 14 : 10) : (requireVisible ? 20 : 15);
+    if (requireClickable && best) return closestClickable(best) || best;
+    return bestScore >= threshold ? best : null;
   }
+
+
 
   function showBadge(text) {
     removeBadge();
@@ -754,7 +982,7 @@
   }
 
   function closestClickable(el) {
-    return el?.closest?.('button,a,[role="button"],[role="link"],input[type="button"],input[type="submit"],summary,label,[tabindex]') || el;
+    return el?.closest?.('button,a,now-button,[role="button"],[role="link"],input[type="button"],input[type="submit"],summary,label,[tabindex]') || shadowHostFor(el)?.closest?.('button,a,now-button,[role="button"],[role="link"],[tabindex]') || el;
   }
 
   function closestRow(el) {
@@ -769,7 +997,7 @@
     const row = closestRow(el);
     const base = row || closestPanel(el) || el?.parentElement;
     if (!base) return null;
-    return base.querySelector('button,a,[role="button"],[role="link"],input[type="button"],input[type="submit"]');
+    return querySelectorAllDeep('button,a,now-button,[role="button"],[role="link"],input[type="button"],input[type="submit"]', true, base, 20)[0] || null;
   }
 
   function spinnerCandidates(selector = '') {
@@ -853,6 +1081,13 @@
 
   function getElementValue(el, mode = 'auto', attributeName = 'title') {
     if (!el) return '';
+    const host = isServiceNowFieldHost(el) ? el : snowFieldHostFor(el);
+    if (host && host === el && mode === 'auto') {
+      const inner = querySelectorAllDeep(fieldSelectorForChildren(), true, host.shadowRoot || host, 8).find(x => x !== host);
+      if (inner) return getElementValue(inner, mode, attributeName);
+      const hostValue = getAttrOrPropAny(host, ['value','displayValue','display-value','selectedValue','selected-value','text','label','aria-label','title']);
+      if (hostValue) return String(hostValue).trim();
+    }
     const tag = el.tagName?.toLowerCase();
     if (mode === 'html') return el.innerHTML || '';
     if (mode === 'attribute') return el.getAttribute(attributeName || 'title') || '';
@@ -867,25 +1102,55 @@
       return el.value || el.getAttribute('value') || el.getAttribute('title') || el.getAttribute('aria-label') || '';
     }
     if (tag === 'textarea') return el.value || el.textContent || el.getAttribute('title') || el.getAttribute('aria-label') || '';
-    if (el.isContentEditable) return (el.innerText || el.textContent || '').trim();
+    if (el.isContentEditable || el.getAttribute?.('contenteditable') != null || el.classList?.contains('ql-editor')) return (el.innerText || el.textContent || '').trim();
     const role = el.getAttribute('role') || '';
     if (['textbox','combobox','searchbox'].includes(role)) return (el.value || el.getAttribute('aria-valuetext') || el.getAttribute('aria-label') || el.innerText || el.textContent || '').trim();
     return (el.value || el.innerText || el.textContent || el.getAttribute('title') || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim();
   }
 
+  function valueSetterFor(el) {
+    const tag = el?.tagName?.toLowerCase?.();
+    const preferred = tag === 'textarea' ? HTMLTextAreaElement.prototype : tag === 'select' ? HTMLSelectElement.prototype : tag === 'input' ? HTMLInputElement.prototype : null;
+    if (preferred) {
+      const desc = Object.getOwnPropertyDescriptor(preferred, 'value');
+      if (desc?.set) return desc.set;
+    }
+    let proto = el ? Object.getPrototypeOf(el) : null;
+    while (proto) {
+      const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+      if (desc?.set) return desc.set;
+      proto = Object.getPrototypeOf(proto);
+    }
+    return null;
+  }
+
   function setNativeValue(el, value) {
+    if (!el) return;
     const tag = el.tagName?.toLowerCase();
-    const proto = tag === 'textarea' ? HTMLTextAreaElement.prototype : tag === 'select' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
-    const desc = Object.getOwnPropertyDescriptor(proto, 'value');
-    if (desc && desc.set && 'value' in el) desc.set.call(el, value);
-    else if ('value' in el) el.value = value;
+    if (el.isContentEditable || el.getAttribute?.('contenteditable') != null || el.classList?.contains('ql-editor')) {
+      el.textContent = String(value ?? '');
+      return;
+    }
+    const setter = valueSetterFor(el);
+    if (setter && 'value' in el) {
+      try { setter.call(el, value); return; } catch (_) {}
+    }
+    if ('value' in el) el.value = value;
+    else if ('text' in el) { try { el.text = value; } catch (_) { el.textContent = value; } }
     else el.textContent = value;
   }
 
+  function dispatchBeforeInput(el, value = '') {
+    if (!el) return;
+    try { el.dispatchEvent(new InputEvent('beforeinput', { data: String(value), inputType: 'insertText', bubbles: true, composed: true, cancelable: true })); }
+    catch (_) { el.dispatchEvent(new Event('beforeinput', { bubbles: true, composed: true, cancelable: true })); }
+  }
+
   function dispatchFrameworkEvents(el, opts = {}) {
-    const events = ['input','change'];
-    for (const name of events) el.dispatchEvent(new Event(name, { bubbles: true, composed: true }));
-    el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, composed: true, key: '' }));
+    dispatchBeforeInput(el, opts.data || '');
+    el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+    el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, composed: true, key: opts.key || '' }));
     if (opts.blurAfter !== false) { try { el.blur(); } catch (_) {} el.dispatchEvent(new Event('blur', { bubbles: true, composed: true })); }
   }
 
@@ -895,6 +1160,7 @@
     dispatchFrameworkEvents(el, { blurAfter: false });
     for (const ch of String(value)) {
       el.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true, composed: true }));
+      dispatchBeforeInput(el, ch);
       setNativeValue(el, (el.value || el.textContent || '') + ch);
       el.dispatchEvent(new InputEvent('input', { data: ch, inputType: 'insertText', bubbles: true, composed: true }));
       el.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true, composed: true }));
@@ -903,16 +1169,62 @@
     dispatchFrameworkEvents(el);
   }
 
+  function fieldWriteTargets(el) {
+    const host = isServiceNowFieldHost(el) ? el : snowFieldHostFor(el);
+    const inner = host ? querySelectorAllDeep(fieldSelectorForChildren(), true, host.shadowRoot || host, 12).find(x => x !== host) : null;
+    return uniqueElements([inner, el, host].filter(Boolean));
+  }
+
+  function setHostServiceNowValue(host, value) {
+    if (!host || !isServiceNowFieldHost(host)) return;
+    for (const prop of ['value','displayValue','selectedValue','text']) {
+      try { if (prop in host) host[prop] = value; } catch (_) {}
+    }
+    for (const attr of ['value','display-value','selected-value']) {
+      try { host.setAttribute(attr, String(value ?? '')); } catch (_) {}
+    }
+  }
+
+  async function setServiceNowElementValueCompat(el, value, block = {}) {
+    const targets = fieldWriteTargets(el);
+    const primary = targets.find(t => ['input','textarea','select'].includes(t.tagName?.toLowerCase?.())) || targets.find(t => t.isContentEditable || t.getAttribute?.('contenteditable') != null || ['textbox','combobox','searchbox'].includes(t.getAttribute?.('role') || '')) || targets[0] || el;
+    const host = targets.find(isServiceNowFieldHost) || snowFieldHostFor(primary);
+    try { primary.focus(); } catch (_) { try { host?.focus(); } catch (_) {} }
+    for (const t of targets) dispatchBeforeInput(t, value);
+    const tag = primary.tagName?.toLowerCase();
+    if (tag === 'select') {
+      const text = String(value);
+      const opt = Array.from(primary.options || []).find(o => o.value === text || (o.textContent || '').trim() === text);
+      if (opt) primary.value = opt.value; else setNativeValue(primary, value);
+    } else if (primary.getAttribute?.('type') === 'checkbox') {
+      primary.checked = ['true','1','yes','igen','on'].includes(String(value).toLowerCase());
+    } else if (primary.getAttribute?.('type') === 'radio') {
+      primary.checked = true;
+    } else {
+      setNativeValue(primary, value);
+    }
+    setHostServiceNowValue(host, value);
+    for (const t of targets) dispatchFrameworkEvents(t, { blurAfter: false, data: value });
+    if (block.blurAfter !== false) { try { primary.blur(); } catch (_) {} try { host?.blur?.(); } catch (_) {} }
+  }
+
   async function setElementValueCompat(el, value, block = {}) {
     const mode = block.fillMode || 'framework';
+    const snowCompat = isServiceNowContext() || isServiceNowElement(el) || Boolean(snowFieldHostFor(el));
+    if (snowCompat && mode !== 'typing' && mode !== 'paste') {
+      await setServiceNowElementValueCompat(el, value, block);
+      return;
+    }
     el.focus();
     if (mode === 'typing') { await simulatedType(el, value, Number(block.typeDelayMs || 25)); return; }
     if (mode === 'paste') {
+      dispatchBeforeInput(el, value);
       setNativeValue(el, value);
       el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, composed: true, clipboardData: new DataTransfer() }));
-      dispatchFrameworkEvents(el, { blurAfter: block.blurAfter !== false });
+      dispatchFrameworkEvents(el, { blurAfter: block.blurAfter !== false, data: value });
       return;
     }
+    dispatchBeforeInput(el, value);
     if (el.tagName?.toLowerCase() === 'select') {
       const text = String(value);
       const opt = Array.from(el.options || []).find(o => o.value === text || (o.textContent || '').trim() === text);
@@ -925,9 +1237,15 @@
       if (mode === 'simple') { if ('value' in el) el.value = value; else el.textContent = value; }
       else setNativeValue(el, value);
     }
-    if (mode !== 'simple') dispatchFrameworkEvents(el, { blurAfter: block.blurAfter !== false });
+    if (mode !== 'simple') dispatchFrameworkEvents(el, { blurAfter: block.blurAfter !== false, data: value });
     else el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
   }
+
+  function shouldSoftFailMissingField(block) {
+    return isServiceNowContext() && ['fill','selectOption','extract','fieldByLabel'].includes(String(block?.type || ''));
+  }
+
+
 
   async function waitForText(text, timeoutMs = 5000, caseSensitive = false) {
     const start = Date.now();
@@ -1312,22 +1630,29 @@
     if (!needleRaw) return null;
     const needle = block.caseSensitive ? needleRaw : needleRaw.toLowerCase();
     const mode = block.matchMode || 'contains';
-    const candidates = querySelectorAllDeep('label,[aria-label],[title],[placeholder],[data-field],[data-name],[data-testid],[data-test-id],[role="textbox"],[role="combobox"],span,div', block.shadowSearch !== false, getSearchRoot(), 6000);
+    const candidates = querySelectorAllDeep(`label,[aria-label],[label],[data-label],[data-label-text],[title],[placeholder],[data-field],[data-field-name],[data-name],[data-column],[data-testid],[data-test-id],[role="textbox"],[role="combobox"],span,div,${BF_SNOW_HOST_SELECTOR}`, block.shadowSearch !== false, getSearchRoot(), 9000);
     function ok(text) {
       let t = String(text || '').trim();
       if (!block.caseSensitive) t = t.toLowerCase();
       if (!needle) return false;
       return mode === 'equals' ? t === needle : t.includes(needle);
     }
+    let best = null;
+    let bestScore = -999;
     for (const lab of candidates) {
-      const txt = lab.innerText || lab.textContent || lab.getAttribute('aria-label') || lab.getAttribute('title') || lab.getAttribute('placeholder') || lab.getAttribute('data-field') || lab.getAttribute('data-name') || '';
+      const txt = elementTextAndAttrs(lab);
       if (!ok(txt)) continue;
       const controls = controlsNearLabel(lab);
-      const found = controls.find(Boolean) || fieldControlIn(lab) || lab;
-      if (found) return found;
+      const pool = controls.length ? controls : [fieldControlIn(lab), lab].filter(Boolean);
+      for (const found of pool) {
+        const score = (isServiceNowFieldHost(lab) ? 40 : 20) + (isVisible(found) ? 8 : 0) + (ok(labelFor(found)) ? 12 : 0);
+        if (score > bestScore) { best = found; bestScore = score; }
+      }
     }
-    return null;
+    return best;
   }
+
+
 
   async function tableCellValueWithVirtualScroll(container, block, vars = {}) {
     let value = tableCellValue(container, block);
@@ -1923,7 +2248,10 @@
     if (block.type === 'fill') {
       const target = targetForBlock(block, vars);
       const el = await waitForElement(target, Number(block.timeoutMs || 5000), { shadowSearch: block.shadowSearch !== false });
-      if (!el) throw new Error(rt('runtime.fieldNotFound', { label: target?.label || block.target?.label || rt('runtime.notSpecified') }));
+      if (!el) {
+        if (shouldSoftFailMissingField(block)) return { ok: true, skipped: true, value: '', reason: 'snow-field-not-found' };
+        throw new Error(rt('runtime.fieldNotFound', { label: target?.label || block.target?.label || rt('runtime.notSpecified') }));
+      }
       const value = interpolate(block.value || '', vars);
       await scrollElementIntoViewSmart(el, { block, align: 'center' });
       el.classList.add('bf-run-outline');
@@ -1934,7 +2262,10 @@
     if (block.type === 'selectOption') {
       const target = targetForBlock(block, vars);
       const root = await waitForElement(target, Number(block.timeoutMs || 5000), { requireVisible: true, shadowSearch: block.shadowSearch !== false });
-      if (!root) throw new Error(rt('runtime.dropdownNotFound', { label: target?.label || block.target?.label || rt('runtime.notSpecified') }));
+      if (!root) {
+        if (shouldSoftFailMissingField(block)) return { ok: true, skipped: true, value: '', reason: 'snow-dropdown-not-found' };
+        throw new Error(rt('runtime.dropdownNotFound', { label: target?.label || block.target?.label || rt('runtime.notSpecified') }));
+      }
       const optionText = interpolate(block.optionText || '', vars);
       if (!dryRun) root.click();
       await sleep(Number(block.openDelayMs || 250));
@@ -1963,7 +2294,10 @@
           if (after === before) break;
         }
       }
-      if (!opt) throw new Error(rt('runtime.dropdownOptionNotFound', { option: optionText }));
+      if (!opt) {
+        if (shouldSoftFailMissingField(block)) return { ok: true, skipped: true, value: '', reason: 'snow-option-not-found' };
+        throw new Error(rt('runtime.dropdownOptionNotFound', { option: optionText }));
+      }
       await scrollElementIntoViewSmart(opt, { block, align: 'center' });
       opt.classList.add('bf-run-outline');
       if (!dryRun) opt.click();
@@ -1974,7 +2308,10 @@
       const requireVisible = (block.searchScope || 'dom') === 'visible' || block.allowHidden === false;
       const target = targetForBlock(block, vars);
       const el = await waitForElement(target, Number(block.timeoutMs || 5000), { requireVisible, shadowSearch: block.shadowSearch !== false });
-      if (!el) throw new Error(rt('runtime.extractElementNotFound', { label: target?.label || block.target?.label || rt('runtime.notSpecified') }));
+      if (!el) {
+        if (shouldSoftFailMissingField(block)) { vars[block.varName || 'adat'] = ''; return { ok: true, skipped: true, value: '', reason: 'snow-extract-target-not-found' }; }
+        throw new Error(rt('runtime.extractElementNotFound', { label: target?.label || block.target?.label || rt('runtime.notSpecified') }));
+      }
       const val = getElementValue(el, block.extractMode || 'auto', block.attributeName || 'title');
       vars[block.varName || 'adat'] = val;
       return { ok: true, value: val };
@@ -2056,7 +2393,16 @@
     }
     if (block.type === 'fieldByLabel') {
       const el = findFieldByLabelText(interpolate(block.labelText || '', vars), block);
-      if (!el) throw new Error(rt('runtime.fieldByLabelNotFound', { label: block.labelText || '' }));
+      if (!el) {
+        if (shouldSoftFailMissingField(block)) {
+          vars[block.resultName || 'mezo_ertek'] = '';
+          vars[block.selectorName || 'mezo_selector'] = '';
+          vars[block.xpathName || 'mezo_xpath'] = '';
+          vars[block.elementName || 'mezo_elem'] = '';
+          return { ok: true, skipped: true, value: '', reason: 'snow-field-by-label-not-found' };
+        }
+        throw new Error(rt('runtime.fieldByLabelNotFound', { label: block.labelText || '' }));
+      }
       const val = getElementValue(el, 'auto');
       vars[block.resultName || 'mezo_ertek'] = val;
       vars[block.selectorName || 'mezo_selector'] = cssPath(el);
@@ -3313,7 +3659,7 @@
       if (msg?.type === 'BF_TEST_POPUP') { const p = findPopup(); sendResponse({ ok: Boolean(p), text: p ? (p.innerText || '').slice(0, 500) : '' }); return; }
       if (msg?.type === 'BF_EXTRACT_ONCE') {
         const el = await waitForElement(msg.target, Number(msg.timeoutMs || 5000), { requireVisible: false });
-        if (!el) { sendResponse({ ok: false, error: rt('runtime.extractTargetNotFound') }); return; }
+        if (!el) { sendResponse(isServiceNowContext() ? { ok: true, value: '' } : { ok: false, error: rt('runtime.extractTargetNotFound') }); return; }
         sendResponse({ ok: true, value: getElementValue(el, msg.extractMode || 'auto', msg.attributeName || 'title') });
         return;
       }

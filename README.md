@@ -1,9 +1,20 @@
-# BlockFlow Automation MVP 0.62.2
+# BlockFlow Automation MVP 0.62.3
 
 BlockFlow egy lokális Chrome extension, amellyel általános weboldalakon lehet böngészőautomatizmusokat összeállítani vizuális, blokkos felületen. A cél az, hogy a gyakori adminisztrációs, adatgyűjtési, email-előkészítési, figyelési és riportkészítési folyamatokat programozás nélkül lehessen felépíteni.
 
 Az extension nem használ AI-t, és nem küld adatot külső szolgáltatásnak. A workflow-k, sablonok, lokális adatok és beállítások a Chrome extension storage-ban maradnak.
 
+
+
+## v0.62.3 fő újdonságok - ServiceNow / SNOW kompatibilitás
+
+- **Modern ServiceNow Workspace támogatás**: külön kompatibilitási réteg került be a `/now/cwf/agent/...` jellegű CSM/FSM Configurable Workspace oldalakhoz.
+- **Deep shadow DOM keresés**: a célkeresés bejárja az open shadow DOM fákat és a slotolt elemeket is, ezért nem csak klasszikus iframe-es SNOW felületeken használható.
+- **SNOW mezőtípusok támogatása**: `now-input`, `now-textarea`, `now-select`, `now-record-picker`, `sn-record-picker`, `role="textbox"`, `contenteditable` és rich text jellegű mezők kezelése.
+- **Többlépcsős célkeresési fallback**: CSS selector, shadow CSS útvonal, XPath, label, aria, placeholder, title és ServiceNow/data attribútumok alapján is próbál mezőt találni.
+- **Framework-kompatibilis beszúrás**: natív value setteres értékadás, host + belső input kezelése, majd `beforeinput`, `input`, `change`, `keyup` események küldése.
+- **Hibatűrő SNOW mezőkezelés**: ServiceNow környezetben a hiányzó vagy nem elérhető mező nem állítja meg a workflow-t; az érintett érték üres marad.
+- **Normál weboldalak védelme**: a SNOW logika kompatibilitási rétegként fut, és csak ServiceNow-jellegű oldalakon vagy SNOW webkomponenseken aktiválódik.
 
 ## v0.62.2 fő újdonságok
 
