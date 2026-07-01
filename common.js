@@ -1,5 +1,5 @@
 const BF = (() => {
-  const SCHEMA_VERSION = 22;
+  const SCHEMA_VERSION = 26;
 
   const DEFAULT_WORKFLOW = () => ({
     id: crypto.randomUUID(),
@@ -11,6 +11,7 @@ const BF = (() => {
     publicLogWidth: 280,
     publicLogOpacity: 0.82,
     publicLogDownload: true,
+    triggerStartBadgeEnabled: true,
     blocks: []
   });
 
@@ -18,6 +19,7 @@ const BF = (() => {
     trigger: { name: 'Indítás', desc: 'A workflow manuálisan indul.' },
     triggerGroup: { name: 'Figyelő trigger', desc: 'Indító-konténer: feltételek alapján automatikusan indítja a workflow-t.' },
     clickTrigger: { name: 'Kattintás trigger', desc: 'Automatikus indító: akkor indul, amikor a felhasználó a kiválasztott elemre kattint.' },
+    textShortcut: { name: 'Hotkey / szövegcsere', desc: 'Beírt rövidítést cserél hosszabb szövegre aktív mezőkben, például thx → Thank you in advance.' },
     conditionText: { name: 'Feltétel: szöveg', desc: 'Igaz, ha a megadott szöveg vagy karakter megjelenik az oldalon.' },
     conditionElement: { name: 'Feltétel: elem', desc: 'Igaz, ha a kiválasztott elem megtalálható az oldalon.' },
     conditionField: { name: 'Feltétel: mezőérték', desc: 'Igaz, ha egy mező értéke megfelel a megadott feltételnek.' },
@@ -42,7 +44,7 @@ const BF = (() => {
     mask: { name: 'Maszkolás', desc: 'Kinyert adat maszkolása karakterek vagy sorok alapján.' },
     userPrompt: { name: 'Felhasználói üzenet', desc: 'Futás közben felugró ablakot mutat, opcionálisan visszajelzésre vár.' },
     pageButton: { name: 'Oldalba illesztett gomb', desc: 'Gombot szúr be az aktuális oldalba, és kattintásig vár.' },
-    pageControlPanel: { name: 'Oldalba illesztett vezérlőpanel', desc: 'Több gombos panelt szúr be az oldalba. A gombok műveletcsoportokat indítanak.' },
+    pageControlPanel: { name: 'Oldalba illesztett vezérlőpanel', desc: 'Több gombos, testreszabható panelt szúr be az oldalba. A gombok műveletcsoportokat indítanak.' },
     actionGroup: { name: 'Műveletcsoport', desc: 'Névvel hívható blokkcsoport. Nem fut automatikusan, panelgomb vagy későbbi hívás indítja.' },
 
     transform: { name: 'Adat átalakítása', desc: 'Szöveg tisztítása, kis/nagybetű, számok/betűk megtartása.' },
@@ -105,6 +107,7 @@ const BF = (() => {
     { cat: 'Indítás', type: 'trigger' },
     { cat: 'Indítás', type: 'triggerGroup' },
     { cat: 'Indítás', type: 'clickTrigger' },
+    { cat: 'Indítás', type: 'textShortcut' },
     { cat: 'Indítás', type: 'scheduledTrigger' },
     { cat: 'Figyelő feltételek', type: 'conditionText' },
     { cat: 'Figyelő feltételek', type: 'conditionElement' },
@@ -195,8 +198,9 @@ const BF = (() => {
     if (type === 'injectCss') return { id, type, mode: 'add', styleId: 'blockflow-custom-style', cssText: '', replaceExisting: true, resultName: 'css_injektalva' };
     if (type === 'extract') return { id, type, target: null, extractMode: 'auto', searchScope: 'dom', allowHidden: true, varName: 'adat', timeoutMs: 5000 };
     if (type === 'wait') return { id, type, waitMode: 'time', ms: 1000, text: '', target: null, timeoutMs: 5000 };
-    if (type === 'triggerGroup') return { id, type, triggerEnabled: true, logic: 'all', scope: 'domain', domain: '', path: '/', url: '', urlContains: '', intervalSec: 2, throttleSec: 15, runOnce: false, children: [] };
-    if (type === 'clickTrigger') return { id, type, triggerEnabled: true, target: null, scope: 'domain', domain: '', path: '/', url: '', urlContains: '', throttleSec: 15, runOnce: false };
+    if (type === 'triggerGroup') return { id, type, triggerEnabled: true, logic: 'all', scope: 'domain', domain: '', path: '/', url: '', urlContains: '', intervalSec: 2, throttleSec: 15, repeatMode: 'continuous', runOnce: false, children: [] };
+    if (type === 'clickTrigger') return { id, type, triggerEnabled: true, target: null, scope: 'domain', domain: '', path: '/', url: '', urlContains: '', throttleSec: 15, repeatMode: 'continuous', runOnce: false };
+    if (type === 'textShortcut') return { id, type, triggerEnabled: true, scope: 'domain', domain: '', path: '/', url: '', urlContains: '', shortcut: 'thx', replacement: 'Thank you in advance', delimiterKeys: 'Space,Enter,Tab', keepDelimiter: true, caseSensitive: true, matchMode: 'word', showFeedback: true };
     if (type === 'conditionText') return { id, type, text: '', caseSensitive: false };
     if (type === 'conditionElement') return { id, type, target: null, requireVisible: true };
     if (type === 'conditionField') return { id, type, target: null, operator: 'contains', value: '', caseSensitive: false };
@@ -221,7 +225,7 @@ const BF = (() => {
     if (type === 'fieldByLabel') return { id, type, labelText: '', matchMode: 'contains', caseSensitive: false, shadowSearch: true, resultName: 'mezo_ertek', selectorName: 'mezo_selector', xpathName: 'mezo_xpath', elementName: 'mezo_elem' };
     if (type === 'setVar') return { id, type, varName: 'valtozo', value: '' };
     if (type === 'pageButton') return { id, type, label: 'Folytatás', tooltip: 'Kattints a BlockFlow folytatásához', waitForClick: true, position: 'bottomRight', target: null, placement: 'floating', customRight: 24, customBottom: 24, customUnit: 'px', customZIndex: 2147483647, timeoutSec: 300, onTimeout: 'stop', removeAfterClick: true, resultName: 'button_clicked' };
-    if (type === 'pageControlPanel') return { id, type, title: 'BlockFlow vezérlő', panelId: 'main', position: 'bottomRight', customRight: 24, customBottom: 24, customUnit: 'px', customZIndex: 2147483647, width: 260, buttonsText: 'Screenshot | add_screenshot\nLetöltés / Lezárás | export_report', duplicateMode: 'keep', showStatus: true, closeButton: true };
+    if (type === 'pageControlPanel') return { id, type, title: 'BlockFlow vezérlő', panelId: 'main', position: 'bottomRight', customRight: 24, customBottom: 24, customUnit: 'px', customZIndex: 2147483647, width: 260, panelTheme: 'dark', panelOpacityPct: 94, panelPadding: 10, panelRadius: 16, layout: 'vertical', buttonColumns: 2, buttonSize: 'normal', buttonMinHeight: 38, buttonPaddingY: 8, buttonPaddingX: 11, buttonGap: 8, buttonFontSize: 13, buttonRadius: 10, buttonOpacityPct: 100, buttonStyle: 'primary', buttonAlign: 'center', buttonRowAlign: 'stretch', buttonsText: 'Screenshot | add_screenshot\nLetöltés / Lezárás | export_report', duplicateMode: 'keep', showHeader: true, showStatus: true, closeButton: true };
     if (type === 'actionGroup') return { id, type, title: 'Műveletcsoport', actionKey: 'action_' + String(id).slice(0, 6), clearSessionAfterRun: false, children: [] };
     if (type === 'userInput') return { id, type, title: 'Adat bekérése', message: 'Adj meg egy értéket:', inputType: 'text', placeholder: '', defaultValue: '', resultName: 'user_input', feedbackStyle: 'default', accent: 'blue', windowSize: 'normal' };
     if (type === 'userChoice') return { id, type, title: 'Választás', message: 'Válassz egy opciót:', options: 'Igen\nNem', resultName: 'valasztas', feedbackStyle: 'default', accent: 'blue', windowSize: 'normal' };
@@ -282,6 +286,7 @@ const BF = (() => {
     if (block.type === 'wait') return block.waitMode === 'time' ? `Várj ${block.ms || 1000} ms` : `Várakozás: ${block.waitMode}`;
     if (block.type === 'triggerGroup') return `Figyelő trigger: ${triggerLogicLabel(block.logic || 'all')}`;
     if (block.type === 'clickTrigger') return `Kattintás trigger: ${block.target?.label || 'nincs cél elem'}`;
+    if (block.type === 'textShortcut') return `Hotkey szövegcsere: ${short(block.shortcut || '')} → ${short(block.replacement || '')}`;
     if (block.type === 'conditionText') return `Feltétel: szöveg megjelenik: ${short(block.text || 'szöveg/karakter')}`;
     if (block.type === 'conditionElement') return `Feltétel: elem megjelenik: ${block.target?.label || 'nincs kiválasztva'}`;
     if (block.type === 'conditionField') return `Feltétel: mezőérték ${operatorLabel(block.operator || 'contains')} ${short(block.value || '')}`;
@@ -363,6 +368,7 @@ const BF = (() => {
     if (block.conditionMode === 'textExists') return `szöveg létezik: ${short(block.text || '')}`;
     if (block.conditionMode === 'elementExists') return `elem létezik: ${block.target?.label || 'nincs elem'}`;
     if (block.conditionMode === 'valueContains') return `elem értéke tartalmazza: ${short(block.value || '')}`;
+    if (block.conditionMode === 'valueEmpty') return `elem értéke üres: ${block.target?.label || 'nincs elem'}`;
     if (block.conditionMode === 'urlContains') return `URL tartalmazza: ${short(block.value || '')}`;
     return block.conditionMode || 'feltétel';
   }
@@ -412,6 +418,7 @@ const BF = (() => {
     }
     if (block.type === 'conditionText') return `${block.caseSensitive ? 'kis/nagybetű számít' : 'kis/nagybetű nem számít'} · ${short(block.text || '')}`;
     if (block.type === 'clickTrigger') return block.target?.label || 'Nincs cél elem';
+    if (block.type === 'textShortcut') return `${block.triggerEnabled === false ? 'inaktív' : 'aktív'} · ${short(block.shortcut || '')} → ${short(block.replacement || '')} · ${block.delimiterKeys || 'Space,Enter,Tab'}`;
     if (block.type === 'conditionElement') return block.target?.label || 'Nincs cél elem';
     if (block.type === 'conditionField') return `${block.target?.label || 'nincs mező'} · ${operatorLabel(block.operator || 'contains')} · ${short(block.value || '')}`;
     if (block.type === 'conditionUrl') return `${operatorLabel(block.operator || 'contains')} · ${short(block.value || '')}`;
@@ -421,7 +428,7 @@ const BF = (() => {
     if (block.type === 'rowLoop') return `Max sor: ${block.maxRows || 20} · gyermek blokkok: ${(block.children||[]).length}`;
     if (block.type === 'email') return `Címzett: ${block.to || ''} | Tárgy: ${short(block.subject || '')}`;
     if (block.type === 'copy') return short(block.value || '');
-    if (block.type === 'pageControlPanel') return `${String(block.buttonsText || '').split(/\r?\n/).filter(Boolean).length} gomb · ${block.duplicateMode || 'keep'}`;
+    if (block.type === 'pageControlPanel') return `${String(block.buttonsText || '').split(/\r?\n/).filter(Boolean).length} gomb · ${block.layout || 'vertical'} · ${block.buttonRowAlign || 'stretch'} · ${block.panelTheme || 'dark'} · ${block.duplicateMode || 'keep'}`;
     if (block.type === 'actionGroup') return `${(block.children || []).length} blokk${block.clearSessionAfterRun ? ' · munkamenet törlése futás után' : ''}`;
     if (block.type === 'mask') return `${block.maskMode === 'lines' ? 'Soralapú' : 'Karakteralapú'}${block.invertMask ? ' · invert' : ''}${block.clearTrim ? ' · clear/trim' : ''} · Forrás: ${short(block.source || '')}`;
     if (block.type === 'textSearch') return `${block.searchScope === 'visible' ? 'látható szöveg' : block.searchScope === 'dom' ? 'teljes DOM' : 'teljes oldal'} · selector: {{${block.selectorName || 'szoveg_talalat_selector'}}} · sor: {{${block.rowSelectorName || 'szoveg_talalat_sor_selector'}}}`;
@@ -655,7 +662,7 @@ const BF = (() => {
     extract: ['dom','elementRef','read'], textSearch: ['dom','textSearch','scrollSearch'], tableExtract: ['dom','table'],
     screenshot: ['tabs','capture'], pdfSave: ['downloads','pdf'], docxSave: ['downloads','docx'], systemNotify: ['notifications'],
     clipboardRead: ['clipboardRead'], copy: ['clipboardWrite'], openEmail: ['tabs','mailto','clipboardWrite'], openUrl: ['tabs'],
-    triggerGroup: ['watcher','storage'], clickTrigger: ['clickWatcher','storage'], scheduledTrigger: ['alarms','storage'],
+    triggerGroup: ['watcher','storage'], clickTrigger: ['clickWatcher','storage'], textShortcut: ['textShortcut','storage'], scheduledTrigger: ['alarms','storage'],
     userPrompt: ['feedbackWindow'], userInput: ['feedbackWindow'], userChoice: ['feedbackWindow'], emailPreview: ['feedbackWindow'],
     pageButton: ['pageOverlay'], pageControlPanel: ['pageOverlay','actionGroups','session'], actionGroup: ['actionGroups','session'], sound: ['audio'], localSet: ['storage'], localGet: ['storage']
   };
@@ -723,6 +730,7 @@ const BF = (() => {
       if (b.type === 'trigger') starterCount++;
       if (b.type === 'triggerGroup' && b.triggerEnabled !== false) starterCount++;
       if (b.type === 'clickTrigger' && b.triggerEnabled !== false) starterCount++;
+      if (b.type === 'textShortcut' && b.triggerEnabled !== false) starterCount++;
       if (b.type === 'scheduledTrigger' && b.triggerEnabled !== false) starterCount++;
     });
     if (!starterCount) issues.push({ level:'error', blockId:null, text:t('validation.missingStarter') });
@@ -742,9 +750,11 @@ const BF = (() => {
       if (needsTarget.includes(b.type) && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:t('validation.blockMissingTarget', { block: BLOCKS[b.type]?.name || b.type }) });
       if (b.type === 'triggerGroup' && b.triggerEnabled !== false && !(b.children || []).length) issues.push({ level:'error', blockId:b.id, text:t('validation.watcherNeedsCondition') });
       if (b.type === 'clickTrigger' && b.triggerEnabled !== false && !b.target) issues.push({ level:'error', blockId:b.id, text:t('validation.clickTriggerMissingTarget') });
+      if (b.type === 'textShortcut' && b.triggerEnabled !== false && !String(b.shortcut || '').trim()) issues.push({ level:'error', blockId:b.id, text:t('validation.textShortcutMissingShortcut') });
+      if (b.type === 'textShortcut' && b.triggerEnabled !== false && String(b.replacement ?? '') === '') issues.push({ level:'warning', blockId:b.id, text:t('validation.textShortcutEmptyReplacement') });
       if ((b.type === 'conditionElement' || b.type === 'conditionField' || b.type === 'conditionChange') && !b.target) issues.push({ level:'error', blockId:b.id, text:t('validation.blockMissingTarget', { block: BLOCKS[b.type]?.name || b.type }) });
       if (b.type === 'wait' && b.waitMode === 'element' && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:t('validation.waitElementMissingTarget') });
-      if (b.type === 'ifBlock' && ['elementExists','valueContains'].includes(b.conditionMode) && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:t('validation.ifMissingTarget') });
+      if (b.type === 'ifBlock' && ['elementExists','valueContains','valueEmpty'].includes(b.conditionMode) && !b.target && !hasDynamicTarget(b)) issues.push({ level:'error', blockId:b.id, text:t('validation.ifMissingTarget') });
       if (b.type === 'ifBlock' && b.conditionMode === 'textExists' && !String(b.text||'').trim()) issues.push({ level:'warning', blockId:b.id, text:t('validation.ifEmptySearchText') });
       if (b.type === 'conditionText' && !String(b.text||'').trim()) issues.push({ level:'error', blockId:b.id, text:t('validation.conditionTextEmpty') });
       if (b.type === 'conditionUrl' && !['empty','notEmpty'].includes(b.operator || 'contains') && !String(b.value||'').trim()) issues.push({ level:'error', blockId:b.id, text:t('validation.conditionUrlMissingValue') });

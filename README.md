@@ -1,9 +1,72 @@
-# BlockFlow Automation MVP 0.62.3
+# BlockFlow Automation MVP
+
+## v0.62.11
+
+- Javítva a Builder felső workflow fejlécének reszponzív tördelése.
+- A Record / Rec vezérlő alapértelmezett ablakméretnél nem szorul ki a jobb oldali beállítás panel alá.
+- A workflow névmező, Másolat, Ellenőrzött, Public log, Trigger jelzés és Rec vezérlők szükség esetén több sorba törnek.
+- A javítás csak a Builder kinézetét érinti, a workflow-k működését és mentett adatait nem módosítja.
+
+
+## v0.62.10 - HA blokk: érték üres feltétel
+
+- A **Logika / Ha...** blokk új feltételt kapott: **Elem értéke üres**.
+- Kiválasztott mezőn vagy oldalelemen ellenőrzi, hogy a tényleges felhasználói érték üres-e.
+- Text input, textarea, select, contenteditable/rich text, role="textbox" és ServiceNow/SNOW mezők esetén is a tényleges mezőértéket figyeli, nem a placeholdert vagy címkét.
+- Ha a kijelölt elem nem található, a feltétel hamis lesz, tehát nem fut le tévesen az igaz ág.
+- A korábbi **Szöveg létezik**, **Elem létezik** és **Elem értéke tartalmazza** módok változatlanul működnek.
+
+## v0.62.9 - Trigger indítási jelzés kapcsoló
+
+- Új workflow szintű opció: **Trigger jelzés**.
+- Automatizmusonként be- vagy kikapcsolható, hogy az oldalon megjelenjen-e a rövid indítási üzenet, például: „BlockFlow figyelő indítja: ...”.
+- Érinti a **Figyelő trigger** és **Kattintás trigger** által indított futásokat.
+- A kikapcsolás nem érinti a Public logot, a belső futási naplót, a hotkey szövegcsere saját visszajelzését vagy a hibaüzeneteket.
+- Régi workflow-knál alapértelmezetten bekapcsolva marad, így a korábbi működés kompatibilis.
+
+# BlockFlow Automation MVP 0.62.11
 
 BlockFlow egy lokális Chrome extension, amellyel általános weboldalakon lehet böngészőautomatizmusokat összeállítani vizuális, blokkos felületen. A cél az, hogy a gyakori adminisztrációs, adatgyűjtési, email-előkészítési, figyelési és riportkészítési folyamatokat programozás nélkül lehessen felépíteni.
 
 Az extension nem használ AI-t, és nem küld adatot külső szolgáltatásnak. A workflow-k, sablonok, lokális adatok és beállítások a Chrome extension storage-ban maradnak.
 
+
+
+
+## v0.62.7 fő újdonságok - oldalbetöltésenként egyszer futó triggerek
+
+- A **Figyelő trigger** és a **Kattintás trigger** új **Futási mód** beállítást kapott.
+- Választható módok:
+  - **Folyamatos figyelés / újraindítható**: a korábbi működés, throttling és futási lock mellett ismételhet.
+  - **Oldalbetöltésenként egyszer**: ugyanazon betöltött lapon csak egyszer indít, de oldalfrissítés, új oldalbetöltés vagy SPA URL-váltás után újra futhat.
+  - **Csak egyszer, utána kikapcsol**: a korábbi `Csak egyszer fusson` működés, amely az első indítás után letiltja a watchert.
+- A mód bekerült a blokk középső gyorsbeállításaiba, a jobb oldali részletes beállításokba, a watcher mentésbe és a mini extension exportba is.
+- A meglévő workflow-k kompatibilisek maradnak: a régi `runOnce=true` automatikusan **Csak egyszer** módra, a többi régi trigger **Folyamatos** módra migrál.
+
+## v0.62.6 javítás - vezérlőpanel átlátszóság
+
+- Javítva: az **Oldalba illesztett vezérlőpanel** `Panel átlátszatlanság %` beállítása most a teljes panel vizuális áttetszőségére hat, nem csak a háttérszín rgba értékére.
+- Javítva: ha egy panel már be volt illesztve az oldalba, de a kinézeti beállítások megváltoztak, a panel újragenerálódik, így az átlátszóság és egyéb stílusmódosítások láthatóvá válnak akkor is, ha a duplikációs mód `Ne nyúljon hozzá`.
+- A gombok saját átlátszatlansága továbbra is külön állítható.
+
+
+## v0.62.5 fő újdonságok - gombok vízszintes igazítása
+
+- Az **Oldalba illesztett vezérlőpanel** blokk új beállítást kapott: **Gombok vízszintes igazítása**.
+- Választható módok: széthúzva / teljes szélesség, balra, középre, jobbra és szélekre igazítva.
+- A beállítás működik vízszintes, függőleges és rácsos elrendezésnél is.
+- A régi workflow-k kompatibilisek maradnak: ha az új mező hiányzik, az alapértelmezett érték a korábbi teljes szélességű / széthúzott gombelrendezés.
+
+
+## v0.62.4 fő újdonságok - vezérlőpanel kinézeti beállítások
+
+- Az **Oldalba illesztett vezérlőpanel** blokk több új megjelenési opciót kapott.
+- Beállítható a panel témája: sötét, világos, kék vagy áttetsző sötét.
+- Beállítható a panel átlátszatlansága, belső margója és sarokkerekítése.
+- Beállítható a gombok elrendezése: függőleges, vízszintes/tördelhető vagy rácsos.
+- Beállítható a gombméret, egyedi gombmagasság és térköz, betűméret, sarokkerekítés, átlátszatlanság és szövegigazítás.
+- Beállítható a gombstílus: elsődleges kék, sötét, világos, outline, zöld vagy piros.
+- A meglévő workflow-k kompatibilisek maradnak: ha az új mezők hiányoznak, a panel a korábbi alapértelmezett kinézettel jelenik meg.
 
 
 ## v0.62.3 fő újdonságok - ServiceNow / SNOW kompatibilitás
@@ -807,3 +870,13 @@ Az extension támogatja a gyökérkönyvtárban található `default.json` fájl
 - Javítva: a content script runtime fordításai nem töltődtek be megbízhatóan a weboldali public logban, ezért kulcsok jelentek meg a tényleges szövegek helyett.
 - Hozzáadva: `web_accessible_resources` a `locales/*.json` fájlokra, hogy a content script biztonságosan be tudja tölteni a fordításokat.
 - Hozzáadva: minimális beépített runtime fallback szótár HU/EN nyelven, hogy betöltési hiba esetén se jelenjen meg nyers i18n kulcs a public logban.
+
+
+## v0.62.8 - Hotkey / szövegcsere blokk
+
+- Új blokk: **Hotkey / szövegcsere**.
+- Aktív szövegmezőkben rövidítést cserél hosszabb szövegre, például `thx` + szóköz → `Thank you in advance`.
+- Beállítható mezők: rövidítés, csere szöveg, elválasztó billentyűk (`Space`, `Enter`, `Tab`), kis/nagybetű érzékenység, találati mód, scope/domain/URL, visszajelzés.
+- Normál `input`, `textarea`, `contenteditable`, `role="textbox"` mezőkön és ServiceNow/SNOW shadow DOM mezőkön is működésre készült.
+- A blokk passzív indítóként működik: nem futtatja le a teljes workflow-t, hanem mentés után text-expander jelleggel aktív a megadott oldalon.
+- Mini extension exportba is bekerülnek a hotkey / szövegcsere watcher rekordok.

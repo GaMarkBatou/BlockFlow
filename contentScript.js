@@ -49,7 +49,9 @@
       'runtime.actionGroupMissing': 'Nem található műveletcsoport ehhez a kulcshoz: {{action}}',
       'runtime.sessionCleared': 'Munkamenet törölve.',
       'runtime.panelReady': 'Panel kész.',
-      'runtime.panelNoButtons': 'Nincs beállított gomb.'
+      'runtime.panelNoButtons': 'Nincs beállított gomb.',
+      'runtime.pageLoadOnceSkipped': 'Ez a trigger már lefutott ezen az oldalbetöltésen.',
+      'runtime.textShortcutExpanded': 'Szövegcsere: {{shortcut}}'
     },
     en: {
       'publicLog.title': 'BlockFlow log',
@@ -80,7 +82,9 @@
       'runtime.actionGroupMissing': 'No action group found for key: {{action}}',
       'runtime.sessionCleared': 'Session cleared.',
       'runtime.panelReady': 'Panel ready.',
-      'runtime.panelNoButtons': 'No buttons configured.'
+      'runtime.panelNoButtons': 'No buttons configured.',
+      'runtime.pageLoadOnceSkipped': 'This trigger has already run on this page load.',
+      'runtime.textShortcutExpanded': 'Text shortcut expanded: {{shortcut}}'
     }
   };
   const BF_I18N = { loaded:false, selected:'auto', active:'hu', fallback:'hu', languages:[], dict:{}, fallbackDict:BF_RUNTIME_FALLBACKS.hu };
@@ -779,6 +783,10 @@
   }
   function removeBadge() { document.querySelectorAll('[data-bf-badge="1"]').forEach(x => x.remove()); }
 
+  function shouldShowTriggerStartBadge(workflow) {
+    return workflow?.triggerStartBadgeEnabled !== false;
+  }
+
   function startPicker(context) {
     stopPicker();
     showBadge(rt('runtime.pickerActive'));
@@ -1077,6 +1085,33 @@
       await sleep(150);
     }
     return findElement(target, options);
+  }
+
+  function getElementActualFieldValue(el) {
+    if (!el) return '';
+    const host = isServiceNowFieldHost(el) ? el : snowFieldHostFor(el);
+    if (host && host === el) {
+      const inner = querySelectorAllDeep(fieldSelectorForChildren(), true, host.shadowRoot || host, 8).find(x => x !== host);
+      if (inner) return getElementActualFieldValue(inner);
+      const hostValue = getPropertyAny(host, ['value','displayValue','selectedValue','text']) || getAttrAny(host, ['value','display-value','selected-value']);
+      return hostValue === undefined || hostValue === null ? '' : String(hostValue).trim();
+    }
+    const tag = el.tagName?.toLowerCase();
+    if (tag === 'select') {
+      const opt = el.selectedOptions?.[0];
+      return (opt?.value || opt?.textContent || el.value || '').trim();
+    }
+    if (tag === 'input') {
+      const type = String(el.getAttribute('type') || '').toLowerCase();
+      if (['checkbox','radio'].includes(type)) return el.checked ? String(el.value || 'true') : '';
+      return String(el.value ?? '').trim();
+    }
+    if (tag === 'textarea') return String(el.value ?? '').trim();
+    if (el.isContentEditable || el.getAttribute?.('contenteditable') != null || el.classList?.contains('ql-editor')) return (el.innerText || el.textContent || '').trim();
+    const role = el.getAttribute?.('role') || '';
+    if (['textbox','combobox','searchbox'].includes(role)) return String(el.value || el.getAttribute('aria-valuetext') || el.innerText || el.textContent || '').trim();
+    if ('value' in el) return String(el.value ?? '').trim();
+    return (el.innerText || el.textContent || '').trim();
   }
 
   function getElementValue(el, mode = 'auto', attributeName = 'title') {
@@ -2191,7 +2226,7 @@
 
   async function executeBlock(block, vars, options = {}) {
     const dryRun = Boolean(options.dryRun);
-    if (block.type === 'trigger' || block.type === 'triggerGroup' || block.type === 'clickTrigger' || block.type === 'scheduledTrigger' || block.type === 'actionGroup' || block.type === 'pageControlPanel' || String(block.type || '').startsWith('condition')) return { skipped: true };
+    if (block.type === 'trigger' || block.type === 'triggerGroup' || block.type === 'clickTrigger' || block.type === 'textShortcut' || block.type === 'scheduledTrigger' || block.type === 'actionGroup' || block.type === 'pageControlPanel' || String(block.type || '').startsWith('condition')) return { skipped: true };
 
     if (block.type === 'wait') {
       if (block.waitMode === 'element' && block.target) {
@@ -2805,9 +2840,14 @@
   async function conditionPass(block, vars) {
     if (block.conditionMode === 'elementExists') return Boolean(await waitForElement(block.target, Number(block.timeoutMs || 1000)));
     if (block.conditionMode === 'valueContains') {
-      const el = await waitForElement(block.target, Number(block.timeoutMs || 1000), { requireVisible: false });
+      const el = await waitForElement(block.target, Number(block.timeoutMs || 1000), { requireVisible: false, shadowSearch: block.shadowSearch !== false });
       const hay = getElementValue(el, 'auto').toLowerCase();
       return hay.includes(interpolate(block.value || '', vars).toLowerCase());
+    }
+    if (block.conditionMode === 'valueEmpty') {
+      const el = await waitForElement(block.target, Number(block.timeoutMs || 1000), { requireVisible: false, shadowSearch: block.shadowSearch !== false });
+      if (!el) return false;
+      return !String(getElementActualFieldValue(el) || '').trim();
     }
     return document.body.innerText.toLowerCase().includes(interpolate(block.text || '', vars).toLowerCase());
   }
@@ -2915,9 +2955,19 @@
       if (options.dryRun) return { ok: true, dryRun: true };
       const panelId = cssSafeId(`${workflow.id || 'workflow'}-${block.id || block.panelId || 'panel'}-${interpolate(block.panelId || 'main', vars)}`);
       const domId = `bf-page-control-panel-${panelId}`;
-      const existing = document.getElementById(domId);
       const workflowKey = workflowRunLockKey(workflow);
-      if (existing && (block.duplicateMode || 'keep') === 'keep') {
+      const panelSignature = JSON.stringify({
+        title: block.title || '', buttonsText: block.buttonsText || '', position: block.position || 'bottomRight',
+        customLeft: block.customLeft ?? '', customRight: block.customRight ?? '', customTop: block.customTop ?? '', customBottom: block.customBottom ?? '', customUnit: block.customUnit || 'px', customZIndex: block.customZIndex || 2147483647,
+        width: block.width ?? 260, panelTheme: block.panelTheme || 'dark', panelOpacityPct: block.panelOpacityPct ?? block.panelOpacity ?? 94, panelPadding: block.panelPadding ?? 10, panelRadius: block.panelRadius ?? 16,
+        layout: block.layout || 'vertical', buttonColumns: block.buttonColumns ?? 2, buttonRowAlign: block.buttonRowAlign || 'stretch',
+        buttonSize: block.buttonSize || 'normal', buttonMinHeight: block.buttonMinHeight ?? 38, buttonPaddingY: block.buttonPaddingY ?? 8, buttonPaddingX: block.buttonPaddingX ?? 11,
+        buttonGap: block.buttonGap ?? 8, buttonFontSize: block.buttonFontSize ?? 13, buttonRadius: block.buttonRadius ?? 10, buttonOpacityPct: block.buttonOpacityPct ?? block.buttonOpacity ?? 100,
+        buttonStyle: block.buttonStyle || 'primary', buttonAlign: block.buttonAlign || 'center', showHeader: block.showHeader !== false, showStatus: block.showStatus !== false, closeButton: block.closeButton !== false
+      });
+      const existing = document.getElementById(domId);
+      const existingSignature = existing?.getAttribute?.('data-blockflow-panel-signature') || '';
+      if (existing && (block.duplicateMode || 'keep') === 'keep' && existingSignature === panelSignature) {
         activePanelWorkflowLocks.add(workflowKey);
         return { ok: true, existing: true };
       }
@@ -2928,18 +2978,135 @@
       const host = document.createElement('div');
       host.id = domId;
       host.setAttribute('data-blockflow-control-panel', '1');
+      host.setAttribute('data-blockflow-panel-signature', panelSignature);
       const root = host.attachShadow ? host.attachShadow({ mode: 'open' }) : host;
-      const width = Math.max(180, Math.min(520, Number(block.width || 260)));
+
+      const clampNum = (value, fallback, min, max) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return fallback;
+        return Math.max(min, Math.min(max, n));
+      };
+      const choice = (value, allowed, fallback) => allowed.includes(String(value || '')) ? String(value) : fallback;
+      const width = clampNum(block.width, 260, 160, 900);
+      const panelOpacityLegacy = block.panelOpacity;
+      const panelOpacityRaw = block.panelOpacityPct ?? ((panelOpacityLegacy !== undefined && panelOpacityLegacy !== '') ? (Number(panelOpacityLegacy) <= 1 ? Number(panelOpacityLegacy) * 100 : panelOpacityLegacy) : 94);
+      const buttonOpacityLegacy = block.buttonOpacity;
+      const buttonOpacityRaw = block.buttonOpacityPct ?? ((buttonOpacityLegacy !== undefined && buttonOpacityLegacy !== '') ? (Number(buttonOpacityLegacy) <= 1 ? Number(buttonOpacityLegacy) * 100 : buttonOpacityLegacy) : 100);
+      const panelOpacity = clampNum(panelOpacityRaw, 94, 5, 100) / 100;
+      const buttonOpacity = clampNum(buttonOpacityRaw, 100, 5, 100) / 100;
+      const panelPadding = clampNum(block.panelPadding, 10, 0, 36);
+      const panelRadius = clampNum(block.panelRadius, 16, 0, 48);
+      const layout = choice(block.layout, ['vertical', 'horizontal', 'grid'], 'vertical');
+      const buttonColumns = Math.round(clampNum(block.buttonColumns, 2, 1, 6));
+      const buttonSize = choice(block.buttonSize, ['small', 'normal', 'large', 'custom'], 'normal');
+      const buttonGap = clampNum(block.buttonGap, 8, 0, 40);
+      const buttonFontSize = clampNum(block.buttonFontSize, 13, 10, 24);
+      const buttonRadius = clampNum(block.buttonRadius, 10, 0, 48);
+      const buttonAlign = choice(block.buttonAlign, ['left', 'center', 'right'], 'center');
+      const buttonRowAlign = choice(block.buttonRowAlign, ['stretch', 'left', 'center', 'right', 'spaceBetween'], 'stretch');
+      const buttonJustify = buttonAlign === 'left' ? 'flex-start' : (buttonAlign === 'right' ? 'flex-end' : 'center');
+      const rowJustifyMap = { stretch: 'stretch', left: 'flex-start', center: 'center', right: 'flex-end', spaceBetween: 'space-between' };
+      const rowAlignMap = { stretch: 'stretch', left: 'flex-start', center: 'center', right: 'flex-end', spaceBetween: 'stretch' };
+      const rowJustify = rowJustifyMap[buttonRowAlign] || 'stretch';
+      const rowAlignItems = rowAlignMap[buttonRowAlign] || 'stretch';
+      const buttonsStretch = buttonRowAlign === 'stretch';
+      const showHeader = block.showHeader !== false;
+
+      const sizeMap = {
+        small: { minHeight: 30, padY: 6, padX: 9 },
+        normal: { minHeight: 38, padY: 8, padX: 11 },
+        large: { minHeight: 48, padY: 12, padX: 16 }
+      };
+      const size = sizeMap[buttonSize] || {
+        minHeight: clampNum(block.buttonMinHeight, 38, 24, 96),
+        padY: clampNum(block.buttonPaddingY, 8, 0, 40),
+        padX: clampNum(block.buttonPaddingX, 11, 0, 60)
+      };
+
+      function themeValues(name) {
+        const theme = choice(name, ['dark', 'light', 'blue', 'transparent'], 'dark');
+        if (theme === 'light') return {
+          name: theme,
+          bg: 'rgba(255,255,255,.98)', fg: '#0f172a', muted: '#334155',
+          border: 'rgba(15,23,42,.18)', headBg: 'rgba(15,23,42,.06)', headBorder: 'rgba(15,23,42,.10)',
+          statusBorder: 'rgba(15,23,42,.10)', closeBg: 'rgba(15,23,42,.08)', closeFg: '#0f172a',
+          shadow: '0 18px 50px rgba(15,23,42,.22)', empty: '#b91c1c', ok: '#166534', warn: '#92400e', err: '#b91c1c'
+        };
+        if (theme === 'blue') return {
+          name: theme,
+          bg: 'rgba(30,64,175,.96)', fg: '#eff6ff', muted: '#dbeafe',
+          border: 'rgba(219,234,254,.28)', headBg: 'rgba(255,255,255,.12)', headBorder: 'rgba(255,255,255,.16)',
+          statusBorder: 'rgba(255,255,255,.16)', closeBg: 'rgba(255,255,255,.14)', closeFg: '#eff6ff',
+          shadow: '0 18px 50px rgba(30,64,175,.28)', empty: '#fecaca', ok: '#bbf7d0', warn: '#fde68a', err: '#fecaca'
+        };
+        if (theme === 'transparent') return {
+          name: theme,
+          bg: 'rgba(15,23,42,.78)', fg: '#f8fafc', muted: '#cbd5e1',
+          border: 'rgba(255,255,255,.24)', headBg: 'rgba(255,255,255,.08)', headBorder: 'rgba(255,255,255,.12)',
+          statusBorder: 'rgba(255,255,255,.12)', closeBg: 'rgba(255,255,255,.10)', closeFg: '#f8fafc',
+          shadow: '0 18px 50px rgba(0,0,0,.22)', empty: '#fecaca', ok: '#bbf7d0', warn: '#fde68a', err: '#fecaca'
+        };
+        return {
+          name: 'dark',
+          bg: 'rgba(15,23,42,.96)', fg: '#f8fafc', muted: '#cbd5e1',
+          border: 'rgba(255,255,255,.20)', headBg: 'rgba(255,255,255,.10)', headBorder: 'rgba(255,255,255,.12)',
+          statusBorder: 'rgba(255,255,255,.10)', closeBg: 'rgba(255,255,255,.10)', closeFg: '#f8fafc',
+          shadow: '0 18px 50px rgba(0,0,0,.32)', empty: '#fecaca', ok: '#bbf7d0', warn: '#fde68a', err: '#fecaca'
+        };
+      }
+
+      function buttonValues(name, theme) {
+        const style = choice(name, ['primary', 'dark', 'light', 'outline', 'success', 'danger'], 'primary');
+        if (style === 'dark') return { bg: '#0f172a', hover: '#111827', fg: '#fff', border: 'rgba(255,255,255,.18)' };
+        if (style === 'light') return { bg: '#f8fafc', hover: '#e2e8f0', fg: '#0f172a', border: 'rgba(15,23,42,.18)' };
+        if (style === 'outline') return { bg: 'transparent', hover: theme.name === 'light' ? 'rgba(15,23,42,.08)' : 'rgba(255,255,255,.12)', fg: theme.fg, border: theme.name === 'light' ? 'rgba(15,23,42,.26)' : 'rgba(255,255,255,.32)' };
+        if (style === 'success') return { bg: '#16a34a', hover: '#15803d', fg: '#fff', border: 'rgba(255,255,255,.16)' };
+        if (style === 'danger') return { bg: '#dc2626', hover: '#b91c1c', fg: '#fff', border: 'rgba(255,255,255,.16)' };
+        return { bg: '#2563eb', hover: '#1d4ed8', fg: '#fff', border: 'rgba(255,255,255,.16)' };
+      }
+
+      const theme = themeValues(block.panelTheme || 'dark');
+      const btnStyle = buttonValues(block.buttonStyle || 'primary', theme);
+      const horizontalBasis = Math.max(88, Math.floor((width - buttonGap) / 2));
+      const layoutCss = layout === 'grid'
+        ? (buttonsStretch
+          ? `.body{display:grid;grid-template-columns:repeat(${buttonColumns},minmax(0,1fr));justify-content:stretch;justify-items:stretch}.bf-btn{width:100%}`
+          : `.body{display:grid;grid-template-columns:repeat(${buttonColumns},max-content);justify-content:${rowJustify};justify-items:${rowAlignItems}}.bf-btn{width:auto;max-width:100%;min-width:80px}`)
+        : (layout === 'horizontal'
+          ? (buttonsStretch
+            ? `.body{display:flex;flex-direction:row;flex-wrap:wrap;justify-content:stretch}.bf-btn{flex:1 1 ${horizontalBasis}px;min-width:80px}`
+            : `.body{display:flex;flex-direction:row;flex-wrap:wrap;justify-content:${rowJustify};align-items:center}.bf-btn{flex:0 0 auto;min-width:80px;max-width:100%}`)
+          : (buttonsStretch
+            ? `.body{display:flex;flex-direction:column;align-items:stretch}.bf-btn{width:100%}`
+            : `.body{display:flex;flex-direction:column;align-items:${rowAlignItems}}.bf-btn{width:auto;max-width:100%}`));
+
       root.innerHTML = `
         <style>
-          :host{all:initial} *{box-sizing:border-box} .panel{width:${width}px;max-width:calc(100vw - 32px);border-radius:16px;background:rgba(15,23,42,.94);color:#f8fafc;border:1px solid rgba(255,255,255,.20);box-shadow:0 18px 50px rgba(0,0,0,.32);font:13px/1.35 system-ui,-apple-system,Segoe UI,Arial,sans-serif;overflow:hidden} .head{display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(255,255,255,.10);border-bottom:1px solid rgba(255,255,255,.12)} .head b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:800}.close{all:unset;cursor:pointer;border-radius:8px;padding:2px 8px;background:rgba(255,255,255,.10);font-weight:800}.body{display:flex;flex-direction:column;gap:8px;padding:10px}.bf-btn{all:unset;display:flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:8px 11px;border-radius:10px;background:#2563eb;color:#fff;font-weight:800;text-align:center;cursor:pointer;box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)}.bf-btn:hover{background:#1d4ed8}.bf-btn:disabled{opacity:.55;cursor:wait}.status{padding:8px 10px;border-top:1px solid rgba(255,255,255,.10);color:#cbd5e1;font-size:12px;min-height:30px}.status.ok{color:#bbf7d0}.status.err{color:#fecaca}.status.warn{color:#fde68a}.empty{padding:10px;color:#fecaca}
+          :host{all:initial}
+          *{box-sizing:border-box}
+          .panel{width:${width}px;max-width:calc(100vw - 32px);border-radius:${panelRadius}px;background:${theme.bg};color:${theme.fg};border:1px solid ${theme.border};box-shadow:${theme.shadow};font:13px/1.35 system-ui,-apple-system,Segoe UI,Arial,sans-serif;overflow:hidden;backdrop-filter:blur(8px);opacity:${panelOpacity}}
+          .head{display:flex;align-items:center;gap:8px;padding:10px 12px;background:${theme.headBg};border-bottom:1px solid ${theme.headBorder}}
+          .head b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:800;color:${theme.fg}}
+          .close{all:unset;cursor:pointer;border-radius:8px;padding:2px 8px;background:${theme.closeBg};color:${theme.closeFg};font-weight:800;line-height:1.4}
+          .body{gap:${buttonGap}px;padding:${panelPadding}px}
+          ${layoutCss}
+          .bf-btn{all:unset;display:flex;align-items:center;justify-content:${buttonJustify};gap:8px;min-height:${size.minHeight}px;padding:${size.padY}px ${size.padX}px;border-radius:${buttonRadius}px;background:${btnStyle.bg};color:${btnStyle.fg};font-weight:800;font-size:${buttonFontSize}px;text-align:${buttonAlign};cursor:pointer;box-shadow:inset 0 0 0 1px ${btnStyle.border};border:1px solid ${btnStyle.border};opacity:${buttonOpacity};word-break:break-word}
+          .bf-btn:hover{background:${btnStyle.hover};opacity:${Math.min(1, buttonOpacity + 0.08)}}
+          .bf-btn:active{transform:translateY(1px)}
+          .bf-btn:disabled{opacity:.55;cursor:wait;transform:none}
+          .status{padding:8px 10px;border-top:1px solid ${theme.statusBorder};color:${theme.muted};font-size:12px;min-height:30px}
+          .status.ok{color:${theme.ok}}
+          .status.err{color:${theme.err}}
+          .status.warn{color:${theme.warn}}
+          .empty{padding:10px;color:${theme.empty}}
         </style>
         <div class="panel">
-          <div class="head"><b></b>${block.closeButton === false ? '' : '<button type="button" class="close" title="Close">×</button>'}</div>
+          ${showHeader ? `<div class="head"><b></b>${block.closeButton === false ? '' : '<button type="button" class="close" title="Close">×</button>'}</div>` : ''}
           <div class="body"></div>
           ${block.showStatus === false ? '' : '<div class="status" data-status></div>'}
         </div>`;
-      root.querySelector('.head b').textContent = interpolate(block.title || 'BlockFlow', vars);
+      const titleEl = root.querySelector('.head b');
+      if (titleEl) titleEl.textContent = interpolate(block.title || 'BlockFlow', vars);
       const body = root.querySelector('.body');
       if (!buttons.length) {
         const empty = document.createElement('div');
@@ -2975,7 +3142,7 @@
       positionBlockFlowButton(host, block.position || 'bottomRight', block);
       document.body.appendChild(host);
       setPanelStatus(root, rt('runtime.panelReady'), 'ok');
-      return { ok: true, buttons: buttons.length };
+      return { ok: true, buttons: buttons.length, layout };
     }
 
     function watcherFromTriggerBlock(block) {
@@ -2992,7 +3159,10 @@
         path: block.path || location.pathname,
         url: block.url || location.href,
         urlContains: block.urlContains || '',
-        throttleSec: block.throttleSec || 15
+        throttleSec: block.throttleSec || 15,
+        repeatMode: watcherRepeatMode(block),
+        runOnce: watcherRepeatMode(block) === 'once',
+        runPerPageLoad: watcherRepeatMode(block) === 'pageLoad'
       };
     }
 
@@ -3045,7 +3215,7 @@
         const b = list[i];
         log.push(rt('runtime.blockStep', { label, index: i + 1, type: b.type, dry: options.dryRun ? ' [dry-run]' : '' }));
 
-        if (b.type === 'trigger' || b.type === 'triggerGroup' || b.type === 'clickTrigger' || b.type === 'scheduledTrigger' || String(b.type || '').startsWith('condition')) { i++; continue; }
+        if (b.type === 'trigger' || b.type === 'triggerGroup' || b.type === 'clickTrigger' || b.type === 'textShortcut' || b.type === 'scheduledTrigger' || String(b.type || '').startsWith('condition')) { i++; continue; }
         if (b.type === 'actionGroup') { i++; continue; }
         if (b.type === 'pageControlPanel') {
           const res = await showPageControlPanel(b);
@@ -3249,7 +3419,33 @@
   let watcherTimer = null;
   let watcherInterval = null;
   let watcherClickHandler = null;
+  let watcherHotkeyHandler = null;
+  let textShortcutWatchersCache = [];
   const firedWatchers = new Map();
+  const pageLoadFiredWatchers = new Set();
+  const pageLoadId = `${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  let watcherLastNavigationHref = location.href.split('#')[0];
+
+  function watcherRepeatMode(w) {
+    const mode = String(w?.repeatMode || '').trim();
+    if (mode === 'continuous' || mode === 'pageLoad' || mode === 'once') return mode;
+    if (w?.runPerPageLoad || w?.pageLoadOnce) return 'pageLoad';
+    if (w?.runOnce) return 'once';
+    return 'continuous';
+  }
+
+  function watcherPageLoadKey(w) {
+    return `${pageLoadId}:${w?.id || w?.workflowId || 'watcher'}:${location.href.split('#')[0]}`;
+  }
+
+  function watcherAlreadyRanThisPageLoad(w) {
+    return watcherRepeatMode(w) === 'pageLoad' && pageLoadFiredWatchers.has(watcherPageLoadKey(w));
+  }
+
+  function markWatcherStarted(w) {
+    firedWatchers.set(w.id, Date.now());
+    if (watcherRepeatMode(w) === 'pageLoad') pageLoadFiredWatchers.add(watcherPageLoadKey(w));
+  }
   // Session-alapú értékmemória változásfigyelő feltételekhez.
   // Kulcs: workflow + trigger + feltétel + oldal URL. Oldalfrissítés után újratanul.
   const watcherValueState = new Map();
@@ -3273,6 +3469,8 @@
     if (watcherInterval) { clearInterval(watcherInterval); watcherInterval = null; }
     if (watcherTimer) { clearTimeout(watcherTimer); watcherTimer = null; }
     if (watcherClickHandler) { try { document.removeEventListener('click', watcherClickHandler, true); } catch (_) {} watcherClickHandler = null; }
+    if (watcherHotkeyHandler) { try { document.removeEventListener('keydown', watcherHotkeyHandler, true); } catch (_) {} watcherHotkeyHandler = null; }
+    textShortcutWatchersCache = [];
     if (reason) console.info('BlockFlow watchers stopped:', reason);
   }
 
@@ -3342,6 +3540,7 @@
     const block = findWorkflowBlock(workflow?.blocks || [], w.sourceBlockId);
     if (!block) return false;
     if (block.type === 'clickTrigger') return block.triggerEnabled !== false && Boolean(block.target);
+    if (block.type === 'textShortcut') return block.triggerEnabled !== false && Boolean(String(block.shortcut || '').trim());
     if (block.type !== 'triggerGroup') return false;
     return block.triggerEnabled !== false && Array.isArray(block.children) && block.children.length > 0;
   }
@@ -3354,6 +3553,208 @@
     if (scope === 'exact') return !w.url || location.href.split('#')[0] === String(w.url).split('#')[0];
     if (scope === 'contains') return !w.urlContains || location.href.includes(w.urlContains);
     return true;
+  }
+
+
+  function normalizeShortcutKeyName(value) {
+    const raw = String(value || '').trim();
+    const low = raw.toLowerCase();
+    if (!raw) return '';
+    if (raw === ' ' || low === 'space' || low === 'spacebar' || low === 'szóköz' || low === 'szokoz') return 'Space';
+    if (low === 'enter' || low === 'return') return 'Enter';
+    if (low === 'tab' || low === 'tabulator') return 'Tab';
+    return raw.length === 1 ? raw : raw;
+  }
+
+  function eventShortcutKeyName(event) {
+    if (!event) return '';
+    if (event.key === ' ' || event.key === 'Spacebar') return 'Space';
+    return event.key || '';
+  }
+
+  function delimiterMatchesShortcutWatcher(w, event) {
+    if (!w || event.defaultPrevented || event.isComposing || event.ctrlKey || event.altKey || event.metaKey) return false;
+    const current = normalizeShortcutKeyName(eventShortcutKeyName(event));
+    const keys = String(w.delimiterKeys || 'Space,Enter,Tab').split(/[,;\n]/).map(normalizeShortcutKeyName).filter(Boolean);
+    return keys.length ? keys.includes(current) : current === 'Space';
+  }
+
+  function isTextShortcutEditable(el) {
+    if (!el || el.nodeType !== 1) return false;
+    const tag = el.tagName?.toLowerCase?.() || '';
+    if (el.disabled || el.readOnly || el.getAttribute?.('aria-readonly') === 'true') return false;
+    if (tag === 'textarea') return true;
+    if (tag === 'input') {
+      const type = String(el.getAttribute('type') || 'text').toLowerCase();
+      return ['', 'text', 'search', 'url', 'tel'].includes(type);
+    }
+    if (el.isContentEditable || el.getAttribute?.('contenteditable') != null || el.classList?.contains('ql-editor') || el.getAttribute?.('role') === 'textbox' || el.getAttribute?.('aria-multiline') === 'true') return true;
+    return false;
+  }
+
+  function resolveTextShortcutTarget(event) {
+    const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+    const candidates = [];
+    for (const item of path) if (item && item.nodeType === 1) candidates.push(item);
+    const raw = event.target && event.target.nodeType === 1 ? event.target : event.target?.parentElement;
+    if (raw) candidates.push(raw);
+    for (const el of candidates) {
+      if (isTextShortcutEditable(el)) return el;
+      const host = isServiceNowFieldHost(el) ? el : snowFieldHostFor(el);
+      if (host) {
+        const inner = fieldWriteTargets(host).find(isTextShortcutEditable);
+        if (inner) return inner;
+      }
+      const closest = el.closest?.('input,textarea,[contenteditable],[role="textbox"],.ql-editor,[aria-multiline="true"]');
+      if (isTextShortcutEditable(closest)) return closest;
+    }
+    return null;
+  }
+
+  function textShortcutBoundaryOk(before, shortcut, caseSensitive, matchMode) {
+    const rawBefore = String(before || '');
+    const rawShortcut = String(shortcut || '');
+    if (!rawShortcut) return false;
+    const beforeCmp = caseSensitive ? rawBefore : rawBefore.toLowerCase();
+    const shortcutCmp = caseSensitive ? rawShortcut : rawShortcut.toLowerCase();
+    if (!beforeCmp.endsWith(shortcutCmp)) return false;
+    if ((matchMode || 'word') === 'suffix') return true;
+    const index = rawBefore.length - rawShortcut.length;
+    const prev = index > 0 ? rawBefore.charAt(index - 1) : '';
+    return !prev || /[\s.,;:!?()[\]{}"'“”‘’<>\-–—/\\]/.test(prev);
+  }
+
+  function getValueSelectionState(el) {
+    const value = String(('value' in el ? el.value : el.textContent) || '');
+    let start = value.length;
+    let end = value.length;
+    try {
+      if (typeof el.selectionStart === 'number' && typeof el.selectionEnd === 'number') {
+        start = el.selectionStart;
+        end = el.selectionEnd;
+      }
+    } catch (_) {}
+    return { value, start, end };
+  }
+
+  function dispatchTextShortcutEvents(el, value, event) {
+    const targets = fieldWriteTargets(el);
+    const host = snowFieldHostFor(el);
+    if (host) setHostServiceNowValue(host, value);
+    for (const t of targets.length ? targets : [el]) dispatchFrameworkEvents(t, { blurAfter: false, data: value, key: event?.key || '' });
+  }
+
+  function applyTextShortcutToValueField(el, w, event) {
+    const shortcut = String(w.shortcut || '');
+    const replacement = String(w.replacement ?? '');
+    const state = getValueSelectionState(el);
+    if (state.start !== state.end) return false;
+    const before = state.value.slice(0, state.start);
+    if (!textShortcutBoundaryOk(before, shortcut, w.caseSensitive !== false, w.matchMode || 'word')) return false;
+    const replaceStart = state.start - shortcut.length;
+    try {
+      if (typeof el.setRangeText === 'function') {
+        el.setRangeText(replacement, replaceStart, state.start, 'end');
+      } else {
+        const next = state.value.slice(0, replaceStart) + replacement + state.value.slice(state.end);
+        setNativeValue(el, next);
+        const pos = replaceStart + replacement.length;
+        if (typeof el.setSelectionRange === 'function') el.setSelectionRange(pos, pos);
+      }
+    } catch (_) {
+      const next = state.value.slice(0, replaceStart) + replacement + state.value.slice(state.end);
+      setNativeValue(el, next);
+      try { const pos = replaceStart + replacement.length; el.setSelectionRange?.(pos, pos); } catch (_) {}
+    }
+    dispatchTextShortcutEvents(el, ('value' in el ? el.value : el.textContent) || '', event);
+    return true;
+  }
+
+  function textPositionAtOffset(root, targetOffset) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    let count = 0;
+    let last = null;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      last = node;
+      const len = node.nodeValue.length;
+      if (count + len >= targetOffset) return { node, offset: Math.max(0, targetOffset - count) };
+      count += len;
+    }
+    return last ? { node: last, offset: last.nodeValue.length } : { node: root, offset: root.childNodes.length };
+  }
+
+  function applyTextShortcutToContentEditable(el, w, event) {
+    const shortcut = String(w.shortcut || '');
+    const replacement = String(w.replacement ?? '');
+    const sel = window.getSelection?.();
+    if (!sel || !sel.rangeCount || !sel.isCollapsed) return false;
+    const range = sel.getRangeAt(0);
+    if (!el.contains(range.startContainer)) return false;
+    const pre = range.cloneRange();
+    pre.selectNodeContents(el);
+    pre.setEnd(range.startContainer, range.startOffset);
+    const offset = pre.toString().length;
+    const fullText = el.innerText || el.textContent || '';
+    const before = fullText.slice(0, offset);
+    if (!textShortcutBoundaryOk(before, shortcut, w.caseSensitive !== false, w.matchMode || 'word')) return false;
+    const startPos = textPositionAtOffset(el, Math.max(0, offset - shortcut.length));
+    const replaceRange = document.createRange();
+    replaceRange.setStart(startPos.node, startPos.offset);
+    replaceRange.setEnd(range.startContainer, range.startOffset);
+    replaceRange.deleteContents();
+    const textNode = document.createTextNode(replacement);
+    replaceRange.insertNode(textNode);
+    const caret = document.createRange();
+    caret.setStart(textNode, textNode.nodeValue.length);
+    caret.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(caret);
+    dispatchTextShortcutEvents(el, el.innerText || el.textContent || '', event);
+    return true;
+  }
+
+  function applyTextShortcut(el, w, event) {
+    if (!el || !String(w?.shortcut || '').trim()) return false;
+    if (el.isContentEditable || el.getAttribute?.('contenteditable') != null || el.classList?.contains('ql-editor') || (!('value' in el) && (el.getAttribute?.('role') === 'textbox' || el.getAttribute?.('aria-multiline') === 'true'))) {
+      return applyTextShortcutToContentEditable(el, w, event);
+    }
+    return applyTextShortcutToValueField(el, w, event);
+  }
+
+  async function refreshTextShortcutWatchers() {
+    try {
+      const { watchers } = await loadWatchersAndWorkflows();
+      textShortcutWatchersCache = watchers.filter(w => w.enabled !== false && w.mode === 'textShortcut' && String(w.shortcut || '').trim());
+    } catch (err) {
+      if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated');
+      textShortcutWatchersCache = [];
+    }
+  }
+
+  function handleTextShortcutKeydown(event) {
+    try {
+      if (!textShortcutWatchersCache.length) return;
+      const el = resolveTextShortcutTarget(event);
+      if (!el) return;
+      const active = textShortcutWatchersCache
+        .filter(w => watcherScopeMatches(w) && delimiterMatchesShortcutWatcher(w, event))
+        .sort((a, b) => String(b.shortcut || '').length - String(a.shortcut || '').length);
+      for (const w of active) {
+        if (applyTextShortcut(el, w, event)) {
+          if (w.keepDelimiter === false) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+          if (w.showFeedback !== false) {
+            showBadge(rt('runtime.textShortcutExpanded', { shortcut: w.shortcut || '' }));
+            setTimeout(removeBadge, 900);
+          }
+          break;
+        }
+      }
+    } catch (err) {
+      console.warn('BlockFlow text shortcut error', err);
+    }
   }
 
   function compareTextValue(haystack, operator, needle, caseSensitive = false) {
@@ -3473,17 +3874,20 @@
     for (const w of active) {
       try {
         if (!eventMatchesWatcherTarget(event, w)) continue;
+        if (watcherAlreadyRanThisPageLoad(w)) continue;
         const last = firedWatchers.get(w.id) || 0;
-        if (Date.now() - last < Math.max(1000, Number(w.throttleSec || 15) * 1000)) continue;
-        firedWatchers.set(w.id, Date.now());
+        if (watcherRepeatMode(w) !== 'pageLoad' && Date.now() - last < Math.max(1000, Number(w.throttleSec || 15) * 1000)) continue;
         const workflow = workflows.find(x => x.id === w.workflowId);
         if (!workflow) continue;
         if (!watcherBlockStillActive(w, workflow)) { firedWatchers.delete(w.id); continue; }
         if (isWorkflowRunning(workflow)) continue;
-        showBadge(rt('runtime.clickTriggerStarting', { name: workflow.name || 'workflow' }));
-        setTimeout(removeBadge, 2000);
+        markWatcherStarted(w);
+        if (shouldShowTriggerStartBadge(workflow)) {
+          showBadge(rt('runtime.clickTriggerStarting', { name: workflow.name || 'workflow' }));
+          setTimeout(removeBadge, 2000);
+        }
         runWorkflowLocked(workflow, { dryRun: false, triggeredByWatcher: true, triggeredByClick: true }).catch(err => console.warn('BlockFlow click trigger error', err));
-        if (w.runOnce) {
+        if (watcherRepeatMode(w) === 'once') {
           const data = await safeStorageGet('watchers');
           if (!data) continue;
           const all = Array.isArray(data.watchers) ? data.watchers : [];
@@ -3507,6 +3911,7 @@
     const active = watchers.filter(w => w.enabled !== false && watcherScopeMatches(w));
     for (const w of active) {
       try {
+        if (w.mode === 'textShortcut') continue;
         let hit = false;
         if (w.mode === 'group') hit = evalWatcherGroup(w);
         else if (w.mode === 'element') hit = Boolean(findElement(w.target));
@@ -3515,20 +3920,23 @@
           const needle = String(w.text || '');
           hit = Boolean(needle && (w.caseSensitive ? bodyText.includes(needle) : bodyText.toLowerCase().includes(needle.toLowerCase())));
         }
-        if (!hit) { firedWatchers.delete(w.id); continue; }
+        if (!hit) { if (watcherRepeatMode(w) === 'continuous') firedWatchers.delete(w.id); continue; }
+        if (watcherAlreadyRanThisPageLoad(w)) continue;
         const last = firedWatchers.get(w.id) || 0;
-        if (Date.now() - last < Math.max(1000, Number(w.throttleSec || 15) * 1000)) continue;
-        firedWatchers.set(w.id, Date.now());
+        if (watcherRepeatMode(w) !== 'pageLoad' && Date.now() - last < Math.max(1000, Number(w.throttleSec || 15) * 1000)) continue;
         const workflow = workflows.find(x => x.id === w.workflowId);
         if (workflow) {
           // Stale watcher védelem: a mentett watcher rekord csak akkor indíthat,
           // ha a hozzá tartozó figyelő blokk még létezik és aktív a workflow-ban.
           if (!watcherBlockStillActive(w, workflow)) { firedWatchers.delete(w.id); continue; }
           if (isWorkflowRunning(workflow)) continue;
-          showBadge(rt('runtime.watcherStarting', { name: workflow.name || 'workflow' }));
-          setTimeout(removeBadge, 2000);
+          markWatcherStarted(w);
+          if (shouldShowTriggerStartBadge(workflow)) {
+            showBadge(rt('runtime.watcherStarting', { name: workflow.name || 'workflow' }));
+            setTimeout(removeBadge, 2000);
+          }
           runWorkflowLocked(workflow, { dryRun: false, triggeredByWatcher: true }).catch(err => console.warn('BlockFlow watcher error', err));
-          if (w.runOnce) {
+          if (watcherRepeatMode(w) === 'once') {
             const data = await safeStorageGet('watchers');
             if (!data) continue;
             const all = Array.isArray(data.watchers) ? data.watchers : [];
@@ -3546,6 +3954,9 @@
     if (watcherObserver) watcherObserver.disconnect();
     if (watcherInterval) clearInterval(watcherInterval);
     if (watcherClickHandler) { try { document.removeEventListener('click', watcherClickHandler, true); } catch (_) {} watcherClickHandler = null; }
+    if (watcherHotkeyHandler) { try { document.removeEventListener('keydown', watcherHotkeyHandler, true); } catch (_) {} watcherHotkeyHandler = null; }
+    await ensureRuntimeI18n();
+    await refreshTextShortcutWatchers();
     watcherObserver = new MutationObserver(() => {
       clearTimeout(watcherTimer);
       watcherTimer = setTimeout(() => { checkWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }); }, 250);
@@ -3561,9 +3972,11 @@
       const scoped = watchers.filter(w => w.enabled !== false && watcherScopeMatches(w));
       minInterval = Math.max(1, Math.min(30, ...scoped.map(w => Number(w.intervalSec || 2)).filter(Boolean), 2));
     } catch {}
-    if (!window.__blockFlowSpaWatcherHook) { window.__blockFlowSpaWatcherHook = true; window.addEventListener('BF_SPA_NAVIGATION', () => { setTimeout(() => checkWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }), 100); }, true); }
+    if (!window.__blockFlowSpaWatcherHook) { window.__blockFlowSpaWatcherHook = true; window.addEventListener('BF_SPA_NAVIGATION', () => { const href = location.href.split('#')[0]; if (href !== watcherLastNavigationHref) { watcherLastNavigationHref = href; pageLoadFiredWatchers.clear(); watcherValueState.clear(); } setTimeout(() => checkWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }), 100); }, true); }
     watcherClickHandler = event => { handleWatcherClick(event).catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }); };
     document.addEventListener('click', watcherClickHandler, true);
+    watcherHotkeyHandler = event => handleTextShortcutKeydown(event);
+    document.addEventListener('keydown', watcherHotkeyHandler, true);
     watcherInterval = setInterval(() => { checkWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }); }, minInterval * 1000);
     setTimeout(() => { checkWatchers().catch(err => { if (isContextInvalidatedError(err)) stopWatchers('extension context invalidated'); }); }, 800);
   }

@@ -502,3 +502,45 @@ html, body {
 .workflow-summary{font-size:12px;color:#475467;background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:9px 10px;margin:6px 0 12px;display:flex;gap:6px;align-items:center;min-width:0}
 .workflow-summary b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#101828}
 .small-empty{padding:12px;font-size:12px;margin-bottom:12px}
+
+/* v0.62.11 Builder header responsive layout fix
+   Prevents the Rec controls from being squeezed out at default/narrow window sizes. */
+.workflow-title{
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+}
+.workflow-title input#workflowName{
+  flex:1 1 240px;
+  min-width:180px;
+}
+.workflow-title > button,
+.workflow-title > label.public-log-toggle,
+.workflow-title > .record-controls{
+  flex:0 0 auto;
+}
+.workflow-title .record-controls{
+  margin-left:auto;
+  max-width:100%;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.workflow-title .record-controls button{
+  flex:0 0 auto;
+}
+#recordStart{
+  min-width:62px;
+  justify-content:center;
+}
+@media(max-width:760px){
+  .workflow-title input#workflowName{
+    flex-basis:100%;
+    width:100%;
+  }
+  .workflow-title .record-controls{
+    margin-left:0;
+    width:100%;
+    justify-content:flex-start;
+  }
+}

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "BlockFlow Automation MVP 0.62.3",
-  "description": "Local browser automation builder with ServiceNow/SNOW Workspace compatibility, workflow locks and reusable page control panels.",
-  "version": "0.62.3",
+  "name": "BlockFlow Automation MVP 0.62.11",
+  "description": "Local browser automation builder with ServiceNow/SNOW Workspace compatibility, workflow locks, page-load trigger mode, customizable page control panels, hotkey text shortcuts and per-automation trigger start badge toggle and IF empty-value condition and responsive builder header controls.",
+  "version": "0.62.11",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",

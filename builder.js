@@ -19,7 +19,8 @@ const NUMERIC_FIELDS = new Set([
   'timeoutMs','timeoutSec','ms','maxUrlLength','repeatCount','maxRows','keepStart','keepEnd','keepFirstLines','keepLastLines',
   'throttleSec','intervalSec','intervalMinutes','charStart','charEnd','lineNumber','group','columnIndex','rowIndex','maxItems',
   'attempts','delayMs','amount','volume','stableMs','maxOptionScrolls','matchIndex','maxScrolls','scrollAmount','scrollDelayMs',
-  'openDelayMs','width','publicLogWidth','fontSize','spaceAfter','margin','customLeft','customRight','customTop','customBottom','customZIndex','publicLogOpacity','repeatCount'
+  'openDelayMs','width','publicLogWidth','fontSize','spaceAfter','margin','customLeft','customRight','customTop','customBottom','customZIndex','publicLogOpacity','repeatCount',
+  'panelOpacityPct','panelPadding','panelRadius','buttonOpacityPct','buttonMinHeight','buttonPaddingX','buttonPaddingY','buttonGap','buttonFontSize','buttonRadius','buttonColumns'
 ]);
 function normalizeFieldValue(field, value) {
   return NUMERIC_FIELDS.has(field) ? (value === '' ? '' : Number(value)) : value;
@@ -57,6 +58,11 @@ function normalizeWorkflow(workflow) {
       if (b.type === 'ifBlock' && !Array.isArray(b.elseChildren)) b.elseChildren = [];
       if (b.type === 'tryBlock' && !Array.isArray(b.elseChildren)) b.elseChildren = [];
       if (b.type === 'triggerGroup' && !Array.isArray(b.children)) b.children = [];
+      if (b.type === 'triggerGroup' || b.type === 'clickTrigger' || b.type === 'textShortcut') {
+        b.repeatMode = triggerRepeatMode(b);
+        b.runOnce = b.repeatMode === 'once';
+        b.runPerPageLoad = b.repeatMode === 'pageLoad';
+      }
 
       // Régi Figyelő: szöveg / Figyelő: elem blokkok migrálása új Figyelő trigger + feltétel modellre.
       if (b.type === 'watchText') {
@@ -120,13 +126,39 @@ function ensureWorkflowDefaults(w) {
   if (w.publicLogWidth === undefined) w.publicLogWidth = 280;
   if (w.publicLogOpacity === undefined) w.publicLogOpacity = 0.82;
   if (typeof w.publicLogDownload !== 'boolean') w.publicLogDownload = true;
+  if (typeof w.triggerStartBadgeEnabled !== 'boolean') w.triggerStartBadgeEnabled = true;
+}
+
+function triggerRepeatMode(obj) {
+  const mode = String(obj?.repeatMode || '').trim();
+  if (['continuous', 'pageLoad', 'once'].includes(mode)) return mode;
+  if (obj?.runPerPageLoad || obj?.pageLoadOnce) return 'pageLoad';
+  if (obj?.runOnce) return 'once';
+  return 'continuous';
+}
+
+function repeatModeLabel(mode) {
+  const m = mode || 'continuous';
+  if (m === 'pageLoad') return 'oldalbetöltésenként 1x';
+  if (m === 'once') return 'csak egyszer';
+  return 'folyamatos';
+}
+
+function repeatModeOptions() {
+  return [
+    ['continuous', 'Folyamatos figyelés / újraindítható'],
+    ['pageLoad', 'Oldalbetöltésenként egyszer'],
+    ['once', 'Csak egyszer, utána kikapcsol']
+  ];
 }
 
 function renderWorkflowOptions() {
   ensureWorkflowDefaults(activeWorkflow);
   const cb = $('#publicLogEnabled');
-  if (!cb || !activeWorkflow) return;
-  cb.checked = Boolean(activeWorkflow.publicLogEnabled);
+  const badgeCb = $('#triggerStartBadgeEnabled');
+  if (!activeWorkflow) return;
+  if (cb) cb.checked = Boolean(activeWorkflow.publicLogEnabled);
+  if (badgeCb) badgeCb.checked = activeWorkflow.triggerStartBadgeEnabled !== false;
 }
 
 function renderSaveState() {
@@ -448,7 +480,7 @@ function renderPalette() {
       <button class="section-title palette-category-title" data-toggle-palette="${escapeAttr(cat)}" title="${BF.t('palette.toggleCategory')}"><span>${collapsed ? '▸' : '▾'}</span><b>${escapeHtml(cat)}</b><small>${items.length}</small></button>
       <div class="palette-category-body" ${collapsed ? 'hidden' : ''}>${items.map(item => {
         const canAddConditionByClick = item.type.startsWith('condition') && (['triggerGroup','conditionGroup'].includes(selected?.type) || ['triggerGroup','conditionGroup'].includes(selectedInfo?.parent?.type) || Boolean(findSingleTriggerGroup()));
-        const disabled = (needsStarter && !['trigger','triggerGroup','clickTrigger','scheduledTrigger'].includes(item.type)) || (item.type.startsWith('condition') && !canAddConditionByClick);
+        const disabled = (needsStarter && !['trigger','triggerGroup','clickTrigger','textShortcut','scheduledTrigger'].includes(item.type)) || (item.type.startsWith('condition') && !canAddConditionByClick);
         return `<button class="palette-btn ${disabled?'disabled':''}" data-add="${item.type}" draggable="${disabled ? 'false' : 'true'}" ${disabled ? `disabled title="${escapeAttr(BF.t('palette.needStarterOrTrigger'))}"` : `title="${escapeAttr(BF.t('palette.addHint'))}"`}><span>${BF.BLOCKS[item.type].name}</span><span>+</span></button>`;
       }).join('')}</div>
     </div>`;
@@ -472,7 +504,7 @@ function renderPalette() {
 }
 
 function addBlock(type) {
-  const isStarter = ['trigger','triggerGroup','clickTrigger','scheduledTrigger'].includes(type);
+  const isStarter = ['trigger','triggerGroup','clickTrigger','textShortcut','scheduledTrigger'].includes(type);
   if (!hasAnyStarter() && !isStarter) return alert(BF.t('workflow.chooseStarterFirst'));
   if (type === 'trigger' && containsType(activeWorkflow.blocks, 'trigger')) return alert(BF.t('workflow.manualStarterExists'));
 
@@ -604,7 +636,7 @@ function containsType(blocks, type) {
 }
 
 function isStarterBlock(b) {
-  return b && (b.type === 'trigger' || (b.type === 'triggerGroup' && b.triggerEnabled !== false) || (b.type === 'clickTrigger' && b.triggerEnabled !== false) || (b.type === 'scheduledTrigger' && b.triggerEnabled !== false));
+  return b && (b.type === 'trigger' || (b.type === 'triggerGroup' && b.triggerEnabled !== false) || (b.type === 'clickTrigger' && b.triggerEnabled !== false) || (b.type === 'textShortcut' && b.triggerEnabled !== false) || (b.type === 'scheduledTrigger' && b.triggerEnabled !== false));
 }
 
 function starterCount(blocks = activeWorkflow.blocks) {
@@ -727,7 +759,7 @@ function blockOutputHtml(b) {
 }
 
 function blockIcon(b) {
-  const map = { trigger:'▶', triggerGroup:'◎', clickTrigger:'☝', scheduledTrigger:'⏲', conditionText:'T', conditionElement:'◇', conditionField:'▣', conditionUrl:'URL', conditionChange:'Δ', conditionGroup:'∧∨', click:'⌁', fill:'✎', selectOption:'▾', injectCss:'CSS', extract:'⇣', wait:'⏱', waitUntil:'⏳', waitLoad:'⌛', ifBlock:'?', repeatBlock:'↻', retryBlock:'⟳', tryBlock:'⚑', popupWait:'▣', popupExtract:'▣', popupClick:'▣', popupWindowWait:'◱', popupWindowExtract:'⇣', popupWindowClose:'×', copy:'⧉', clipboardRead:'⧉', email:'✉', emailTemplate:'✉', emailPreview:'✉', openEmail:'↗', rowLoop:'≡', elementLoop:'⋮', tableExtract:'▦', mask:'◩', transform:'A', textSlice:'✂', regex:'.*', textSearch:'⌕', errorSearch:'⚠', fieldByLabel:'🏷', setVar:'=', userPrompt:'💬', pageButton:'▣', pageControlPanel:'▦', actionGroup:'⚙', userInput:'⌨', userChoice:'☑', systemNotify:'🔔', scroll:'↕', keyPress:'⌨', openUrl:'↗', pageInfo:'ⓘ', screenshot:'▣', pdfStart:'PDF', pdfText:'¶', pdfTable:'▦', pdfScreenshot:'▣', pdfPageBreak:'↡', pdfSave:'⬇', docxStart:'DOCX', docxText:'¶', docxTable:'▦', docxScreenshot:'▣', docxPageBreak:'↡', docxSave:'⬇', preflight:'✓', localSet:'⬇', localGet:'⬆', compare:'=', math:'#', iframeBlock:'▤', findElements:'◇', validateData:'✓', comment:'//', groupBlock:'▣', callWorkflow:'↪', returnResult:'↩', stopRun:'■', sound:'♪' };
+  const map = { trigger:'▶', triggerGroup:'◎', clickTrigger:'☝', textShortcut:'⌨', scheduledTrigger:'⏲', conditionText:'T', conditionElement:'◇', conditionField:'▣', conditionUrl:'URL', conditionChange:'Δ', conditionGroup:'∧∨', click:'⌁', fill:'✎', selectOption:'▾', injectCss:'CSS', extract:'⇣', wait:'⏱', waitUntil:'⏳', waitLoad:'⌛', ifBlock:'?', repeatBlock:'↻', retryBlock:'⟳', tryBlock:'⚑', popupWait:'▣', popupExtract:'▣', popupClick:'▣', popupWindowWait:'◱', popupWindowExtract:'⇣', popupWindowClose:'×', copy:'⧉', clipboardRead:'⧉', email:'✉', emailTemplate:'✉', emailPreview:'✉', openEmail:'↗', rowLoop:'≡', elementLoop:'⋮', tableExtract:'▦', mask:'◩', transform:'A', textSlice:'✂', regex:'.*', textSearch:'⌕', errorSearch:'⚠', fieldByLabel:'🏷', setVar:'=', userPrompt:'💬', pageButton:'▣', pageControlPanel:'▦', actionGroup:'⚙', userInput:'⌨', userChoice:'☑', systemNotify:'🔔', scroll:'↕', keyPress:'⌨', openUrl:'↗', pageInfo:'ⓘ', screenshot:'▣', pdfStart:'PDF', pdfText:'¶', pdfTable:'▦', pdfScreenshot:'▣', pdfPageBreak:'↡', pdfSave:'⬇', docxStart:'DOCX', docxText:'¶', docxTable:'▦', docxScreenshot:'▣', docxPageBreak:'↡', docxSave:'⬇', preflight:'✓', localSet:'⬇', localGet:'⬆', compare:'=', math:'#', iframeBlock:'▤', findElements:'◇', validateData:'✓', comment:'//', groupBlock:'▣', callWorkflow:'↪', returnResult:'↩', stopRun:'■', sound:'♪' };
   return map[b.type] || '•';
 }
 function inlineChip(label, value) { return `<span class="inline-chip"><span>${escapeHtml(label)}</span><b>${escapeHtml(value || '—')}</b></span>`; }
@@ -763,8 +795,9 @@ function watchScopeInline(b) {
   return scopeSelect;
 }
 function blockInline(b) {
-  if (b.type === 'triggerGroup') return `${inlineCheck('triggerEnabled', b.triggerEnabled !== false, 'aktív')} ${inlineSelect('logic', b.logic || 'all', [['all','minden feltétel'],['any','bármelyik feltétel'],['none','egyik sem']])} ${watchScopeInline(b)} ${inlineNumber('intervalSec', b.intervalSec || 2, 'ellenőrzés mp')} ${inlineNumber('throttleSec', b.throttleSec || 15, 'szünet mp')}`;
-  if (b.type === 'clickTrigger') return `${inlineCheck('triggerEnabled', b.triggerEnabled !== false, 'aktív')} ${inlinePick(b)} ${watchScopeInline(b)} ${inlineNumber('throttleSec', b.throttleSec || 15, 'szünet mp')}`;
+  if (b.type === 'triggerGroup') return `${inlineCheck('triggerEnabled', b.triggerEnabled !== false, 'aktív')} ${inlineSelect('logic', b.logic || 'all', [['all','minden feltétel'],['any','bármelyik feltétel'],['none','egyik sem']])} ${inlineSelect('repeatMode', triggerRepeatMode(b), [['continuous','folyamatos'],['pageLoad','oldalbetöltésenként 1x'],['once','csak egyszer']])} ${watchScopeInline(b)} ${inlineNumber('intervalSec', b.intervalSec || 2, 'ellenőrzés mp')} ${inlineNumber('throttleSec', b.throttleSec || 15, 'szünet mp')}`;
+  if (b.type === 'clickTrigger') return `${inlineCheck('triggerEnabled', b.triggerEnabled !== false, 'aktív')} ${inlinePick(b)} ${inlineSelect('repeatMode', triggerRepeatMode(b), [['continuous','folyamatos'],['pageLoad','oldalbetöltésenként 1x'],['once','csak egyszer']])} ${watchScopeInline(b)} ${inlineNumber('throttleSec', b.throttleSec || 15, 'szünet mp')}`;
+  if (b.type === 'textShortcut') return `${inlineCheck('triggerEnabled', b.triggerEnabled !== false, 'aktív')} ${inlineInput('shortcut', b.shortcut || '', 'rövidítés')} → ${inlineInput('replacement', b.replacement || '', 'csere szöveg', 'wide')} ${watchScopeInline(b)} ${inlineCheck('caseSensitive', b.caseSensitive !== false, 'kis/nagybetű')}`;
   if (b.type === 'conditionText') return `${inlineInput('text', b.text || '', 'figyelt szöveg/karakter', 'wide')} ${inlineCheck('caseSensitive', Boolean(b.caseSensitive), 'kis/nagybetű')}`;
   if (b.type === 'conditionElement') return `${inlinePick(b)} ${inlineCheck('requireVisible', b.requireVisible !== false, 'látható')}`;
   if (b.type === 'conditionField') return `${inlinePick(b, 'Mező')} ${inlineSelect('operator', b.operator || 'contains', [['contains','tartalmazza'],['notContains','nem tartalmazza'],['equals','pontosan'],['notEquals','nem pontosan'],['empty','üres'],['notEmpty','nem üres'],['startsWith','ezzel kezdődik'],['endsWith','ezzel végződik']])} ${['empty','notEmpty'].includes(b.operator || 'contains') ? '' : inlineInput('value', b.value || '', 'érték')}`;
@@ -790,12 +823,12 @@ function blockInline(b) {
   if (b.type === 'injectCss') return `${inlineSelect('mode', b.mode || 'add', [['add','CSS hozzáadása'],['remove','CSS eltávolítása']])} ${inlineInput('styleId', b.styleId || 'blockflow-custom-style', 'stílus azonosító')} ${b.mode === 'remove' ? '' : inlineInput('cssText', b.cssText || '', 'CSS szabályok', 'wide')} ${inlineCheck('replaceExisting', b.replaceExisting !== false, 'felülír')}`;
   if (b.type === 'extract') return `${inlinePick(b, 'Honnan')} ${inlineSelect('extractMode', b.extractMode || 'auto', [['auto','automatikus'],['value','mezőérték'],['text','szöveg'],['html','HTML'],['attribute','attribútum']])} ${inlineSelect('searchScope', b.searchScope || 'dom', [['dom','teljes DOM'],['visible','látható']])} ${inlineInput('varName', b.varName || 'adat', 'változó neve')}`;
   if (b.type === 'wait') return `${inlineSelect('waitMode', b.waitMode || 'time', [['time','idő'],['text','szöveg'],['element','elem']])} ${b.waitMode === 'time' ? inlineNumber('ms', b.ms || 1000, 'ms') : b.waitMode === 'text' ? inlineInput('text', b.text || '', 'várt szöveg', 'wide') : inlinePick(b)} ${inlineNumber('timeoutMs', b.timeoutMs || 5000, 'timeout')}`;
-  if (b.type === 'ifBlock') return `${inlineSelect('conditionMode', b.conditionMode || 'textExists', [['textExists','szöveg létezik'],['elementExists','elem létezik'],['valueContains','érték tartalmazza']])} ${b.conditionMode === 'textExists' ? inlineInput('text', b.text || '', 'keresett szöveg', 'wide') : inlinePick(b)} ${b.conditionMode === 'valueContains' ? inlineInput('value', b.value || '', 'keresett érték') : ''}`;
+  if (b.type === 'ifBlock') return `${inlineSelect('conditionMode', b.conditionMode || 'textExists', [['textExists','szöveg létezik'],['elementExists','elem létezik'],['valueContains','érték tartalmazza'],['valueEmpty','érték üres']])} ${b.conditionMode === 'textExists' ? inlineInput('text', b.text || '', 'keresett szöveg', 'wide') : inlinePick(b)} ${b.conditionMode === 'valueContains' ? inlineInput('value', b.value || '', 'keresett érték') : ''}`;
   if (b.type === 'repeatBlock') return `${inlineNumber('repeatCount', b.repeatCount || 2, 'alkalom')} ${inlineChip('ismétli', `${(b.children || []).length} blokk`)}`;
   if (b.type === 'copy') return inlineInput('value', b.value || '', 'másolandó szöveg/változó', 'wide');
   if (b.type === 'userPrompt') return `${inlineSelect('mode', b.mode || 'wait', [['wait','vár visszajelzésre'],['notify','csak felugró üzenet']])} ${inlineInput('title', b.title || 'BlockFlow', 'cím')} ${inlineInput('message', b.message || '', 'üzenet', 'wide')}`;
   if (b.type === 'pageButton') return `${inlineInput('label', b.label || 'Folytatás', 'gomb felirata')} ${inlineSelect('position', b.position || 'bottomRight', [['bottomRight','jobb alsó'],['bottomLeft','bal alsó'],['topRight','jobb felső'],['topLeft','bal felső'],['bottomCenter','középen alul'],['afterTarget','elem után'],['beforeTarget','elem elé'],['custom','custom']])} <span class="mini">vár kattintásra</span>`;
-  if (b.type === 'pageControlPanel') return `${inlineInput('title', b.title || 'BlockFlow vezérlő', 'panel címe')} ${inlineSelect('position', b.position || 'bottomRight', [['bottomRight','jobb alsó'],['bottomLeft','bal alsó'],['topRight','jobb felső'],['topLeft','bal felső'],['bottomCenter','középen alul'],['custom','custom']])} ${inlineChip('gombok', String(b.buttonsText || '').split(/\r?\n/).filter(Boolean).length)}`;
+  if (b.type === 'pageControlPanel') return `${inlineInput('title', b.title || 'BlockFlow vezérlő', 'panel címe')} ${inlineSelect('position', b.position || 'bottomRight', [['bottomRight','jobb alsó'],['bottomLeft','bal alsó'],['topRight','jobb felső'],['topLeft','bal felső'],['bottomCenter','középen alul'],['custom','custom']])} ${inlineSelect('layout', b.layout || 'vertical', [['vertical','függőleges'],['horizontal','vízszintes'],['grid','rács']])} ${inlineSelect('buttonRowAlign', b.buttonRowAlign || 'stretch', [['stretch','széthúzva'],['left','balra'],['center','középre'],['right','jobbra'],['spaceBetween','szélekre']])} ${inlineChip('gombok', String(b.buttonsText || '').split(/\r?\n/).filter(Boolean).length)}`;
   if (b.type === 'actionGroup') return `${inlineInput('actionKey', b.actionKey || '', 'kulcs')} ${inlineInput('title', b.title || 'Műveletcsoport', 'cím')} ${inlineCheck('clearSessionAfterRun', Boolean(b.clearSessionAfterRun), 'session törlés futás után')} ${inlineChip('blokkok', `${(b.children || []).length}`)}`;
   if (b.type === 'systemNotify') return `${inlineInput('title', b.title || 'BlockFlow', 'cím')} ${inlineInput('message', b.message || '', 'értesítés szövege', 'wide')}`;
   if (b.type === 'email') return `${inlineInput('to', b.to || '', 'címzett')} ${inlineInput('subject', b.subject || '', 'tárgy')} ${inlineInput('resultName', b.resultName || 'email_draft', 'draft változó')}`;
@@ -1074,8 +1107,9 @@ function markDirty() {
 const BLOCK_HELP = {
   trigger: { purpose:'Manuális indítópont. Akkor hasznos, ha az automatizmust kézzel szeretnéd futtatni.', params:['Nem igényel külön beállítást.','Ha csak Figyelő trigger van a workflow-ban, a sima Futtatás a feltételeket is ellenőrzi.'] },
   scheduledTrigger: { purpose:'Időzített indítás: megadott időközönként vagy napi időpontban futtatja az automatizmust.', params:['Intervallum percben: milyen gyakran induljon.','Napi időpont: HH:MM formátum.','Napok: vesszővel elválasztva, például mon,tue,wed.'] },
-  triggerGroup: { purpose:'Automatikus figyelő indító. A benne lévő feltételek döntik el, elinduljon-e az automatizmus.', params:['Hol figyelje: domain, path, pontos URL, URL-részlet vagy bármely oldal.','Indítás, ha: minden/bármelyik/egyik sem feltétel igaz.','Ellenőrzés gyakorisága: milyen sűrűn nézze az oldalt.','Újraindítási szünet: ennyi ideig ne induljon újra sikeres indítás után.'] },
-  clickTrigger: { purpose:'Automatikus indító: akkor indítja a workflow-t, amikor a felhasználó a kiválasztott oldalelemen kattint.', params:['Cél elem: az elem, amelyre kattintva induljon az automatizmus.','Hol figyelje: domain, path, pontos URL, URL-részlet vagy bármely oldal.','Újraindítási szünet: ennyi ideig ne induljon újra újabb kattintásra.'] },
+  triggerGroup: { purpose:'Automatikus figyelő indító. A benne lévő feltételek döntik el, elinduljon-e az automatizmus.', params:['Hol figyelje: domain, path, pontos URL, URL-részlet vagy bármely oldal.','Indítás, ha: minden/bármelyik/egyik sem feltétel igaz.','Futási mód: folyamatos, oldalbetöltésenként egyszer, vagy csak egyszer.','Ellenőrzés gyakorisága: milyen sűrűn nézze az oldalt.','Újraindítási szünet: ennyi ideig ne induljon újra sikeres indítás után.'] },
+  clickTrigger: { purpose:'Automatikus indító: akkor indítja a workflow-t, amikor a felhasználó a kiválasztott oldalelemen kattint.', params:['Cél elem: az elem, amelyre kattintva induljon az automatizmus.','Hol figyelje: domain, path, pontos URL, URL-részlet vagy bármely oldal.','Futási mód: folyamatos, oldalbetöltésenként egyszer, vagy csak egyszer.','Újraindítási szünet: ennyi ideig ne induljon újra újabb kattintásra.'] },
+  textShortcut: { purpose:'Szövegbővítő shortcut. Amikor aktív mezőben beírod a rövidítést, például thx, a BlockFlow hosszabb szövegre cseréli.', params:['Rövidítés: amit begépelsz.','Csere szöveg: amire lecseréli.','Elválasztó billentyűk: általában Space, Enter vagy Tab után történik a csere.','Scope: megadható, melyik domainen vagy URL-en legyen aktív.','Normál weboldalakon és ServiceNow/SNOW mezőkben is működik.'] },
   conditionText: { purpose:'Figyelőfeltétel: akkor igaz, ha a megadott szöveg megtalálható az oldalon.', params:['Figyelt szöveg: amit keresni kell.','Kis/nagybetű: bekapcsolva pontosan számít a betűméret.'] },
   conditionElement: { purpose:'Figyelőfeltétel: akkor igaz, ha a kiválasztott elem létezik vagy látható.', params:['Cél elem: az oldalon kiválasztott mező/gomb/szöveg.','Csak látható elem: rejtett DOM elem ne számítson találatnak.'] },
   conditionField: { purpose:'Figyelőfeltétel: egy mező vagy elem aktuális értékét ellenőrzi.', params:['Cél elem: a figyelt mező.','Feltétel: tartalmazza, pontosan ez, üres, nem üres stb.','Érték: ehhez hasonlítja a mező tartalmát.'] },
@@ -1115,7 +1149,7 @@ const BLOCK_HELP = {
   rowLoop: { purpose:'Táblázat/lista sorain fut végig egyszerűen.', params:['Cél táblázat/lista.','Sor változó: az aktuális sor szövege.','Maximum sor: véd a túl hosszú feldolgozástól.'] },
   userPrompt: { purpose:'Extension ablakban üzenetet mutat, és opcionálisan megállítja a workflow-t válaszig.', params:['Mód: csak értesít vagy visszajelzésre vár.','Gombszövegek: Folytatás/Megszakítás felirat.','Eredmény változó: a döntés menthető.'] },
   pageButton: { purpose:'Gombot illeszt az aktuális weboldalra. A workflow addig vár, amíg a felhasználó rákattint.', params:['Elhelyezés: lebegő sarokban vagy kiválasztott elem elé/után.','Timeout: kattintás nélküli várakozás kezelése.','Eredmény változó: true/false értéket kap, és létrejön a kattintási időpont is.'] },
-  pageControlPanel: { purpose:'Többgombos vezérlőpanelt illeszt az oldalba. Minden gomb egy műveletcsoportot indít.', params:['Gombok: soronként Felirat | műveletcsoport_kulcs.','A panel duplikációvédett: újrainduló trigger sem szúr be párhuzamos paneleket.','A műveletcsoportok ugyanazokat a meglévő blokkokat futtatják.'] },
+  pageControlPanel: { purpose:'Többgombos vezérlőpanelt illeszt az oldalba. Minden gomb egy műveletcsoportot indít.', params:['Gombok: soronként Felirat | műveletcsoport_kulcs.','A panel duplikációvédett: újrainduló trigger sem szúr be párhuzamos paneleket.','A műveletcsoportok ugyanazokat a meglévő blokkokat futtatják.','A gombok vízszintes igazítása külön állítható: balra, középre, jobbra, szélekre vagy széthúzva.'] },
   actionGroup: { purpose:'Névvel/kulccsal hívható blokkcsoport. Nem fut le magától a fő workflow-ban.', params:['Action key: erre hivatkozik a vezérlőpanel gombja.','A gyermek blokkok a gomb kattintásakor futnak.','Session törlése futás után: export/lezárás jellegű műveletekhez hasznos.'] },
   userInput: { purpose:'Adatot kér be a felhasználótól futás közben.', params:['Mező típusa: rövid vagy hosszú szöveg.','Alapérték és placeholder segíti a kitöltést.','Eredmény változó: ide kerül a megadott adat.'] },
   userChoice: { purpose:'Opciók közül választást kér a felhasználótól.', params:['Opciók: soronként egy válasz.','Eredmény változó: a kiválasztott opció.'] },
@@ -1177,6 +1211,7 @@ function renderInspector() {
   if (b.type === 'extract') html += selectField('extractMode','Mit nyerjen ki?', b.extractMode || 'auto', [['auto','Automatikus - legjobb érték'],['value','Mezőérték'],['text','Szöveg'],['html','HTML tartalom'],['attribute','Attribútum']]) + selectField('searchScope','Hol keressen?', b.searchScope || 'dom', [['dom','Teljes DOM-ban, rejtett mezőkben is'],['visible','Csak látható elemek között']]) + checkboxField('allowHidden','Rejtett / inaktív fülön lévő mezőt is elfogad', b.allowHidden !== false) + textField('attributeName','Attribútum neve attribute módnál', b.attributeName || 'title') + textField('varName','Változó neve', b.varName || 'adat') + numberField('timeoutMs','Max várakozás ms', b.timeoutMs || 5000);
   if (b.type === 'triggerGroup') html += watcherAdvanced(b) + selectField('logic','Indítás, ha', b.logic || 'all', [['all','Minden feltétel igaz'],['any','Bármelyik feltétel igaz'],['none','Egyik feltétel sem igaz']]) + numberField('intervalSec','Ellenőrzés gyakorisága mp-ben', b.intervalSec || 2) + `<div class="status">Feltételek száma: ${(b.children || []).length}. Húzz alá feltételblokkokat a Figyelő feltételek kategóriából.</div>`;
   if (b.type === 'clickTrigger') html += watcherAdvanced(b) + checkboxField('triggerEnabled','Aktív', b.triggerEnabled !== false) + numberField('throttleSec','Újraindítási szünet mp-ben', b.throttleSec || 15);
+  if (b.type === 'textShortcut') html += textShortcutAdvanced(b);
   if (b.type === 'conditionText') html += textField('text','Figyelt szöveg vagy karakter', b.text || '') + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive));
   if (b.type === 'conditionElement') html += checkboxField('requireVisible','Csak látható elem számítson', b.requireVisible !== false);
   if (b.type === 'conditionField') html += selectField('operator','Feltétel', b.operator || 'contains', [['contains','Tartalmazza'],['notContains','Nem tartalmazza'],['equals','Pontosan ez'],['notEquals','Nem pontosan ez'],['empty','Üres'],['notEmpty','Nem üres'],['startsWith','Ezzel kezdődik'],['endsWith','Ezzel végződik']]) + textField('value','Érték', b.value || '') + checkboxField('caseSensitive','Kis/nagybetű számítson', Boolean(b.caseSensitive));
@@ -1191,7 +1226,7 @@ function renderInspector() {
   if (b.type === 'pdfPageBreak') html += checkboxField('onlyIfLowSpace','Csak akkor új oldal, ha kevés hely maradt', Boolean(b.onlyIfLowSpace));
   if (b.type === 'pdfSave') html += selectField('action','Művelet', b.action || 'downloadPreview', [['download','Letöltés'],['preview','Megnyitás új tabon'],['downloadPreview','Letöltés és megnyitás']]) + textField('fileName','Fájlnév', b.fileName || '{{today}}_blockflow-riport.pdf') + checkboxField('previewBeforeSave','Előnézet mentés előtt', Boolean(b.previewBeforeSave));
   if (b.type === 'wait') html += selectField('waitMode','Várakozás típusa', b.waitMode || 'time', [['time','Idő'],['text','Szöveg megjelenése'],['element','Elem megjelenése']]) + (b.waitMode === 'time' ? numberField('ms','Idő ms', b.ms || 1000) : b.waitMode === 'text' ? textField('text','Szöveg', b.text || '') + numberField('timeoutMs','Timeout ms', b.timeoutMs || 5000) : targetEditor(b) + numberField('timeoutMs','Timeout ms', b.timeoutMs || 5000));
-  if (b.type === 'ifBlock') html += selectField('conditionMode','Feltétel', b.conditionMode || 'textExists', [['textExists','Szöveg létezik'],['elementExists','Elem létezik'],['valueContains','Elem értéke tartalmazza']]) + (b.conditionMode === 'elementExists' || b.conditionMode === 'valueContains' ? targetEditor(b) : '') + (b.conditionMode === 'valueContains' ? textField('value','Keresett érték', b.value || '') : b.conditionMode === 'textExists' ? textField('text','Keresett szöveg', b.text || '') : '') + numberField('timeoutMs','Elemkeresési timeout ms', b.timeoutMs || 1000) + `<div class="status">Igaz ág: ${(b.children||[]).length} blokk · Különben ág: ${(b.elseChildren||[]).length} blokk</div>`;
+  if (b.type === 'ifBlock') html += selectField('conditionMode','Feltétel', b.conditionMode || 'textExists', [['textExists','Szöveg létezik'],['elementExists','Elem létezik'],['valueContains','Elem értéke tartalmazza'],['valueEmpty','Elem értéke üres']]) + (['elementExists','valueContains','valueEmpty'].includes(b.conditionMode) ? targetEditor(b) : '') + (b.conditionMode === 'valueContains' ? textField('value','Keresett érték', b.value || '') : b.conditionMode === 'textExists' ? textField('text','Keresett szöveg', b.text || '') : '') + numberField('timeoutMs','Elemkeresési timeout ms', b.timeoutMs || 1000) + `<div class="status">Igaz ág: ${(b.children||[]).length} blokk · Különben ág: ${(b.elseChildren||[]).length} blokk</div>`;
   if (b.type === 'repeatBlock') html += numberField('repeatCount','Ismétlések száma', b.repeatCount || 2) + `<div class="status">Az alá behúzott blokkok ismétlődnek. Gyermek blokkok: ${(b.children||[]).length}</div>`;
   if (b.type === 'rowLoop') html += targetEditor(b) + textField('rowVar','Sor szövegének változóneve', b.rowVar || 'sor_szoveg') + numberField('maxRows','Max sor', b.maxRows || 20) + `<div class="status">Egyszerű lista/táblázat feldolgozás: a kiválasztott elem sorait/listaelemeit járja be.</div>`;
   if (b.type === 'popupWait') html += numberField('timeoutMs','Popup timeout ms', b.timeoutMs || 10000) + `<button id="testPopup" class="ghost">Popup tesztelése</button>`;
@@ -1200,7 +1235,7 @@ function renderInspector() {
   if (b.type === 'copy') html += valueSourceHelp() + textArea('value','Mit másoljon?', b.value || '');
   if (b.type === 'userPrompt') html += selectField('mode','Működés', b.mode || 'wait', [['wait','Felugró ablak és várjon felhasználói visszajelzésre'],['notify','Csak felugró üzenet, automatikusan továbbmegy']]) + textField('title','Ablak címe', b.title || 'BlockFlow') + textArea('message','Üzenet szövege', b.message || '') + textField('buttonText','Folytatás gomb szövege', b.buttonText || 'Folytatás') + textField('cancelText','Megszakítás gomb szövege', b.cancelText || 'Megszakítás') + textField('resultName','Eredmény változó neve opcionális', b.resultName || '') + `<div class="status">Várakozó módban a futás megáll, amíg a felhasználó folytatja vagy megszakítja. Értesítő módban csak megjelenik egy rövid felugró üzenet.</div>`;
   if (b.type === 'pageButton') html += textField('label','Gomb felirata', b.label || 'Folytatás') + textField('tooltip','Tooltip', b.tooltip || 'Kattints a BlockFlow folytatásához') + selectField('position','Elhelyezés', b.position || 'bottomRight', [['bottomRight','Jobb alsó lebegő gomb'],['bottomLeft','Bal alsó lebegő gomb'],['topRight','Jobb felső lebegő gomb'],['topLeft','Bal felső lebegő gomb'],['bottomCenter','Középen alul'],['afterTarget','Kiválasztott elem után'],['beforeTarget','Kiválasztott elem elé'],['custom','Custom']]) + ((b.position === 'afterTarget' || b.position === 'beforeTarget') ? '<div class="status">Az elem kiválasztását a fenti <b>Cél elem</b> gombbal állíthatod be.</div>' : '') + (b.position === 'custom' ? numberField('customLeft','Balról', b.customLeft ?? '') + numberField('customRight','Jobbról', b.customRight ?? 24) + numberField('customTop','Fentről', b.customTop ?? '') + numberField('customBottom','Lentről', b.customBottom ?? 24) + selectField('customUnit','Mértékegység', b.customUnit || 'px', [['px','px'],['%','%']]) + numberField('customZIndex','z-index', b.customZIndex || 2147483647) : '') + numberField('timeoutSec','Timeout másodperc', b.timeoutSec || 300) + selectField('onTimeout','Timeout esetén', b.onTimeout || 'stop', [['stop','Álljon le hibával'],['continue','Folytassa']]) + checkboxField('removeAfterClick','Kattintás után eltávolítás', b.removeAfterClick !== false) + textField('resultName','Eredmény változó', b.resultName || 'button_clicked') + `<div class="status">A blokk mindig vár a gomb kattintására. A kattintás ideje automatikusan a <code>{{button_clicked_at}}</code> változóba kerül.</div>`;
-  if (b.type === 'pageControlPanel') html += textField('title','Panel címe', b.title || 'BlockFlow vezérlő') + textField('panelId','Panel azonosító', b.panelId || 'main') + selectField('position','Elhelyezés', b.position || 'bottomRight', [['bottomRight','Jobb alsó'],['bottomLeft','Bal alsó'],['topRight','Jobb felső'],['topLeft','Bal felső'],['bottomCenter','Középen alul'],['custom','Custom']]) + (b.position === 'custom' ? numberField('customLeft','Balról', b.customLeft ?? '') + numberField('customRight','Jobbról', b.customRight ?? 24) + numberField('customTop','Fentről', b.customTop ?? '') + numberField('customBottom','Lentről', b.customBottom ?? 24) + selectField('customUnit','Mértékegység', b.customUnit || 'px', [['px','px'],['%','%']]) + numberField('customZIndex','z-index', b.customZIndex || 2147483647) : '') + numberField('width','Panel szélesség px', b.width || 260) + selectField('duplicateMode','Ha már létezik', b.duplicateMode || 'keep', [['keep','Ne nyúljon hozzá'],['replace','Frissítse / cserélje']]) + checkboxField('showStatus','Állapotsor mutatása', b.showStatus !== false) + checkboxField('closeButton','Bezárás gomb', b.closeButton !== false) + textArea('buttonsText','Gombok soronként: Felirat | action_key', b.buttonsText || 'Screenshot | add_screenshot\nLetöltés / Lezárás | export_report') + `<div class="status">A gomb jobb oldalán lévő action_key egy <b>Műveletcsoport</b> blokk Action key mezőjére mutat. Példa: <code>Screenshot | add_screenshot</code>.</div>`;
+  if (b.type === 'pageControlPanel') html += textField('title','Panel címe', b.title || 'BlockFlow vezérlő') + textField('panelId','Panel azonosító', b.panelId || 'main') + selectField('position','Elhelyezés', b.position || 'bottomRight', [['bottomRight','Jobb alsó'],['bottomLeft','Bal alsó'],['topRight','Jobb felső'],['topLeft','Bal felső'],['bottomCenter','Középen alul'],['custom','Custom']]) + (b.position === 'custom' ? numberField('customLeft','Balról', b.customLeft ?? '') + numberField('customRight','Jobbról', b.customRight ?? 24) + numberField('customTop','Fentről', b.customTop ?? '') + numberField('customBottom','Lentről', b.customBottom ?? 24) + selectField('customUnit','Mértékegység', b.customUnit || 'px', [['px','px'],['%','%']]) + numberField('customZIndex','z-index', b.customZIndex || 2147483647) : '') + numberField('width','Panel szélesség px', b.width || 260) + selectField('panelTheme','Panel téma', b.panelTheme || 'dark', [['dark','Sötét'],['light','Világos'],['blue','Kék'],['transparent','Áttetsző sötét']]) + numberField('panelOpacityPct','Panel teljes átlátszatlanság %', b.panelOpacityPct ?? 94) + numberField('panelPadding','Panel belső margó px', b.panelPadding ?? 10) + numberField('panelRadius','Panel sarokkerekítés px', b.panelRadius ?? 16) + selectField('layout','Gombok elrendezése', b.layout || 'vertical', [['vertical','Függőleges'],['horizontal','Vízszintes / tördelhető'],['grid','Rács']]) + (b.layout === 'grid' ? numberField('buttonColumns','Rács oszlopok száma', b.buttonColumns || 2) : '') + selectField('buttonRowAlign','Gombok vízszintes igazítása', b.buttonRowAlign || 'stretch', [['stretch','Széthúzva / teljes szélesség'],['left','Balra'],['center','Középre'],['right','Jobbra'],['spaceBetween','Szélekre igazítva']]) + selectField('buttonSize','Gombméret', b.buttonSize || 'normal', [['small','Kicsi'],['normal','Normál'],['large','Nagy'],['custom','Egyedi']]) + (b.buttonSize === 'custom' ? numberField('buttonMinHeight','Gomb minimum magasság px', b.buttonMinHeight || 38) + numberField('buttonPaddingY','Gomb függőleges térköz px', b.buttonPaddingY || 8) + numberField('buttonPaddingX','Gomb vízszintes térköz px', b.buttonPaddingX || 11) : '') + numberField('buttonGap','Gombok közti távolság px', b.buttonGap ?? 8) + numberField('buttonFontSize','Gomb betűméret px', b.buttonFontSize ?? 13) + numberField('buttonRadius','Gomb sarokkerekítés px', b.buttonRadius ?? 10) + numberField('buttonOpacityPct','Gomb átlátszatlanság %', b.buttonOpacityPct ?? 100) + selectField('buttonStyle','Gomb stílus', b.buttonStyle || 'primary', [['primary','Kék / elsődleges'],['dark','Sötét'],['light','Világos'],['outline','Keret nélküli / outline'],['success','Zöld'],['danger','Piros']]) + selectField('buttonAlign','Gomb szöveg igazítása', b.buttonAlign || 'center', [['center','Középre'],['left','Balra'],['right','Jobbra']]) + selectField('duplicateMode','Ha már létezik', b.duplicateMode || 'keep', [['keep','Ne nyúljon hozzá'],['replace','Frissítse / cserélje']]) + checkboxField('showHeader','Fejléc mutatása', b.showHeader !== false) + checkboxField('showStatus','Állapotsor mutatása', b.showStatus !== false) + checkboxField('closeButton','Bezárás gomb', b.closeButton !== false) + textArea('buttonsText','Gombok soronként: Felirat | action_key', b.buttonsText || 'Screenshot | add_screenshot\nLetöltés / Lezárás | export_report') + `<div class="status">A gomb jobb oldalán lévő action_key egy <b>Műveletcsoport</b> blokk Action key mezőjére mutat. Példa: <code>Screenshot | add_screenshot</code>. A kinézeti beállítások csak erre a panelre vonatkoznak.</div>`;
   if (b.type === 'actionGroup') html += textField('title','Cím', b.title || 'Műveletcsoport') + textField('actionKey','Action key / hívási kulcs', b.actionKey || '') + checkboxField('clearSessionAfterRun','Munkamenet törlése futás után', Boolean(b.clearSessionAfterRun)) + `<div class="status">Ez a blokkcsoport nem fut le automatikusan a fő workflow-ban. Oldalpanel gombbal indítható. Gyermek blokkok: ${(b.children||[]).length}</div>`;
   if (b.type === 'systemNotify') html += textField('title','Értesítés címe', b.title || 'BlockFlow') + textArea('message','Értesítés szövege', b.message || '') + `<div class="status">Chrome rendszerértesítést küld. Ehhez az extension értesítési jogosultságot használ.</div>`;
   if (b.type === 'sound') html += selectField('soundSource','Hangforrás', b.soundSource || 'builtIn', [['builtIn','Beépített hang'],['custom','Saját feltöltött hang']]) + (b.soundSource === 'custom' ? `<div class="field"><label>Saját hangfájl</label><input type="file" id="customSoundFile" accept="audio/*"><small class="muted">Jelenlegi: ${escapeHtml(b.customSoundName || 'nincs feltöltve')}</small></div><button class="small" id="previewCustomSound">Hang előnézet</button>` : selectField('tone','Hang típusa', b.tone || 'success', [['success','Siker'],['error','Hiba'],['notify','Jelzés']])) + numberField('volume','Hangerő 0-1', b.volume ?? 0.7) + numberField('repeatCount','Ismétlés száma', b.repeatCount || 1);
@@ -1294,11 +1329,41 @@ function watcherAdvanced(b){
   return `<div class="status">Ez indító/figyelő blokk. Mentés után automatikusan aktív figyelőként működik a nyitott weboldalon.</div>` +
     `<div class="status"><b>Aktuális scope:</b> ${escapeHtml(scopeLabel(scope))} · ${escapeHtml(scopeDetailValue(b))}</div>` +
     checkboxField('triggerEnabled','Automatikus figyelő aktív', b.triggerEnabled !== false) +
-    checkboxField('runOnce','Csak egyszer fusson', Boolean(b.runOnce)) +
+    selectField('repeatMode','Futási mód', triggerRepeatMode(b), repeatModeOptions()) +
+    `<div class="status"><b>Oldalbetöltésenként egyszer</b>: ugyanazon betöltött lapon csak egyszer indít, de oldalfrissítés vagy új oldalbetöltés után újra futhat. A párhuzamos futási lock továbbra is védi az automatizmust.</div>` +
     selectField('scope','Hol figyelje?', scope, [['domain','Ezen a domainen'],['path','Domain + path alatt'],['exact','Pontos URL-en'],['contains','URL tartalmazza'],['any','Bármely oldalon']]) +
     detail +
     `<button type="button" class="small" id="fillCurrentScope">Jelenlegi oldal adataival kitöltés</button>` +
     numberField('throttleSec','Újraindítási szünet másodpercben', b.throttleSec || 15);
+}
+
+
+function textShortcutScopeFields(b){
+  const scope = b.scope || 'domain';
+  let detail = '';
+  if (scope === 'domain') detail = textField('domain','Aktív domain', b.domain || currentTargetHost || '');
+  if (scope === 'path') detail = `<div class="form-grid two">${textField('domain','Aktív domain', b.domain || currentTargetHost || '')}${textField('path','Path prefix', b.path || currentTargetPath || '/')}</div>`;
+  if (scope === 'exact') detail = textField('url','Pontos URL', b.url || currentTargetUrl || '');
+  if (scope === 'contains') detail = textField('urlContains','URL tartalmazza ezt', b.urlContains || '');
+  if (scope === 'any') detail = '<div class="status">Bármely weboldalon aktív, ahol az extension hozzáfér a laphoz.</div>';
+  return `<div class="status"><b>Aktív scope:</b> ${escapeHtml(scopeLabel(scope))} · ${escapeHtml(scopeDetailValue(b))}</div>` +
+    selectField('scope','Hol legyen aktív?', scope, [['domain','Ezen a domainen'],['path','Domain + path alatt'],['exact','Pontos URL-en'],['contains','URL tartalmazza'],['any','Bármely oldalon']]) +
+    detail +
+    `<button type="button" class="small" id="fillCurrentScope">Jelenlegi oldal adataival kitöltés</button>`;
+}
+
+function textShortcutAdvanced(b){
+  return `<div class="status">Ez a blokk nem futtat teljes workflow-t, hanem aktív szövegmezőben működő szövegbővítő shortcutot kapcsol be. Példa: <code>thx</code> + szóköz → <code>Thank you in advance</code>.</div>` +
+    checkboxField('triggerEnabled','Hotkey / szövegcsere aktív', b.triggerEnabled !== false) +
+    textField('shortcut','Rövidítés / trigger szöveg', b.shortcut || 'thx') +
+    textArea('replacement','Csere szöveg', b.replacement || 'Thank you in advance') +
+    textField('delimiterKeys','Csere ezek után a billentyűk után', b.delimiterKeys || 'Space,Enter,Tab') +
+    `<div class="status">Használható értékek például: <code>Space</code>, <code>Enter</code>, <code>Tab</code>. Több értéket vesszővel válassz el.</div>` +
+    checkboxField('keepDelimiter','Az elválasztó billentyű maradjon meg', b.keepDelimiter !== false) +
+    checkboxField('caseSensitive','Kis/nagybetű számít', b.caseSensitive !== false) +
+    selectField('matchMode','Találati mód', b.matchMode || 'word', [['word','Teljes szó / rövidítés'],['suffix','Elég, ha a kurzor előtt erre végződik']]) +
+    checkboxField('showFeedback','Rövid visszajelzés megjelenítése', b.showFeedback !== false) +
+    `<div class="hr"></div>` + textShortcutScopeFields(b);
 }
 
 function feedbackStyleFields(b){
@@ -1324,7 +1389,7 @@ function updateField(field, value) {
   renderBlocks();
   renderVariables();
   renderImportWarning();
-  if (['waitMode','conditionMode','maskMode','scope','domain','path','url','urlContains','logic','operator','changeMode','readMode','searchScope','firstRun','pageSize','orientation','source','action','style','align','soundSource','rowMode','columnMode','scrollTarget','mode','direction','loadMode','onTimeout','position','waitForClick','feedbackStyle','accent','windowSize'].includes(field)) renderInspector();
+  if (['waitMode','conditionMode','maskMode','scope','domain','path','url','urlContains','logic','operator','changeMode','readMode','searchScope','firstRun','pageSize','orientation','source','action','style','align','soundSource','rowMode','columnMode','scrollTarget','mode','direction','loadMode','onTimeout','position','waitForClick','feedbackStyle','accent','windowSize','layout','buttonSize'].includes(field)) renderInspector();
 }
 
 function renderVariables() {
@@ -1456,7 +1521,36 @@ async function syncTriggerWatchersFromBlocks(workflow) {
         urlContains: b.urlContains || '',
         intervalSec: 2,
         throttleSec: Math.max(1, Number(b.throttleSec || 15)),
-        runOnce: Boolean(b.runOnce),
+        repeatMode: triggerRepeatMode(b),
+        runOnce: triggerRepeatMode(b) === 'once',
+        runPerPageLoad: triggerRepeatMode(b) === 'pageLoad',
+        createdAt: b.createdAt || new Date().toISOString()
+      });
+      return;
+    }
+    if (b.type === 'textShortcut') {
+      if (b.triggerEnabled === false || !String(b.shortcut || '').trim()) return;
+      blockWatchers.push({
+        id: `shortcut:${workflow.id}:${b.id}`,
+        source: 'block',
+        sourceBlockId: b.id,
+        workflowId: workflow.id,
+        enabled: true,
+        mode: 'textShortcut',
+        scope: b.scope || 'domain',
+        domain: b.domain || domain,
+        path: b.path || path,
+        url: b.url || currentUrl,
+        urlContains: b.urlContains || '',
+        shortcut: String(b.shortcut || ''),
+        replacement: String(b.replacement ?? ''),
+        delimiterKeys: b.delimiterKeys || 'Space,Enter,Tab',
+        keepDelimiter: b.keepDelimiter !== false,
+        caseSensitive: b.caseSensitive !== false,
+        matchMode: b.matchMode || 'word',
+        showFeedback: b.showFeedback !== false,
+        intervalSec: 2,
+        throttleSec: 1,
         createdAt: b.createdAt || new Date().toISOString()
       });
       return;
@@ -1500,7 +1594,9 @@ async function syncTriggerWatchersFromBlocks(workflow) {
       urlContains: b.urlContains || '',
       intervalSec: Math.max(1, Number(b.intervalSec || 2)),
       throttleSec: Math.max(1, Number(b.throttleSec || 15)),
-      runOnce: Boolean(b.runOnce),
+      repeatMode: triggerRepeatMode(b),
+      runOnce: triggerRepeatMode(b) === 'once',
+      runPerPageLoad: triggerRepeatMode(b) === 'pageLoad',
       createdAt: b.createdAt || new Date().toISOString()
     });
   });
@@ -1559,7 +1655,7 @@ async function renderWatcherPanel() {
     <div class="compact-help">A figyelők most már blokkok. Add hozzá őket bal oldalt az <b>Indítás</b> kategóriából. A fő beállítások a blokkon látszanak, a részletesek a jobb oldali panelen.</div>
     ${triggerBlocks.length ? triggerBlocks.map(b => `<div class="compact-row trigger-row" data-trigger-block="${b.id}">
       <label class="toggle-mini"><input type="checkbox" data-trigger-enable="${b.id}" ${b.triggerEnabled!==false?'checked':''}></label>
-      <div class="compact-main"><b>${escapeHtml(BF.blockTitle(b))}</b><span>${escapeHtml(`${(b.children||[]).length} feltétel · ${BF.triggerLogicLabel ? BF.triggerLogicLabel(b.logic || 'all') : (b.logic || 'all')}`)}</span><small>${escapeHtml(scopeLabel(b.scope || 'domain'))}: ${escapeHtml(scopeDetailValue(b))} · ${Number(b.throttleSec || 15)} mp szünet${b.runOnce ? ' · egyszer fut' : ''}</small></div>
+      <div class="compact-main"><b>${escapeHtml(BF.blockTitle(b))}</b><span>${escapeHtml(`${(b.children||[]).length} feltétel · ${BF.triggerLogicLabel ? BF.triggerLogicLabel(b.logic || 'all') : (b.logic || 'all')}`)}</span><small>${escapeHtml(scopeLabel(b.scope || 'domain'))}: ${escapeHtml(scopeDetailValue(b))} · ${Number(b.throttleSec || 15)} mp szünet · ${repeatModeLabel(triggerRepeatMode(b))}</small></div>
       <button class="small" data-select-trigger="${b.id}">Beállítás</button>
     </div>`).join('') : '<div class="compact-empty">Nincs figyelő trigger. Adj hozzá egy „Figyelő trigger” blokkot az Indítás kategóriából, majd húzz alá feltételeket.</div>'}
   `;
@@ -1587,7 +1683,7 @@ async function openWatcherEditor(watcherId) {
     <div class="modal-subtitle">Automatikusan indítja ezt az automatizmust, ha a feltétel teljesül a nyitott weboldalon.</div>
     <div class="form-grid two">
       <label class="check"><input type="checkbox" id="mwEnabled" ${w.enabled!==false?'checked':''}> aktív</label>
-      <label class="check"><input type="checkbox" id="mwRunOnce" ${w.runOnce?'checked':''}> csak egyszer fusson</label>
+      <div class="field"><label>Futási mód</label><select id="mwRepeatMode">${repeatModeOptions().map(([value,label]) => `<option value="${value}" ${triggerRepeatMode(w)===value?'selected':''}>${label}</option>`).join('')}</select></div>
     </div>
     <div class="field"><label>Típus</label><select id="mwMode"><option value="text" ${w.mode!=='element'?'selected':''}>Szöveg / karakter megjelenik</option><option value="element" ${w.mode==='element'?'selected':''}>Elem megjelenik</option></select></div>
     <div id="mwTextFields" class="${w.mode==='element'?'hidden':''}">
@@ -1630,7 +1726,9 @@ async function openWatcherEditor(watcherId) {
   $('#modalCancel').onclick = closeModal;
   $('#mwSave').onclick = async () => {
     w.enabled = $('#mwEnabled').checked;
-    w.runOnce = $('#mwRunOnce').checked;
+    w.repeatMode = $('#mwRepeatMode').value;
+    w.runOnce = w.repeatMode === 'once';
+    w.runPerPageLoad = w.repeatMode === 'pageLoad';
     w.mode = $('#mwMode').value;
     w.text = $('#mwText')?.value || '';
     w.caseSensitive = $('#mwCase')?.checked || false;
@@ -1752,7 +1850,20 @@ function buildWatchersForExport(workflow) {
         mode: 'click', target: b.target || null,
         scope: b.scope || 'any', domain: b.domain || '', path: b.path || '/', url: b.url || '', urlContains: b.urlContains || '',
         intervalSec: 2, throttleSec: Math.max(1, Number(b.throttleSec || 15)),
-        runOnce: Boolean(b.runOnce), createdAt: b.createdAt || new Date().toISOString()
+        repeatMode: triggerRepeatMode(b), runOnce: triggerRepeatMode(b) === 'once', runPerPageLoad: triggerRepeatMode(b) === 'pageLoad', createdAt: b.createdAt || new Date().toISOString()
+      });
+      return;
+    }
+    if (b.type === 'textShortcut') {
+      if (b.triggerEnabled === false || !String(b.shortcut || '').trim()) return;
+      blockWatchers.push({
+        id: `shortcut:${workflow.id}:${b.id}`,
+        source: 'block', sourceBlockId: b.id, workflowId: workflow.id, enabled: true,
+        mode: 'textShortcut',
+        scope: b.scope || 'any', domain: b.domain || '', path: b.path || '/', url: b.url || '', urlContains: b.urlContains || '',
+        shortcut: String(b.shortcut || ''), replacement: String(b.replacement ?? ''), delimiterKeys: b.delimiterKeys || 'Space,Enter,Tab',
+        keepDelimiter: b.keepDelimiter !== false, caseSensitive: b.caseSensitive !== false, matchMode: b.matchMode || 'word', showFeedback: b.showFeedback !== false,
+        intervalSec: 2, throttleSec: 1, createdAt: b.createdAt || new Date().toISOString()
       });
       return;
     }
@@ -1784,7 +1895,7 @@ function buildWatchersForExport(workflow) {
       mode: 'group', logic: b.logic || 'all', conditions,
       scope: b.scope || 'any', domain: b.domain || '', path: b.path || '/', url: b.url || '', urlContains: b.urlContains || '',
       intervalSec: Math.max(1, Number(b.intervalSec || 2)), throttleSec: Math.max(1, Number(b.throttleSec || 15)),
-      runOnce: Boolean(b.runOnce), createdAt: b.createdAt || new Date().toISOString()
+      repeatMode: triggerRepeatMode(b), runOnce: triggerRepeatMode(b) === 'once', runPerPageLoad: triggerRepeatMode(b) === 'pageLoad', createdAt: b.createdAt || new Date().toISOString()
     });
   });
   return blockWatchers;
@@ -1990,6 +2101,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 });
 $('#workflowName').oninput = () => { activeWorkflow.name = $('#workflowName').value; markDirty(); renderWorkflowList(); };
 $('#publicLogEnabled').onchange = () => { activeWorkflow.publicLogEnabled = $('#publicLogEnabled').checked; markDirty(); renderWorkflowOptions(); };
+$('#triggerStartBadgeEnabled').onchange = () => { activeWorkflow.triggerStartBadgeEnabled = $('#triggerStartBadgeEnabled').checked; markDirty(); renderWorkflowOptions(); };
 $('#saveWorkflow').onclick = async () => { await saveCurrent(); $('#log').textContent = 'Mentve.'; renderAll(); };
 $('#newWorkflow').onclick = async () => { await saveCurrent(); const w = BF.DEFAULT_WORKFLOW(); workflows.push(w); activeWorkflow = w; selectedBlockId = null; workflowListCollapsed = false; localStorage.setItem('bf_workflow_list_collapsed', 'false'); await BF.saveWorkflow(w); isDirty = false; renderAll(); };
 $('#duplicateWorkflow').onclick = async () => { const w = JSON.parse(JSON.stringify(activeWorkflow)); w.id = crypto.randomUUID(); w.name += ' másolat'; w.imported = false; w.verified = true; reidBlocks(w.blocks); workflows.push(w); activeWorkflow = w; selectedBlockId = firstBlock(w.blocks)?.id; workflowListCollapsed = false; localStorage.setItem('bf_workflow_list_collapsed', 'false'); await BF.saveWorkflow(w); renderAll(); };
